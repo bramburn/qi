@@ -451,3 +451,24 @@ Configure compaction in `~/.pi/agent/settings.json` or `<project-dir>/.pi/settin
 | `keepRecentTokens` | `20000` | Recent tokens to keep (not summarized) |
 
 Disable auto-compaction with `"enabled": false`. You can still compact manually with `/compact`.
+
+## Known Issues & Recovery
+
+### Stuck sessions: recurring `400 invalid params (2013)` after compaction
+
+Older pi versions could persist a `CompactionEntry` between an assistant tool-call message and its tool result (auto-compaction fired while a long-running tool such as `update_goal` was still executing). On the next compaction, the old summary was re-projected at its physical position, splitting the tool call from its result in the request. Providers reject that shape with `400 invalid params (2013)` ("tool call result does not follow tool call") on every subsequent turn, so the session appears permanently stuck.
+
+Recovery options:
+
+1. **Upgrade pi.** The context projection (`normalizeToolPairing` in [`core/messages.ts`](https://github.com/earendil-works/pi-mono/blob/main/packages/coding-agent/src/core/messages.ts)) moves any user-role message that lands between a tool call and its result to after the result group, and the request builder (`transformMessages`) keeps `tool_result` blocks adjacent to their `tool_use` instead of synthesizing duplicates. Existing stuck session files work again without modification.
+
+2. **Manual repair of the session JSONL** (only for files that must be handed to older pi versions). Back up the file first, then in `~/.pi/agent/sessions/<project>/<session>.jsonl`:
+   - Locate the compaction line sandwiched between an assistant message containing a `toolCall` block and the `toolResult` message for that call (the `toolResult` entry's `parentId` is the compaction entry's id).
+   - Delete the compaction line.
+   - Set the `toolResult` entry's `parentId` to the assistant entry's id.
+
+   Do not remove the tool result or its tool call. If a newer compaction entry exists, its summary already incorporates the deleted one (repeated compactions fold the previous summary into the new one). If the deleted entry was the only compaction, the full history returns to context — valid, just larger; `/compact` re-summarizes it.
+
+### Known issue: orphaned tool calls from checkpoint resume
+
+When a run is interrupted while a tool call is outstanding — e.g. a goal checkpoint pauses the session mid tool execution and the session resumes hours later — the tool call's result is never appended and the history keeps an assistant `toolCall` with no `toolResult`. Request building heals this at send time (a synthetic "No result provided" result is inserted when the call's result never arrives), so requests stay valid, but the orphaned tool call in the entry log is a separate class of session corruption. It is independent of the compaction pairing bug above and is recorded here as a known issue only; no repair is implemented.

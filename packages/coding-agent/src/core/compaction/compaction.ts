@@ -648,8 +648,7 @@ export async function generateSummary(
 	).text;
 }
 
-/** Generate or update a conversation summary and return its provider usage. */
-export async function generateSummaryWithUsage(
+async function generateSummaryChunk(
 	currentMessages: AgentMessage[],
 	model: Model<any>,
 	reserveTokens: number,
@@ -752,6 +751,117 @@ export async function generateSummaryWithUsage(
 	const textContent = contentText(response.content);
 
 	return { text: textContent, usage: response.usage };
+}
+
+const MIN_CHUNK_TOKENS = 20_000;
+const MAX_CHUNK_TOKENS = 100_000;
+const MAX_SPLIT_DEPTH = 2;
+
+function isLengthFailure(error: unknown): boolean {
+	return error instanceof Error && error.message.includes("hit the token cap");
+}
+
+/**
+ * Generate or update a conversation summary and return its provider usage.
+ * Large inputs are summarized in sequential chunks (each folding into the previous
+ * summary), and a chunk whose output hits the token cap is split in half and retried.
+ * Any other error stops immediately.
+ */
+export async function generateSummaryWithUsage(
+	currentMessages: AgentMessage[],
+	model: Model<any>,
+	reserveTokens: number,
+	apiKey: string | undefined,
+	headers?: Record<string, string>,
+	signal?: AbortSignal,
+	customInstructions?: string,
+	previousSummary?: string,
+	thinkingLevel?: ThinkingLevel,
+	streamFn?: StreamFn,
+	env?: Record<string, string>,
+	retry?: RetryPolicy,
+	callbacks?: RetryCallbacks,
+	replayPrefix: boolean = false,
+	depth: number = 0,
+): Promise<{ text: string; usage: Usage }> {
+	const budget = Math.min(
+		MAX_CHUNK_TOKENS,
+		Math.max(MIN_CHUNK_TOKENS, Math.floor((model.contextWindow || 128_000) * 0.4)),
+	);
+	const sizes = currentMessages.map(estimateTokens);
+	const total = sizes.reduce((a, b) => a + b, 0);
+
+	const chunks: AgentMessage[][] = [];
+	if (total <= budget || currentMessages.length < 2) {
+		chunks.push(currentMessages);
+	} else {
+		let current: AgentMessage[] = [];
+		let used = 0;
+		currentMessages.forEach((m, i) => {
+			if (current.length > 0 && used + sizes[i] > budget) {
+				chunks.push(current);
+				current = [];
+				used = 0;
+			}
+			current.push(m);
+			used += sizes[i];
+		});
+		if (current.length > 0) chunks.push(current);
+	}
+
+	let summary = previousSummary;
+	let usage: Usage | undefined;
+	for (const chunk of chunks) {
+		let result: { text: string; usage: Usage };
+		try {
+			result = await generateSummaryChunk(
+				chunk,
+				model,
+				reserveTokens,
+				apiKey,
+				headers,
+				signal,
+				customInstructions,
+				summary,
+				thinkingLevel,
+				streamFn,
+				env,
+				retry,
+				callbacks,
+				replayPrefix,
+			);
+		} catch (error) {
+			if (!isLengthFailure(error) || chunk.length < 2 || depth >= MAX_SPLIT_DEPTH) throw error;
+			const mid = Math.floor(chunk.length / 2);
+			let partial = summary;
+			let partialUsage: Usage | undefined;
+			for (const half of [chunk.slice(0, mid), chunk.slice(mid)]) {
+				const r = await generateSummaryWithUsage(
+					half,
+					model,
+					reserveTokens,
+					apiKey,
+					headers,
+					signal,
+					customInstructions,
+					partial,
+					thinkingLevel,
+					streamFn,
+					env,
+					retry,
+					callbacks,
+					replayPrefix,
+					depth + 1,
+				);
+				partial = r.text;
+				partialUsage = partialUsage ? combineUsage(partialUsage, r.usage) : r.usage;
+			}
+			result = { text: partial ?? "", usage: partialUsage as Usage };
+		}
+		summary = result.text;
+		usage = usage ? combineUsage(usage, result.usage) : result.usage;
+	}
+	return { text: summary ?? "", usage: usage as Usage };
 }
 
 // ============================================================================
