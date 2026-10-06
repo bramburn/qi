@@ -3132,8 +3132,14 @@ export class AgentSession {
 				compact: (options) => {
 					void (async () => {
 						try {
-							const result = await this.compact(options?.customInstructions);
-							options?.onComplete?.(result);
+							const result = options?.background
+								? await this.compactInBackground(options?.customInstructions)
+								: await this.compact(options?.customInstructions);
+							// Background compaction resolves undefined when aborted or
+							// discarded as stale; there is no result to report then.
+							if (result) {
+								options?.onComplete?.(result);
+							}
 						} catch (error) {
 							const err = error instanceof Error ? error : new Error(String(error));
 							options?.onError?.(err);

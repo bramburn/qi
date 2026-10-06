@@ -297,6 +297,14 @@ export interface ContextUsage {
 
 export interface CompactOptions {
 	customInstructions?: string;
+	/**
+	 * When true, compaction summarizes in the background without aborting or
+	 * blocking the session; the result is hot-swapped in at the next safe
+	 * boundary. `onComplete` fires when the swap is applied (not when it is
+	 * discarded as stale). Default (false/omitted): abort-first blocking
+	 * compaction.
+	 */
+	background?: boolean;
 	onComplete?: (result: CompactionResult) => void;
 	onError?: (error: Error) => void;
 }
