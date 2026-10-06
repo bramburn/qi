@@ -7,6 +7,14 @@
 - Ctrl+V paste now reads video payloads from the Wayland/X11 clipboard and attaches them behind `[paste #N video: file]` markers. Video attachments are uploaded only when the active model's API accepts video (Google Gemini/Vertex); otherwise they are dropped with a warning.
 - Ctrl+V paste now attaches clipboard PDFs (`readClipboardPdf`) behind `[paste #N pdf: file]` markers. Video/PDF uploads are gated per model via `modelSupportsMediaUpload` (registry `input` modality plus API serialization support) instead of an API-name check.
 - `models.json` `input` (custom model definitions and `modelOverrides`) can declare `video`, `pdf`, and `audio` modalities per model.
+- `compaction.summaryMaxTokens` and `compaction.summaryThinking` settings: an absolute ceiling on summariser output tokens (default 16384) and an opt-in thinking level for the summariser (default `"off"`). The summarisation prompts now carry a word-budget directive derived from the effective token budget.
+- Background compaction with hot-swap: `/compact` and threshold-triggered auto-compaction now summarize in the background without aborting the in-flight turn or blocking input. The summary is computed from a branch snapshot and swapped into the live context at the next safe boundary (between turns, at run end, or before the next prompt); messages that arrive after the snapshot are kept verbatim, and the pending summary is discarded if the branch changes underneath it (tree navigation, `/new`, or a blocking compaction). Overflow-recovery compaction remains blocking. `compaction_start`/`compaction_end` session events carry a `background` flag, `AgentSession` gains `compactInBackground()` and `isBackgroundCompacting`, and extension `CompactOptions` gains `background?: boolean` for `ctx.compact()`.
+- Dev script `scripts/experiment-summariser.mjs` for A/B-comparing summariser models: `node scripts/experiment-summariser.mjs --configs models.json` prints a Markdown table (output/reasoning tokens, summary length, elapsed ms) per config; `--self-test` runs offline against a mock endpoint.
+
+### Changed
+
+- Summariser output is now capped at 16384 tokens by default (`compaction.summaryMaxTokens`) instead of scaling unbounded with `reserveTokens` and the model's `maxTokens`, and the summariser no longer inherits the session thinking level — reasoning is opt-in via `compaction.summaryThinking` because reasoning tokens are billed but discarded (the persisted summary keeps only text blocks).
+- Manual `/compact` no longer aborts the in-flight turn or queues input behind compaction; it runs in the background. Threshold-triggered auto-compaction likewise no longer blocks the run. The TUI shows a "Compacting context in background..." indicator without an Escape binding while summarizing.
 
 ### Fixed
 

@@ -34,9 +34,23 @@ contextTokens > contextWindow - reserveTokens
 
 By default, `reserveTokens` is 16384 tokens (configurable in `~/.pi/agent/settings.json` or `<project-dir>/.pi/settings.json`). This leaves room for the LLM's response.
 
-During a multi-turn agent run, Pi checks this threshold after tools finish and their results are appended, before starting the next assistant response. If the threshold is crossed, Pi compacts inside the same agent run and resumes with the summary and retained messages. It skips this between-turn check when the completed tool batch terminates the run and no queued message requires another response. Pi also checks the threshold before a new user prompt and after a low-level agent run ends.
+During a multi-turn agent run, Pi checks this threshold after tools finish and their results are appended, before starting the next assistant response. If the threshold is crossed, Pi starts a **background compaction** (see below) and the run continues with the current context; the summary is swapped in once ready. Pi skips this between-turn check when the completed tool batch terminates the run and no queued message requires another response. Pi also checks the threshold before a new user prompt and after a low-level agent run ends.
 
-You can also trigger manually with `/compact [instructions]`, where optional instructions focus the summary.
+You can also trigger manually with `/compact [instructions]`, where optional instructions focus the summary. `/compact` also runs in the background — it no longer aborts the in-flight turn or blocks input.
+
+### Background Compaction and Hot-Swap
+
+Manual `/compact` and threshold-triggered auto-compaction never interrupt the session:
+
+1. **Snapshot**: Pi snapshots the current session branch and computes the cut point from it. Messages that arrive after the snapshot are not part of the summary.
+2. **Summarize concurrently**: The summarisation request runs while you keep chatting and the agent keeps working.
+3. **Hot-swap**: When the summary is ready, Pi appends the `CompactionEntry` at the current leaf and swaps the live message list at the next safe boundary — between turns, when the run ends, or before your next prompt. Because messages after the snapshot sit after the compaction entry on the branch, they are kept verbatim; nothing is lost.
+
+If the session changed underneath the snapshot (tree navigation, `/new`, or a blocking compaction landing first), the pending summary is discarded instead of applied ("Background compaction discarded" in the TUI).
+
+**Overflow recovery is the exception**: when the provider reports context overflow (or a response is truncated by the output cap), compaction must finish before the turn can be retried, so it aborts the turn and blocks as before, superseding any background compaction in flight.
+
+The blocking abort-first behavior remains available to RPC clients (`compact` command) and extensions (`ctx.compact()` without the `background` option).
 
 ### How It Works
 
@@ -79,6 +93,20 @@ What the LLM sees:
 ```
 
 On repeated compactions, the summarized span starts at the previous compaction's kept boundary (`firstKeptEntryId`), not at the compaction entry itself, falling back to the entry after the previous compaction if that kept entry cannot be found in the path. This preserves messages that survived the earlier compaction by including them in the next summarization pass as well. Pi also recalculates `tokensBefore` from the rebuilt session context before writing the new `CompactionEntry`, so the token count reflects the actual pre-compaction context being replaced.
+
+### Summary Budget and Thinking
+
+The summariser's output is capped at an absolute ceiling of 16384 tokens by default, configurable via `compaction.summaryMaxTokens` in `~/.pi/agent/settings.json` or `<project-dir>/.pi/settings.json`. The effective token budget also feeds back into the summarisation prompt as a word-budget directive ("Budget: keep the complete summary under N words"), so the model knows how long the summary may be.
+
+Thinking (reasoning) is off by default for summarisation (`compaction.summaryThinking`, default `"off"`). Reasoning tokens are billed but never persisted — the stored summary keeps only text blocks — so passing the session's thinking level through would pay for tokens that are immediately discarded. Set `compaction.summaryThinking` to opt into a level.
+
+To compare candidate summariser models, use the dev script `scripts/experiment-summariser.mjs`:
+
+```bash
+node scripts/experiment-summariser.mjs --configs models.json [--fixture path]
+```
+
+The config file is a JSON array of `{ "name", "baseUrl", "model", "apiKeyEnv", "maxTokens"?, "thinking"? }` entries. The script runs each config against the same fixture, prints a Markdown table (output tokens, reasoning tokens, summary chars/words, elapsed ms per model) plus the first config's full summary. `--self-test` runs offline against a mock endpoint; `--help` shows full usage.
 
 ### Split Turns
 
@@ -223,12 +251,15 @@ By default compaction and branch summarisation call the main agent model. Three 
 | `PI_SUMMARIZER_BASE_URL` | yes | Base URL of an OpenAI-compatible API (e.g. `https://api.deepseek.com/v1`, `https://openrouter.ai/api/v1`, a vLLM or llama.cpp endpoint). |
 | `PI_SUMMARIZER_MODEL` | yes | Model id passed to that endpoint (e.g. `deepseek-chat`). |
 | `PI_SUMMARIZER_API_KEY` | yes | API key for the endpoint. |
+| `PI_SUMMARIZER_MAX_TOKENS` | no | Positive integer; absolute ceiling on summariser output tokens. Overrides `compaction.summaryMaxTokens`. Invalid values warn and are ignored. |
+| `PI_SUMMARIZER_THINKING` | no | Thinking level for the summariser (`off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`; case-insensitive). Overrides `compaction.summaryThinking`. Unset or `off` keeps reasoning disabled. Invalid values warn and are ignored. |
 
 **Semantics**
 
-- All three must be set; partial sets emit `console.warn` and fall back to the main model. Whitespace-only values count as unset.
+- All three required vars must be set; partial sets of the required trio emit `console.warn` and fall back to the main model. Whitespace-only values count as unset. The two optional vars are independent of the trio and never trigger the partial-config warning.
+- When the override is active, `PI_SUMMARIZER_MAX_TOKENS` / `PI_SUMMARIZER_THINKING` take precedence over the settings.json values.
 - The override is **always active** whenever the three vars are present. It does not require `--deepseek-harness`, `--no-deepseek-harness`, or any other flag.
-- The override is an OpenAI-compatible chat-completions call against the configured base URL. DeepSeek, OpenRouter proxies, vLLM, llama.cpp, and other OpenAI-compatible services work without per-provider plumbing. Reasoning-aware endpoints are not used — the override explicitly disables reasoning.
+- The override is an OpenAI-compatible chat-completions call against the configured base URL. DeepSeek, OpenRouter proxies, vLLM, llama.cpp, and other OpenAI-compatible services work without per-provider plumbing. Reasoning is disabled by default; set `PI_SUMMARIZER_THINKING` to opt into a reasoning level on reasoning-capable endpoints.
 - Cost is reported as zero for the override model because the endpoint is unknown to pi's catalog.
 - The override provider is registered on the runtime once per summarisation call with a stable internal id (`pi-summariser-override`). Setting `PI_SUMMARIZER_PROVIDER` is **not** supported — pick a non-built-in value at your own risk; built-in ids are rejected with a warning to avoid clobbering real providers.
 
@@ -439,7 +470,9 @@ Configure compaction in `~/.pi/agent/settings.json` or `<project-dir>/.pi/settin
   "compaction": {
     "enabled": true,
     "reserveTokens": 16384,
-    "keepRecentTokens": 20000
+    "keepRecentTokens": 20000,
+    "summaryMaxTokens": 16384,
+    "summaryThinking": "off"
   }
 }
 ```
@@ -449,6 +482,8 @@ Configure compaction in `~/.pi/agent/settings.json` or `<project-dir>/.pi/settin
 | `enabled` | `true` | Enable auto-compaction |
 | `reserveTokens` | `16384` | Tokens to reserve for LLM response |
 | `keepRecentTokens` | `20000` | Recent tokens to keep (not summarized) |
+| `summaryMaxTokens` | `16384` | Absolute ceiling on summariser output tokens |
+| `summaryThinking` | `"off"` | Thinking level for the summariser (`"off"`, `"minimal"`, `"low"`, `"medium"`, `"high"`, `"xhigh"`, `"max"`) |
 
 Disable auto-compaction with `"enabled": false`. You can still compact manually with `/compact`.
 

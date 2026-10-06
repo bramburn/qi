@@ -88,6 +88,8 @@ These variables are read by Pi itself:
 | `PI_SUMMARIZER_BASE_URL` | OpenAI-compatible base URL for context summarisation (compaction + branch summary). Pairs with `PI_SUMMARIZER_MODEL` and `PI_SUMMARIZER_API_KEY`. See [Compaction](compaction.md#summariser-override). |
 | `PI_SUMMARIZER_MODEL` | Model id for the override endpoint (e.g. `deepseek-chat`). Pairs with `PI_SUMMARIZER_BASE_URL` and `PI_SUMMARIZER_API_KEY`. See [Compaction](compaction.md#summariser-override). |
 | `PI_SUMMARIZER_API_KEY` | API key for the override endpoint. Pairs with `PI_SUMMARIZER_BASE_URL` and `PI_SUMMARIZER_MODEL`. See [Compaction](compaction.md#summariser-override). |
+| `PI_SUMMARIZER_MAX_TOKENS` | Optional. Absolute ceiling on summariser output tokens when the override endpoint is active; overrides `compaction.summaryMaxTokens`. Positive integer; invalid values warn and are ignored. See [Compaction](compaction.md#summariser-override). |
+| `PI_SUMMARIZER_THINKING` | Optional. Thinking level for the summariser when the override endpoint is active (`off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`; case-insensitive); overrides `compaction.summaryThinking`. Unset or `off` keeps reasoning disabled; invalid values warn and are ignored. See [Compaction](compaction.md#summariser-override). |
 | `PI_SHARE_VIEWER_URL` | Override the base URL used by `/share` |
 | `PI_HARDWARE_CURSOR` | Set to `1` to show the hardware cursor; see [Terminal setup](terminal-setup.md) |
 | `PI_HYPERLINKS` | Override OSC 8 hyperlink detection with `1`, `0`, or `auto` |
