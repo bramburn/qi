@@ -3136,7 +3136,7 @@ export class InteractiveMode {
 			if (text === "/compact" || text.startsWith("/compact ")) {
 				const customInstructions = text.startsWith("/compact ") ? text.slice(9).trim() : undefined;
 				this.editor.setText("");
-				await this.handleCompactCommand(customInstructions);
+				this.handleCompactCommand(customInstructions);
 				return;
 			}
 			if (text === "/reload") {
@@ -3494,30 +3494,38 @@ export class InteractiveMode {
 				break;
 
 			case "compaction_start": {
-				if (this.settingsManager.getShowTerminalProgress()) {
-					this.ui.terminal.setProgress(true);
+				if (event.background) {
+					this.showStatusIndicator(new CompactionStatusIndicator(this.ui, event.reason, true));
+				} else {
+					if (this.settingsManager.getShowTerminalProgress()) {
+						this.ui.terminal.setProgress(true);
+					}
+					// Keep editor active; submissions are queued during compaction.
+					this.autoCompactionEscapeHandler = this.defaultEditor.onEscape;
+					this.defaultEditor.onEscape = () => {
+						this.session.abortCompaction();
+					};
+					this.showStatusIndicator(new CompactionStatusIndicator(this.ui, event.reason));
 				}
-				// Keep editor active; submissions are queued during compaction.
-				this.autoCompactionEscapeHandler = this.defaultEditor.onEscape;
-				this.defaultEditor.onEscape = () => {
-					this.session.abortCompaction();
-				};
-				this.showStatusIndicator(new CompactionStatusIndicator(this.ui, event.reason));
 				this.ui.requestRender();
 				break;
 			}
 
 			case "compaction_end": {
-				if (this.settingsManager.getShowTerminalProgress()) {
-					this.ui.terminal.setProgress(false);
-				}
-				if (this.autoCompactionEscapeHandler) {
-					this.defaultEditor.onEscape = this.autoCompactionEscapeHandler;
-					this.autoCompactionEscapeHandler = undefined;
+				if (!event.background) {
+					if (this.settingsManager.getShowTerminalProgress()) {
+						this.ui.terminal.setProgress(false);
+					}
+					if (this.autoCompactionEscapeHandler) {
+						this.defaultEditor.onEscape = this.autoCompactionEscapeHandler;
+						this.autoCompactionEscapeHandler = undefined;
+					}
 				}
 				this.clearStatusIndicator("compaction");
 				if (event.aborted) {
-					if (event.reason === "manual") {
+					if (event.background) {
+						this.showStatus("Background compaction discarded");
+					} else if (event.reason === "manual") {
 						this.showError("Compaction cancelled");
 					} else {
 						this.showStatus("Auto-compaction cancelled");
@@ -3559,7 +3567,9 @@ export class InteractiveMode {
 						this.chatContainer.addChild(new Text(theme.fg("error", event.errorMessage), 1, 0));
 					}
 				}
-				void this.flushCompactionQueue({ willRetry: event.willRetry });
+				if (!event.background) {
+					void this.flushCompactionQueue({ willRetry: event.willRetry });
+				}
 				this.ui.requestRender();
 				break;
 			}
@@ -6743,14 +6753,12 @@ export class InteractiveMode {
 		this.ui.requestRender();
 	}
 
-	private async handleCompactCommand(customInstructions?: string): Promise<void> {
+	private handleCompactCommand(customInstructions?: string): void {
 		this.clearStatusIndicator();
 
-		try {
-			await this.session.compact(customInstructions);
-		} catch {
-			// Ignore, will be emitted as an event
-		}
+		void this.session.compactInBackground(customInstructions).catch(() => {
+			// Errors are surfaced via the compaction_end event.
+		});
 	}
 
 	stop(): void {
