@@ -15,11 +15,19 @@
 // because a partial override that defaults to the main model in production is
 // worse than falling back visibly during local dev.
 //
+// Two additional env vars are OPTIONAL tunables layered on top of the required
+// trio: `PI_SUMMARIZER_MAX_TOKENS` (absolute output-token ceiling) and
+// `PI_SUMMARIZER_THINKING` (opt the summariser into a reasoning level). They
+// are only read once the required trio validates — set without the trio they
+// are silently ignored (they neither activate the override nor count toward
+// the partial-config warning).
+//
 // `resolveSummariserEnv` is the env-var discovery step. It returns either a
 // fully-populated {@link SummariserEnvOverride} (caller should use it) or
 // `undefined` (caller should fall back to the main agent model).
 // =============================================================================
 
+import type { ThinkingLevel } from "./types.ts";
 import { getProviderEnvValue } from "./utils/provider-env.ts";
 
 /** Required: base URL for an OpenAI-compatible summarisation endpoint. */
@@ -28,6 +36,13 @@ export const PI_SUMMARIZER_BASE_URL_ENV = "PI_SUMMARIZER_BASE_URL";
 export const PI_SUMMARIZER_MODEL_ENV = "PI_SUMMARIZER_MODEL";
 /** Required: API key for the override endpoint. */
 export const PI_SUMMARIZER_API_KEY_ENV = "PI_SUMMARIZER_API_KEY";
+/** Optional: absolute output-token ceiling for the summariser request (positive integer). */
+export const PI_SUMMARIZER_MAX_TOKENS_ENV = "PI_SUMMARIZER_MAX_TOKENS";
+/** Optional: thinking level for the summariser. Unset or "off" means reasoning disabled. */
+export const PI_SUMMARIZER_THINKING_ENV = "PI_SUMMARIZER_THINKING";
+
+/** Valid {@link ThinkingLevel} spellings, used to validate {@link PI_SUMMARIZER_THINKING_ENV}. */
+const THINKING_LEVELS: readonly ThinkingLevel[] = ["minimal", "low", "medium", "high", "xhigh", "max"];
 
 /** Resolved env-var override that routes context summarisation to a separate model. */
 export interface SummariserEnvOverride {
@@ -37,6 +52,10 @@ export interface SummariserEnvOverride {
 	baseUrl: string;
 	/** API key for the override endpoint. */
 	apiKey: string;
+	/** Optional absolute output-token ceiling for the summariser request. */
+	maxTokens?: number;
+	/** Optional thinking level for the summariser. Unset or "off" means reasoning disabled. */
+	thinking?: ThinkingLevel;
 }
 
 /**
@@ -91,5 +110,50 @@ export function resolveSummariserEnv(): SummariserEnvOverride | undefined {
 	}
 
 	// All three present and non-empty — return the override for the caller to consume.
-	return { model: model, baseUrl: baseUrl, apiKey: apiKey };
+	// The optional tunables are parsed here (and only here) so that setting them
+	// without the required trio neither activates the override nor triggers the
+	// partial-config warning above.
+	const maxTokens = parseMaxTokens(getProviderEnvValue(PI_SUMMARIZER_MAX_TOKENS_ENV));
+	const thinking = parseThinking(getProviderEnvValue(PI_SUMMARIZER_THINKING_ENV));
+	return {
+		model: model,
+		baseUrl: baseUrl,
+		apiKey: apiKey,
+		...(maxTokens !== undefined ? { maxTokens: maxTokens } : {}),
+		...(thinking !== undefined ? { thinking: thinking } : {}),
+	};
+}
+
+/**
+ * Parse {@link PI_SUMMARIZER_MAX_TOKENS_ENV}. Only positive integers are accepted;
+ * anything else (non-numeric, zero, negative, fractional) warns and is treated
+ * as unset so a typo can't silently clamp the summariser's output budget.
+ */
+function parseMaxTokens(raw: string | undefined): number | undefined {
+	const trimmed = raw?.trim();
+	if (!trimmed) return undefined;
+	const parsed = Number(trimmed);
+	if (Number.isInteger(parsed) && parsed > 0) return parsed;
+	console.warn(
+		`[pi] ${PI_SUMMARIZER_MAX_TOKENS_ENV}="${trimmed}" is not a positive integer. ` +
+			"Ignoring it and using the default summariser output cap.",
+	);
+	return undefined;
+}
+
+/**
+ * Parse {@link PI_SUMMARIZER_THINKING_ENV}. Case-insensitive; "off" (and unset)
+ * means reasoning stays disabled. Unknown spellings warn and are treated as
+ * unset — the summariser is a background task, so silently inventing a thinking
+ * level from a typo would waste tokens with no user-visible signal.
+ */
+function parseThinking(raw: string | undefined): ThinkingLevel | undefined {
+	const trimmed = raw?.trim().toLowerCase();
+	if (!trimmed || trimmed === "off") return undefined;
+	if ((THINKING_LEVELS as readonly string[]).includes(trimmed)) return trimmed as ThinkingLevel;
+	console.warn(
+		`[pi] ${PI_SUMMARIZER_THINKING_ENV}="${trimmed}" is not a valid thinking level ` +
+			`(${THINKING_LEVELS.join(", ")}, or "off"). Ignoring it; reasoning stays disabled.`,
+	);
+	return undefined;
 }

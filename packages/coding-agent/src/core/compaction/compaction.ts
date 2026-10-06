@@ -628,6 +628,7 @@ export async function generateSummary(
 	env?: Record<string, string>,
 	retry?: RetryPolicy,
 	callbacks?: RetryCallbacks,
+	summaryMaxTokens?: number,
 ): Promise<string> {
 	return (
 		await generateSummaryWithUsage(
@@ -644,6 +645,9 @@ export async function generateSummary(
 			env,
 			retry,
 			callbacks,
+			undefined,
+			undefined,
+			summaryMaxTokens,
 		)
 	).text;
 }
@@ -663,14 +667,17 @@ async function generateSummaryChunk(
 	retry?: RetryPolicy,
 	callbacks?: RetryCallbacks,
 	replayPrefix: boolean = false,
+	summaryMaxTokens?: number,
 ): Promise<{ text: string; usage: Usage }> {
 	const maxTokens = Math.min(
-		Math.floor(0.8 * reserveTokens),
+		Math.max(Math.floor(0.8 * reserveTokens), MIN_SUMMARY_OUTPUT_TOKENS),
 		model.maxTokens > 0 ? model.maxTokens : Number.POSITIVE_INFINITY,
+		summaryMaxTokens ?? SUMMARY_MAX_TOKENS_CEILING,
 	);
 
 	// Use update prompt if we have a previous summary, otherwise initial prompt
 	let basePrompt = previousSummary ? UPDATE_SUMMARIZATION_PROMPT : SUMMARIZATION_PROMPT;
+	basePrompt = `${basePrompt}\n\nBudget: keep the complete summary under ${Math.floor(maxTokens * 0.75)} words.`;
 	if (customInstructions) {
 		basePrompt = `${basePrompt}\n\nAdditional focus: ${customInstructions}`;
 	}
@@ -753,6 +760,14 @@ async function generateSummaryChunk(
 	return { text: textContent, usage: response.usage };
 }
 
+/** Floor for summary output budget so thinking tokens do not exhaust it. */
+const MIN_SUMMARY_OUTPUT_TOKENS = 16_000;
+/**
+ * Absolute ceiling on summariser output tokens. Reserve tokens and model
+ * headroom can raise the budget far beyond what a summary needs; this caps it.
+ * Overridable per call via the `summaryMaxTokens` parameter.
+ */
+const SUMMARY_MAX_TOKENS_CEILING = 16_384;
 const MIN_CHUNK_TOKENS = 20_000;
 const MAX_CHUNK_TOKENS = 100_000;
 const MAX_SPLIT_DEPTH = 2;
@@ -783,6 +798,7 @@ export async function generateSummaryWithUsage(
 	callbacks?: RetryCallbacks,
 	replayPrefix: boolean = false,
 	depth: number = 0,
+	summaryMaxTokens?: number,
 ): Promise<{ text: string; usage: Usage }> {
 	const budget = Math.min(
 		MAX_CHUNK_TOKENS,
@@ -829,6 +845,7 @@ export async function generateSummaryWithUsage(
 				retry,
 				callbacks,
 				replayPrefix,
+				summaryMaxTokens,
 			);
 		} catch (error) {
 			if (!isLengthFailure(error) || chunk.length < 2 || depth >= MAX_SPLIT_DEPTH) throw error;
@@ -852,6 +869,7 @@ export async function generateSummaryWithUsage(
 					callbacks,
 					replayPrefix,
 					depth + 1,
+					summaryMaxTokens,
 				);
 				partial = r.text;
 				partialUsage = partialUsage ? combineUsage(partialUsage, r.usage) : r.usage;
@@ -1006,6 +1024,7 @@ export async function compact(
 	retry?: RetryPolicy,
 	callbacks?: RetryCallbacks,
 	replayPrefix: boolean = false,
+	summaryMaxTokens?: number,
 ): Promise<CompactionResult> {
 	const {
 		firstKeptEntryId,
@@ -1041,6 +1060,8 @@ export async function compact(
 				retry,
 				callbacks,
 				replayPrefix,
+				0,
+				summaryMaxTokens,
 			);
 			historyText = historyResult.text;
 			historyUsage = historyResult.usage;
@@ -1057,6 +1078,7 @@ export async function compact(
 			streamFn,
 			retry,
 			callbacks,
+			summaryMaxTokens,
 		);
 		// Merge into single summary
 		summary = `${historyText}\n\n---\n\n**Turn Context (split turn):**\n\n${turnPrefixResult.text}`;
@@ -1078,6 +1100,8 @@ export async function compact(
 			retry,
 			callbacks,
 			replayPrefix,
+			0,
+			summaryMaxTokens,
 		);
 		summary = result.text;
 		summaryUsage = result.usage;
@@ -1115,14 +1139,16 @@ async function generateTurnPrefixSummary(
 	streamFn?: StreamFn,
 	retry?: RetryPolicy,
 	callbacks?: RetryCallbacks,
+	summaryMaxTokens?: number,
 ): Promise<{ text: string; usage: Usage }> {
 	const maxTokens = Math.min(
-		Math.floor(0.5 * reserveTokens),
+		Math.max(Math.floor(0.8 * reserveTokens), MIN_SUMMARY_OUTPUT_TOKENS),
 		model.maxTokens > 0 ? model.maxTokens : Number.POSITIVE_INFINITY,
-	); // Smaller budget for turn prefix
+		summaryMaxTokens ?? SUMMARY_MAX_TOKENS_CEILING,
+	);
 	const llmMessages = convertToLlm(messages);
 	const conversationText = serializeConversation(llmMessages);
-	const promptText = `<conversation>\n${conversationText}\n</conversation>\n\n${TURN_PREFIX_SUMMARIZATION_PROMPT}`;
+	const promptText = `<conversation>\n${conversationText}\n</conversation>\n\n${TURN_PREFIX_SUMMARIZATION_PROMPT}\n\nBudget: keep the complete summary under ${Math.floor(maxTokens * 0.75)} words.`;
 	const summarizationMessages = [
 		{
 			role: "user" as const,

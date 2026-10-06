@@ -166,6 +166,8 @@ export type AgentSessionEvent =
 			attempt?: number;
 			maxAttempts?: number;
 			willRetry?: boolean;
+			/** True when summarization runs in the background without blocking the session. */
+			background?: boolean;
 	  }
 	| { type: "entry_appended"; entry: SessionEntry }
 	| { type: "session_info_changed"; name: string | undefined }
@@ -177,6 +179,8 @@ export type AgentSessionEvent =
 			aborted: boolean;
 			willRetry: boolean;
 			errorMessage?: string;
+			/** True when the compaction ran in the background (hot-swap apply). */
+			background?: boolean;
 	  }
 	| { type: "auto_retry_start"; attempt: number; maxAttempts: number; delayMs: number; errorMessage: string }
 	| { type: "auto_retry_end"; success: boolean; attempt: number; finalError?: string }
@@ -345,6 +349,25 @@ export class AgentSession {
 	private _autoCompactionAbortController: AbortController | undefined = undefined;
 	private _overflowRecoveryAttempts = 0;
 
+	// Background compaction state. Summarization runs concurrently with the
+	// session; the finished summary is held in `_pendingBackgroundCompaction`
+	// until the next safe boundary (idle, turn boundary, or pre-prompt) where
+	// `_tryApplyPendingBackgroundCompaction` hot-swaps it in. Deliberately NOT
+	// part of `isCompacting` so neither the prompt() gate nor the TUI input
+	// queue treat it as blocking.
+	private _backgroundCompaction: { abortController: AbortController; reason: "manual" | "threshold" } | undefined =
+		undefined;
+	private _pendingBackgroundCompaction:
+		| {
+				reason: "manual" | "threshold";
+				result: CompactionResult;
+				fromExtension: boolean;
+				firstKeptEntryId: string;
+				/** Latest compaction entry id at snapshot time; used to detect a superseding compaction. */
+				previousCompactionId: string | null;
+		  }
+		| undefined = undefined;
+
 	// DeepSeek Harness bundle state. The master toggle is the user's
 	// `deepseekHarness.enabled` setting; `_deepseekHarnessEnabled` is
 	// the in-memory mirror that the runtime reads on every turn.
@@ -481,6 +504,8 @@ export class AgentSession {
 		apiKey?: string;
 		headers?: Record<string, string>;
 		env?: Record<string, string>;
+		maxTokens?: number;
+		thinking?: ThinkingLevel;
 	}> {
 		// =====================================================================
 		// PI_SUMMARIZER_* env override — route summarisation through a separate
@@ -501,6 +526,12 @@ export class AgentSession {
 		// below this block runs against `effectiveModel` rather than `model`.
 		// =====================================================================
 		const override = resolveSummariserModel();
+		// Pass-through of the env-configured summariser limits. Undefined when no
+		// override is configured (or the optional env vars are unset) — callers then
+		// fall back to the compaction settings defaults.
+		const overrideLimits: { maxTokens?: number; thinking?: ThinkingLevel } = {};
+		if (override?.maxTokens !== undefined) overrideLimits.maxTokens = override.maxTokens;
+		if (override?.thinking !== undefined) overrideLimits.thinking = override.thinking;
 		let effectiveModel = model;
 		if (override) {
 			const overrideProvider = createProvider({
@@ -544,12 +575,12 @@ export class AgentSession {
 			}
 		}
 		if (this.agent.streamFunction === streamSimple) {
-			return this._getRequiredRequestAuth(effectiveModel);
+			return { ...(await this._getRequiredRequestAuth(effectiveModel)), ...overrideLimits };
 		}
 
 		try {
 			const result = await this._modelRuntime.getAuth(effectiveModel);
-			if (!result) return { model: effectiveModel };
+			if (!result) return { model: effectiveModel, ...overrideLimits };
 			const requestModel = result.auth.baseUrl
 				? { ...effectiveModel, baseUrl: result.auth.baseUrl }
 				: effectiveModel;
@@ -558,9 +589,10 @@ export class AgentSession {
 				apiKey: result.auth.apiKey,
 				headers: withoutDeletedHeaders(result.auth.headers),
 				env: result.env,
+				...overrideLimits,
 			};
 		} catch {
-			return { model: effectiveModel };
+			return { model: effectiveModel, ...overrideLimits };
 		}
 	}
 
@@ -629,6 +661,12 @@ export class AgentSession {
 	}
 
 	private async _compactBeforeNextAssistantResponse(context: AgentContext): Promise<AgentContext> {
+		// A background compaction that finished during the last turn is hot-swapped
+		// in here, at the turn boundary, so the next request carries it.
+		if (await this._tryApplyPendingBackgroundCompaction()) {
+			context = { ...context, messages: this.agent.state.messages.slice() };
+		}
+
 		const model = this.model;
 		const settings = this.settingsManager.getCompactionSettings();
 
@@ -640,11 +678,11 @@ export class AgentSession {
 			return context;
 		}
 
-		await this._runAutoCompaction("threshold", false);
-		return {
-			...context,
-			messages: this.agent.state.messages.slice(),
-		};
+		// Threshold compaction runs in the background: this request proceeds with
+		// the current context and the summary is swapped in once ready. Overflow
+		// recovery (_checkCompaction) remains the blocking safety net.
+		this._startThresholdBackgroundCompaction();
+		return context;
 	}
 
 	private _installAgentNextTurnRefresh(): void {
@@ -712,6 +750,9 @@ export class AgentSession {
 	private async _emitAgentSettled(): Promise<void> {
 		this._isAgentRunActive = false;
 		try {
+			// The run ended before a turn boundary gave a completed background
+			// compaction a chance to apply; hot-swap it now while idle.
+			await this._tryApplyPendingBackgroundCompaction();
 			await this._extensionRunner.emit({ type: "agent_settled" });
 			this._emit({ type: "agent_settled" });
 		} finally {
@@ -1356,6 +1397,9 @@ export class AgentSession {
 				}
 				throw new Error(formatNoApiKeyFoundMessage(this.model.provider));
 			}
+
+			// Hot-swap a completed background compaction so this request carries it.
+			await this._tryApplyPendingBackgroundCompaction();
 
 			// Check if we need to compact before sending (catches aborted responses).
 			// The user's new prompt is sent below, so do not call agent.continue() here.
@@ -2064,9 +2108,13 @@ export class AgentSession {
 	/**
 	 * Manually compact the session context.
 	 * Aborts current agent operation first.
+	 *
+	 * Interactive mode uses {@link compactInBackground} instead; this blocking
+	 * path remains for RPC and extension callers that await the result.
 	 * @param customInstructions Optional instructions for the compaction summary
 	 */
 	async compact(customInstructions?: string): Promise<CompactionResult> {
+		this._abortBackgroundCompaction();
 		await this.abort();
 		this._compactionAbortController = new AbortController();
 		this._emit({ type: "compaction_start", reason: "manual" });
@@ -2076,7 +2124,14 @@ export class AgentSession {
 				throw new Error(formatNoModelSelectedMessage());
 			}
 
-			const { model: requestModel, apiKey, headers, env } = await this._getSummarizationRequestAuth(this.model);
+			const {
+				model: requestModel,
+				apiKey,
+				headers,
+				env,
+				maxTokens: summariserMaxTokens,
+				thinking: summariserThinking,
+			} = await this._getSummarizationRequestAuth(this.model);
 
 			const pathEntries = this.sessionManager.getBranch();
 			const settings = this.settingsManager.getCompactionSettings();
@@ -2142,7 +2197,13 @@ export class AgentSession {
 				usage = extensionCompaction.usage;
 				details = extensionCompaction.details;
 			} else {
-				// Generate compaction result
+				// Generate compaction result. The summariser's thinking level is
+				// opt-in: the PI_SUMMARIZER_* override wins, then the compaction
+				// settings, defaulting to "off" so reasoning tokens are not
+				// billed and discarded. summaryMaxTokens caps the summariser's
+				// output budget (default 16384).
+				const summaryThinking = summariserThinking ?? this.settingsManager.getCompactionSummaryThinking();
+				const summaryMaxTokens = summariserMaxTokens ?? this.settingsManager.getCompactionSummaryMaxTokens();
 				const result = await compact(
 					preparation,
 					requestModel,
@@ -2150,11 +2211,13 @@ export class AgentSession {
 					headers,
 					customInstructions,
 					this._compactionAbortController.signal,
-					this.thinkingLevel,
+					summaryThinking,
 					this.agent.streamFunction,
 					env,
 					this.settingsManager.getRetrySettings(),
 					this._summarizationRetryCallbacks({ source: "compaction", reason: "manual" }),
+					false,
+					summaryMaxTokens,
 				);
 				summary = result.summary;
 				firstKeptEntryId = result.firstKeptEntryId;
@@ -2225,11 +2288,290 @@ export class AgentSession {
 	}
 
 	/**
-	 * Cancel in-progress compaction (manual or auto).
+	 * Compact the session context in the background.
+	 *
+	 * Unlike {@link compact}, this never aborts or blocks the session: it
+	 * snapshots the current branch, summarizes it concurrently, and hot-swaps
+	 * the result in at the next safe boundary (turn boundary, run end, or the
+	 * next prompt) via `_tryApplyPendingBackgroundCompaction`. Messages that
+	 * arrive after the snapshot sit after the compaction entry on the branch
+	 * and are kept verbatim.
+	 *
+	 * Resolves with the applied result, `undefined` when the run was aborted or
+	 * its result discarded as stale, and rejects on error (also emitted as a
+	 * `compaction_end` event).
+	 */
+	compactInBackground(customInstructions?: string): Promise<CompactionResult | undefined> {
+		if (this._compactionAbortController !== undefined || this._autoCompactionAbortController !== undefined) {
+			return Promise.reject(
+				new Error("Cannot start background compaction while a blocking compaction is in progress."),
+			);
+		}
+		// A fresh manual request replaces any in-flight background compaction.
+		this._abortBackgroundCompaction();
+		return this._launchBackgroundCompaction("manual", customInstructions);
+	}
+
+	/** Whether a background compaction is currently summarizing. */
+	get isBackgroundCompacting(): boolean {
+		return this._backgroundCompaction !== undefined;
+	}
+
+	/**
+	 * Start a threshold-triggered background compaction, unless one is already
+	 * running or a blocking compaction is active. Never throws.
+	 */
+	private _startThresholdBackgroundCompaction(): void {
+		if (
+			this._backgroundCompaction !== undefined ||
+			this._compactionAbortController !== undefined ||
+			this._autoCompactionAbortController !== undefined
+		) {
+			return;
+		}
+		void this._launchBackgroundCompaction("threshold", undefined).catch(() => {
+			// Errors are surfaced via the compaction_end event.
+		});
+	}
+
+	private _launchBackgroundCompaction(
+		reason: "manual" | "threshold",
+		customInstructions: string | undefined,
+	): Promise<CompactionResult | undefined> {
+		const abortController = new AbortController();
+		this._backgroundCompaction = { abortController, reason };
+		this._emit({ type: "compaction_start", reason, background: true });
+		return this._runBackgroundCompaction(reason, customInstructions, abortController);
+	}
+
+	private async _runBackgroundCompaction(
+		reason: "manual" | "threshold",
+		customInstructions: string | undefined,
+		abortController: AbortController,
+	): Promise<CompactionResult | undefined> {
+		try {
+			if (!this.model) {
+				throw new Error(formatNoModelSelectedMessage());
+			}
+
+			const {
+				model: requestModel,
+				apiKey,
+				headers,
+				env,
+				maxTokens: summariserMaxTokens,
+				thinking: summariserThinking,
+			} = await this._getSummarizationRequestAuth(this.model);
+
+			// Snapshot the branch now; messages appended while summarizing are not
+			// part of the summary and survive the swap (they sit after the
+			// compaction entry on the branch).
+			const pathEntries = this.sessionManager.getBranch();
+			const previousCompactionId = getLatestCompactionEntry(pathEntries)?.id ?? null;
+			const settings = this.settingsManager.getCompactionSettings();
+
+			// DeepSeek Harness ratio policy layering, same as compact().
+			const dh = this.settingsManager.getDeepseekHarnessSettings(this.model ?? undefined);
+			if (dh.enabled) {
+				settings.thresholdRatio = settings.thresholdRatio ?? dh.thresholdRatio;
+				settings.retainRatio = settings.retainRatio ?? dh.retainRatio;
+				if (settings.retainRatio && this.model && this.model.contextWindow > 0) {
+					settings.keepRecentTokens = Math.floor(this.model.contextWindow * settings.retainRatio);
+				}
+			}
+
+			const preparation = prepareCompaction(pathEntries, settings);
+			if (!preparation) {
+				const lastEntry = pathEntries[pathEntries.length - 1];
+				if (lastEntry?.type === "compaction") {
+					throw new Error("Already compacted");
+				}
+				throw new Error("Nothing to compact (session too small)");
+			}
+
+			let extensionCompaction: CompactionResult | undefined;
+			let fromExtension = false;
+
+			if (this._extensionRunner.hasHandlers("session_before_compact")) {
+				const extensionResult = (await this._extensionRunner.emit({
+					type: "session_before_compact",
+					preparation,
+					branchEntries: pathEntries,
+					customInstructions,
+					reason,
+					willRetry: false,
+					signal: abortController.signal,
+				})) as SessionBeforeCompactResult | undefined;
+
+				if (extensionResult?.cancel) {
+					throw new Error("Compaction cancelled");
+				}
+
+				if (extensionResult?.compaction) {
+					extensionCompaction = extensionResult.compaction;
+					fromExtension = true;
+				}
+			}
+
+			let result: CompactionResult;
+			if (extensionCompaction) {
+				result = extensionCompaction;
+			} else {
+				const summaryThinking = summariserThinking ?? this.settingsManager.getCompactionSummaryThinking();
+				const summaryMaxTokens = summariserMaxTokens ?? this.settingsManager.getCompactionSummaryMaxTokens();
+				result = await compact(
+					preparation,
+					requestModel,
+					apiKey,
+					headers,
+					customInstructions,
+					abortController.signal,
+					summaryThinking,
+					this.agent.streamFunction,
+					env,
+					this.settingsManager.getRetrySettings(),
+					this._summarizationRetryCallbacks({ source: "compaction", reason }),
+					false,
+					summaryMaxTokens,
+				);
+			}
+
+			if (abortController.signal.aborted) {
+				throw new Error("Compaction cancelled");
+			}
+
+			this._pendingBackgroundCompaction = {
+				reason,
+				result,
+				fromExtension,
+				firstKeptEntryId: result.firstKeptEntryId,
+				previousCompactionId,
+			};
+			this._backgroundCompaction = undefined;
+
+			// Apply immediately when idle; while streaming the swap waits for the
+			// next turn boundary (_compactBeforeNextAssistantResponse) or run end
+			// (_emitAgentSettled).
+			if (!this.isStreaming) {
+				return await this._tryApplyPendingBackgroundCompaction();
+			}
+			return undefined;
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			const aborted = message === "Compaction cancelled" || (error instanceof Error && error.name === "AbortError");
+			this._emit({
+				type: "compaction_end",
+				reason,
+				result: undefined,
+				aborted,
+				willRetry: false,
+				errorMessage: aborted ? undefined : `Compaction failed: ${message}`,
+				background: true,
+			});
+			if (aborted) {
+				return undefined;
+			}
+			throw error;
+		} finally {
+			if (this._backgroundCompaction?.abortController === abortController) {
+				this._backgroundCompaction = undefined;
+			}
+		}
+	}
+
+	/**
+	 * Apply a completed background compaction, if one is pending and still
+	 * valid. Only call from points where swapping `agent.state.messages` is
+	 * safe: idle, turn boundaries, or prompt preflight.
+	 *
+	 * The result is discarded rather than applied when the branch changed
+	 * underneath the snapshot (tree navigation, /new, or a blocking compaction
+	 * that landed meanwhile).
+	 */
+	private async _tryApplyPendingBackgroundCompaction(): Promise<CompactionResult | undefined> {
+		const pending = this._pendingBackgroundCompaction;
+		if (!pending) {
+			return undefined;
+		}
+		// A blocking compaction in progress supersedes the pending result.
+		if (this._compactionAbortController !== undefined || this._autoCompactionAbortController !== undefined) {
+			this._pendingBackgroundCompaction = undefined;
+			return undefined;
+		}
+
+		const branch = this.sessionManager.getBranch();
+		const latestCompactionId = getLatestCompactionEntry(branch)?.id ?? null;
+		const snapshotStillOnBranch = branch.some((entry) => entry.id === pending.firstKeptEntryId);
+		if (latestCompactionId !== pending.previousCompactionId || !snapshotStillOnBranch) {
+			this._pendingBackgroundCompaction = undefined;
+			this._emit({
+				type: "compaction_end",
+				reason: pending.reason,
+				result: undefined,
+				aborted: true,
+				willRetry: false,
+				background: true,
+			});
+			return undefined;
+		}
+
+		this._pendingBackgroundCompaction = undefined;
+		this.sessionManager.appendCompaction(
+			pending.result.summary,
+			pending.firstKeptEntryId,
+			pending.result.tokensBefore,
+			pending.result.details,
+			pending.fromExtension,
+			pending.result.usage,
+		);
+		const newEntries = this.sessionManager.getEntries();
+		const sessionContext = this.sessionManager.buildSessionContext();
+		this.agent.state.messages = sessionContext.messages;
+
+		const result: CompactionResult = {
+			...pending.result,
+			estimatedTokensAfter: estimateMessagesTokens(sessionContext.messages),
+		};
+
+		const savedCompactionEntry = newEntries.find(
+			(e) => e.type === "compaction" && e.summary === pending.result.summary,
+		) as CompactionEntry | undefined;
+
+		if (this._extensionRunner && savedCompactionEntry) {
+			await this._extensionRunner.emit({
+				type: "session_compact",
+				compactionEntry: savedCompactionEntry,
+				fromExtension: pending.fromExtension,
+				reason: pending.reason,
+				willRetry: false,
+			});
+		}
+
+		this._emit({
+			type: "compaction_end",
+			reason: pending.reason,
+			result,
+			aborted: false,
+			willRetry: false,
+			background: true,
+		});
+		return result;
+	}
+
+	private _abortBackgroundCompaction(): void {
+		this._backgroundCompaction?.abortController.abort();
+		// A completed-but-unapplied result is superseded by whatever triggered
+		// the abort (a blocking compaction or a newer background request).
+		this._pendingBackgroundCompaction = undefined;
+	}
+
+	/**
+	 * Cancel in-progress compaction (manual, auto, or background).
 	 */
 	abortCompaction(): void {
 		this._compactionAbortController?.abort();
 		this._autoCompactionAbortController?.abort();
+		this._abortBackgroundCompaction();
 	}
 
 	/**
@@ -2356,7 +2698,9 @@ export class AgentSession {
 			contextTokens = directContextTokens;
 		}
 		if (shouldCompact(contextTokens, contextWindow, settings)) {
-			return await this._runAutoCompaction("threshold", false);
+			// Threshold compaction runs in the background and hot-swaps in once the
+			// summary is ready; the session is never blocked for it.
+			this._startThresholdBackgroundCompaction();
 		}
 		return false;
 	}
@@ -2370,11 +2714,20 @@ export class AgentSession {
 		let fromExtension = false;
 
 		try {
+			// A blocking compaction supersedes any background compaction in flight.
+			this._abortBackgroundCompaction();
 			if (!this.model) {
 				return false;
 			}
 
-			const { model: requestModel, apiKey, headers, env } = await this._getSummarizationRequestAuth(this.model);
+			const {
+				model: requestModel,
+				apiKey,
+				headers,
+				env,
+				maxTokens: summariserMaxTokens,
+				thinking: summariserThinking,
+			} = await this._getSummarizationRequestAuth(this.model);
 
 			const pathEntries = this.sessionManager.getBranch();
 
@@ -2435,8 +2788,13 @@ export class AgentSession {
 				// (decision matrix item 12) sends the live conversation
 				// as the request prefix when the DeepSeek Harness bundle
 				// is enabled, reusing the provider's prompt cache for
-				// the conversation bytes.
+				// the conversation bytes. The summariser's thinking level
+				// is opt-in (PI_SUMMARIZER_* override, then compaction
+				// settings, default "off") and its output budget is
+				// capped by summaryMaxTokens (default 16384).
 				const dhForReplay = this.settingsManager.getDeepseekHarnessSettings(this.model ?? undefined);
+				const summaryThinking = summariserThinking ?? this.settingsManager.getCompactionSummaryThinking();
+				const summaryMaxTokens = summariserMaxTokens ?? this.settingsManager.getCompactionSummaryMaxTokens();
 				const compactResult = await compact(
 					preparation,
 					requestModel,
@@ -2444,12 +2802,13 @@ export class AgentSession {
 					headers,
 					undefined,
 					this._autoCompactionAbortController.signal,
-					this.thinkingLevel,
+					summaryThinking,
 					this.agent.streamFunction,
 					env,
 					this.settingsManager.getRetrySettings(),
 					this._summarizationRetryCallbacks({ source: "compaction", reason }),
 					dhForReplay.enabled && dhForReplay.replayPrefixSummarisation,
+					summaryMaxTokens,
 				);
 				summary = compactResult.summary;
 				firstKeptEntryId = compactResult.firstKeptEntryId;

@@ -174,6 +174,13 @@ export const DEFAULT_COMPACTION_SETTINGS: CompactionSettings = {
 	keepRecentTokens: 20000,
 };
 
+/**
+ * Absolute ceiling for the summariser's output budget. Summaries are
+ * single-use text, so the budget never scales past this regardless of
+ * `reserveTokens` or the model's output cap.
+ */
+const SUMMARY_MAX_TOKENS_CEILING = 16_384;
+
 /** Calculate total context tokens from provider usage. */
 export function calculateContextTokens(usage: Usage): number {
 	return usage.totalTokens || usage.input + usage.output + usage.cacheRead + usage.cacheWrite;
@@ -545,7 +552,13 @@ export async function generateSummary(
 	return result.ok ? ok(result.value.text) : err(result.error);
 }
 
-/** Generate or update a conversation summary and return its provider usage. */
+/** Generate or update a conversation summary and return its provider usage.
+ *
+ * Reasoning is opt-in: pass `thinkingLevel` explicitly to enable it. The
+ * default is off because thinking tokens are billed but discarded by
+ * `contentText`, so threading the agent's session thinking level into
+ * summarisation would be pure waste.
+ */
 export async function generateSummaryWithUsage(
 	currentMessages: AgentMessage[],
 	models: Models,
@@ -561,6 +574,7 @@ export async function generateSummaryWithUsage(
 	const maxTokens = Math.min(
 		Math.floor(0.8 * reserveTokens),
 		model.maxTokens > 0 ? model.maxTokens : Number.POSITIVE_INFINITY,
+		SUMMARY_MAX_TOKENS_CEILING,
 	);
 	let basePrompt = previousSummary ? UPDATE_SUMMARIZATION_PROMPT : SUMMARIZATION_PROMPT;
 	if (customInstructions) {
@@ -825,6 +839,7 @@ async function generateTurnPrefixSummary(
 	const maxTokens = Math.min(
 		Math.floor(0.5 * reserveTokens),
 		model.maxTokens > 0 ? model.maxTokens : Number.POSITIVE_INFINITY,
+		SUMMARY_MAX_TOKENS_CEILING,
 	);
 	const llmMessages = convertToLlm(messages);
 	const conversationText = serializeConversation(llmMessages);

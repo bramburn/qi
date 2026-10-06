@@ -15,7 +15,7 @@
 // =============================================================================
 
 import { resolveSummariserEnv } from "./summariser-env.ts";
-import type { Model } from "./types.ts";
+import type { Model, ThinkingLevel } from "./types.ts";
 
 /**
  * Internal provider id shared with `agent-session.ts`. The host's wiring code
@@ -29,19 +29,21 @@ const SUMMARISER_DEFAULT_PROVIDER = "pi-summariser-override";
 
 /**
  * Fallback context window for the override model. The user's chosen endpoint
- * may actually accept more or less, but 128k is a safe upper bound for any
+ * may actually accept more or less, but 256k is a safe upper bound for any
  * realistic summarisation workload (compaction never consumes more than the
  * agent's full context, which is usually 128k–1M). When in doubt, over-report
  * rather than under-report so /token-budget gauges don't prematurely bail.
  */
-const SUMMARISER_DEFAULT_CONTEXT_WINDOW = 128000;
+const SUMMARISER_DEFAULT_CONTEXT_WINDOW = 256000;
 
 /**
- * Fallback per-request max-output tokens. 8192 covers any reasonable
- * summarisation output (compaction summaries are typically 1–4k tokens). If
- * the user's chosen endpoint accepts more, fine — it's a soft cap.
+ * Fallback per-request max-output tokens. 32768 covers any reasonable
+ * summarisation output (compaction summaries are typically 1–4k tokens) with
+ * headroom for verbose or reasoning-enabled endpoints. If the user's chosen
+ * endpoint accepts more, fine — it's a soft cap. Overridden by
+ * PI_SUMMARIZER_MAX_TOKENS when that env var parses to a positive integer.
  */
-const SUMMARISER_DEFAULT_MAX_TOKENS = 8192;
+const SUMMARISER_DEFAULT_MAX_TOKENS = 32768;
 
 /** Stable provider id used to register the override model on a `MutableModels` collection. */
 export const SUMMARISER_OVERRIDE_PROVIDER_ID = SUMMARISER_DEFAULT_PROVIDER;
@@ -52,6 +54,10 @@ export interface SummariserModelOverride {
 	model: Model<"openai-completions">;
 	/** API key used to authenticate against the override endpoint. */
 	apiKey: string;
+	/** Pass-through of the env maxTokens so hosts can clamp the summarisation budget. */
+	maxTokens?: number;
+	/** Pass-through of the env thinking level so hosts can opt the summariser into reasoning. */
+	thinking?: ThinkingLevel;
 }
 
 /**
@@ -77,8 +83,10 @@ export interface SummariserModelOverride {
  * which looks up the provider by `model.provider` — which is why that field
  * has to match the registered provider's id.
  *
- * @returns `{ model, apiKey }` if the override is configured; `undefined`
- *          otherwise (callers fall back to the main agent model).
+ * @returns `{ model, apiKey, maxTokens?, thinking? }` if the override is
+ *          configured; `undefined` otherwise (callers fall back to the main
+ *          agent model). `maxTokens`/`thinking` are omitted unless the
+ *          corresponding optional env vars were set to valid values.
  */
 export function resolveSummariserModel(): SummariserModelOverride | undefined {
 	const override = resolveSummariserEnv();
@@ -99,10 +107,10 @@ export function resolveSummariserModel(): SummariserModelOverride | undefined {
 		// Models.getAuth() finds the registered provider via this field.
 		provider: SUMMARISER_DEFAULT_PROVIDER,
 		baseUrl: override.baseUrl,
-		// Reasoning is explicitly off: the override endpoint is unknown to pi's
-		// catalog, so we can't trust its reasoning mode. Disable to keep the
-		// request shape simple and predictable across providers.
-		reasoning: false,
+		// Reasoning defaults to off: the override endpoint is unknown to pi's
+		// catalog, so we can't trust its reasoning mode. PI_SUMMARIZER_THINKING
+		// opts back in — any parsed thinking level flips this to true.
+		reasoning: override.thinking !== undefined,
 		// Summarisation accepts plain text only. Images/tool_calls would require
 		// a different request shape that not all OpenAI-compatible proxies support.
 		input: ["text"],
@@ -111,7 +119,14 @@ export function resolveSummariserModel(): SummariserModelOverride | undefined {
 		// understands the cost is invisible to pi's accounting.
 		cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
 		contextWindow: SUMMARISER_DEFAULT_CONTEXT_WINDOW,
-		maxTokens: SUMMARISER_DEFAULT_MAX_TOKENS,
+		// PI_SUMMARIZER_MAX_TOKENS replaces the default output cap when set;
+		// invalid values were already warned about and dropped by the env layer.
+		maxTokens: override.maxTokens ?? SUMMARISER_DEFAULT_MAX_TOKENS,
 	};
-	return { model, apiKey: override.apiKey };
+	return {
+		model,
+		apiKey: override.apiKey,
+		...(override.maxTokens !== undefined ? { maxTokens: override.maxTokens } : {}),
+		...(override.thinking !== undefined ? { thinking: override.thinking } : {}),
+	};
 }

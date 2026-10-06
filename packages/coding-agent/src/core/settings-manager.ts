@@ -15,6 +15,8 @@ export interface CompactionSettings {
 	enabled?: boolean; // default: true
 	reserveTokens?: number; // default: 16384
 	keepRecentTokens?: number; // default: 20000
+	summaryMaxTokens?: number; // default: 16384 - absolute ceiling on summariser output tokens
+	summaryThinking?: ThinkingLevel; // default: "off" - opt-in reasoning for the summariser
 }
 
 /**
@@ -960,6 +962,14 @@ export class SettingsManager {
 
 	getCompactionReserveTokens(): number {
 		return this.settings.compaction?.reserveTokens ?? 16384;
+	}
+
+	getCompactionSummaryMaxTokens(): number {
+		return this.settings.compaction?.summaryMaxTokens ?? 16384;
+	}
+
+	getCompactionSummaryThinking(): ThinkingLevel {
+		return this.settings.compaction?.summaryThinking ?? "off";
 	}
 
 	getCompactionKeepRecentTokens(): number {
