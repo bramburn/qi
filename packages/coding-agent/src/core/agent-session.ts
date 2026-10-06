@@ -365,6 +365,8 @@ export class AgentSession {
 				firstKeptEntryId: string;
 				/** Latest compaction entry id at snapshot time; used to detect a superseding compaction. */
 				previousCompactionId: string | null;
+				/** Settles the compactInBackground() promise: the applied result, or undefined when discarded. */
+				settle: (result: CompactionResult | undefined) => void;
 		  }
 		| undefined = undefined;
 
@@ -2340,18 +2342,31 @@ export class AgentSession {
 	): Promise<CompactionResult | undefined> {
 		const abortController = new AbortController();
 		this._backgroundCompaction = { abortController, reason };
+		// Snapshot the branch synchronously at launch: messages appended while
+		// summarizing are not part of the summary and survive the swap (they sit
+		// after the compaction entry on the branch). Capturing here (rather than
+		// after the auth await) keeps the cut point fixed at invocation time.
+		const pathEntries = this.sessionManager.getBranch();
+		const previousCompactionId = getLatestCompactionEntry(pathEntries)?.id ?? null;
 		this._emit({ type: "compaction_start", reason, background: true });
-		return this._runBackgroundCompaction(reason, customInstructions, abortController);
+		return this._runBackgroundCompaction(reason, customInstructions, abortController, {
+			pathEntries,
+			previousCompactionId,
+		});
 	}
 
 	private async _runBackgroundCompaction(
 		reason: "manual" | "threshold",
 		customInstructions: string | undefined,
 		abortController: AbortController,
+		snapshot: { pathEntries: SessionEntry[]; previousCompactionId: string | null },
 	): Promise<CompactionResult | undefined> {
 		try {
 			if (!this.model) {
 				throw new Error(formatNoModelSelectedMessage());
+			}
+			if (abortController.signal.aborted) {
+				throw new Error("Compaction cancelled");
 			}
 
 			const {
@@ -2362,12 +2377,12 @@ export class AgentSession {
 				maxTokens: summariserMaxTokens,
 				thinking: summariserThinking,
 			} = await this._getSummarizationRequestAuth(this.model);
+			if (abortController.signal.aborted) {
+				throw new Error("Compaction cancelled");
+			}
 
-			// Snapshot the branch now; messages appended while summarizing are not
-			// part of the summary and survive the swap (they sit after the
-			// compaction entry on the branch).
-			const pathEntries = this.sessionManager.getBranch();
-			const previousCompactionId = getLatestCompactionEntry(pathEntries)?.id ?? null;
+			const pathEntries = snapshot.pathEntries;
+			const previousCompactionId = snapshot.previousCompactionId;
 			const settings = this.settingsManager.getCompactionSettings();
 
 			// DeepSeek Harness ratio policy layering, same as compact().
@@ -2393,6 +2408,12 @@ export class AgentSession {
 			let fromExtension = false;
 
 			if (this._extensionRunner.hasHandlers("session_before_compact")) {
+				// Never hand handlers a signal that is already aborted: listeners
+				// registered after abort() would never fire and the handler would
+				// block forever.
+				if (abortController.signal.aborted) {
+					throw new Error("Compaction cancelled");
+				}
 				const extensionResult = (await this._extensionRunner.emit({
 					type: "session_before_compact",
 					preparation,
@@ -2440,12 +2461,19 @@ export class AgentSession {
 				throw new Error("Compaction cancelled");
 			}
 
+			// Resolution is held until the hot-swap applies (or the result is
+			// discarded as stale), so callers observe the applied state.
+			let settle!: (result: CompactionResult | undefined) => void;
+			const settled = new Promise<CompactionResult | undefined>((resolve) => {
+				settle = resolve;
+			});
 			this._pendingBackgroundCompaction = {
 				reason,
 				result,
 				fromExtension,
 				firstKeptEntryId: result.firstKeptEntryId,
 				previousCompactionId,
+				settle,
 			};
 			this._backgroundCompaction = undefined;
 
@@ -2453,9 +2481,9 @@ export class AgentSession {
 			// next turn boundary (_compactBeforeNextAssistantResponse) or run end
 			// (_emitAgentSettled).
 			if (!this.isStreaming) {
-				return await this._tryApplyPendingBackgroundCompaction();
+				await this._tryApplyPendingBackgroundCompaction();
 			}
-			return undefined;
+			return await settled;
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
 			const aborted = message === "Compaction cancelled" || (error instanceof Error && error.name === "AbortError");
@@ -2496,6 +2524,7 @@ export class AgentSession {
 		// A blocking compaction in progress supersedes the pending result.
 		if (this._compactionAbortController !== undefined || this._autoCompactionAbortController !== undefined) {
 			this._pendingBackgroundCompaction = undefined;
+			pending.settle(undefined);
 			return undefined;
 		}
 
@@ -2512,6 +2541,7 @@ export class AgentSession {
 				willRetry: false,
 				background: true,
 			});
+			pending.settle(undefined);
 			return undefined;
 		}
 
@@ -2555,6 +2585,7 @@ export class AgentSession {
 			willRetry: false,
 			background: true,
 		});
+		pending.settle(result);
 		return result;
 	}
 
@@ -2562,7 +2593,9 @@ export class AgentSession {
 		this._backgroundCompaction?.abortController.abort();
 		// A completed-but-unapplied result is superseded by whatever triggered
 		// the abort (a blocking compaction or a newer background request).
+		const pending = this._pendingBackgroundCompaction;
 		this._pendingBackgroundCompaction = undefined;
+		pending?.settle(undefined);
 	}
 
 	/**
