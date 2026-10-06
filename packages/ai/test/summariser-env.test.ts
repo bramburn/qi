@@ -2,11 +2,19 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	PI_SUMMARIZER_API_KEY_ENV,
 	PI_SUMMARIZER_BASE_URL_ENV,
+	PI_SUMMARIZER_MAX_TOKENS_ENV,
 	PI_SUMMARIZER_MODEL_ENV,
+	PI_SUMMARIZER_THINKING_ENV,
 	resolveSummariserEnv,
 } from "../src/summariser-env.ts";
 
-const ENV_KEYS = [PI_SUMMARIZER_BASE_URL_ENV, PI_SUMMARIZER_MODEL_ENV, PI_SUMMARIZER_API_KEY_ENV] as const;
+const ENV_KEYS = [
+	PI_SUMMARIZER_BASE_URL_ENV,
+	PI_SUMMARIZER_MODEL_ENV,
+	PI_SUMMARIZER_API_KEY_ENV,
+	PI_SUMMARIZER_MAX_TOKENS_ENV,
+	PI_SUMMARIZER_THINKING_ENV,
+] as const;
 
 const originalEnv: Record<string, string | undefined> = {};
 
@@ -77,5 +85,75 @@ describe("resolveSummariserEnv", () => {
 			model: "deepseek-chat",
 			apiKey: "sk-test",
 		});
+	});
+
+	it("passes through a valid PI_SUMMARIZER_MAX_TOKENS as a positive integer", () => {
+		process.env[PI_SUMMARIZER_BASE_URL_ENV] = "https://api.deepseek.com/v1";
+		process.env[PI_SUMMARIZER_MODEL_ENV] = "deepseek-chat";
+		process.env[PI_SUMMARIZER_API_KEY_ENV] = "sk-test";
+		process.env[PI_SUMMARIZER_MAX_TOKENS_ENV] = "16384";
+		expect(resolveSummariserEnv()).toEqual({
+			baseUrl: "https://api.deepseek.com/v1",
+			model: "deepseek-chat",
+			apiKey: "sk-test",
+			maxTokens: 16384,
+		});
+		expect(console.warn).not.toHaveBeenCalled();
+	});
+
+	it.each(["not-a-number", "0", "-100", "3.5"])(
+		"warns and treats invalid PI_SUMMARIZER_MAX_TOKENS=%s as unset",
+		(value) => {
+			process.env[PI_SUMMARIZER_BASE_URL_ENV] = "https://api.deepseek.com/v1";
+			process.env[PI_SUMMARIZER_MODEL_ENV] = "deepseek-chat";
+			process.env[PI_SUMMARIZER_API_KEY_ENV] = "sk-test";
+			process.env[PI_SUMMARIZER_MAX_TOKENS_ENV] = value;
+			const result = resolveSummariserEnv();
+			expect(result?.maxTokens).toBeUndefined();
+			expect(console.warn).toHaveBeenCalledTimes(1);
+			expect(console.warn).toHaveBeenCalledWith(expect.stringContaining(PI_SUMMARIZER_MAX_TOKENS_ENV));
+		},
+	);
+
+	it("passes through a valid PI_SUMMARIZER_THINKING (case-insensitive)", () => {
+		process.env[PI_SUMMARIZER_BASE_URL_ENV] = "https://api.deepseek.com/v1";
+		process.env[PI_SUMMARIZER_MODEL_ENV] = "deepseek-chat";
+		process.env[PI_SUMMARIZER_API_KEY_ENV] = "sk-test";
+		process.env[PI_SUMMARIZER_THINKING_ENV] = "HIGH";
+		expect(resolveSummariserEnv()).toEqual({
+			baseUrl: "https://api.deepseek.com/v1",
+			model: "deepseek-chat",
+			apiKey: "sk-test",
+			thinking: "high",
+		});
+		expect(console.warn).not.toHaveBeenCalled();
+	});
+
+	it("treats PI_SUMMARIZER_THINKING=off as unset (reasoning disabled, no warning)", () => {
+		process.env[PI_SUMMARIZER_BASE_URL_ENV] = "https://api.deepseek.com/v1";
+		process.env[PI_SUMMARIZER_MODEL_ENV] = "deepseek-chat";
+		process.env[PI_SUMMARIZER_API_KEY_ENV] = "sk-test";
+		process.env[PI_SUMMARIZER_THINKING_ENV] = "off";
+		const result = resolveSummariserEnv();
+		expect(result?.thinking).toBeUndefined();
+		expect(console.warn).not.toHaveBeenCalled();
+	});
+
+	it("warns and treats an invalid PI_SUMMARIZER_THINKING value as unset", () => {
+		process.env[PI_SUMMARIZER_BASE_URL_ENV] = "https://api.deepseek.com/v1";
+		process.env[PI_SUMMARIZER_MODEL_ENV] = "deepseek-chat";
+		process.env[PI_SUMMARIZER_API_KEY_ENV] = "sk-test";
+		process.env[PI_SUMMARIZER_THINKING_ENV] = "ultra";
+		const result = resolveSummariserEnv();
+		expect(result?.thinking).toBeUndefined();
+		expect(console.warn).toHaveBeenCalledTimes(1);
+		expect(console.warn).toHaveBeenCalledWith(expect.stringContaining(PI_SUMMARIZER_THINKING_ENV));
+	});
+
+	it("ignores the optional vars when the required trio is not set (no partial-config warning)", () => {
+		process.env[PI_SUMMARIZER_MAX_TOKENS_ENV] = "16384";
+		process.env[PI_SUMMARIZER_THINKING_ENV] = "medium";
+		expect(resolveSummariserEnv()).toBeUndefined();
+		expect(console.warn).not.toHaveBeenCalled();
 	});
 });
