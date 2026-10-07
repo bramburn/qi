@@ -15,6 +15,7 @@ import type {
 	Model,
 } from "@earendil-works/pi-ai/compat";
 import { registerFauxProvider, streamSimple } from "@earendil-works/pi-ai/compat";
+import { beforeEach } from "vitest";
 import { ENV_AGENT_DIR } from "../../src/config.ts";
 import { AgentSession, type AgentSessionEvent } from "../../src/core/agent-session.ts";
 import { AuthStorage } from "../../src/core/auth-storage.ts";
@@ -29,6 +30,32 @@ import {
 	createTestExtensionsResult,
 	createTestResourceLoader,
 } from "../utilities.ts";
+
+// Ambient `PI_*` variables leak in from whatever shell runs the suite — often a pi
+// session itself, which exports `PI_MODEL`, `PI_PROVIDER`, `PI_SUMMARIZER_*` and
+// `PI_HOTSWAP_SUMMARIZER_IDLE_MS`. They change model routing: with
+// `PI_SUMMARIZER_MODEL`/`PI_SUMMARIZER_API_KEY` set, compaction leaves the
+// session model and calls that real summariser instead of the faux provider, so
+// `test/suite/` reaches a real API (and spends money) while its canned-response
+// assertions fail. Scrub the whole family before each test so a run behaves the
+// same on every machine and only sees the env a test sets itself.
+//
+// `PI_OFFLINE` is the one keeper: the vitest config sets it (test.env) to keep
+// tests off the network, so dropping it would be a safety regression.
+const SCRUBBED_PI_ENV_KEPT = new Set(["PI_OFFLINE"]);
+
+export function scrubAmbientPiEnv(): void {
+	for (const name of Object.keys(process.env)) {
+		if (name.startsWith("PI_") && !SCRUBBED_PI_ENV_KEPT.has(name)) {
+			delete process.env[name];
+		}
+	}
+}
+
+// Registered at import time, which puts it ahead of the hooks each test file
+// declares for itself (vitest runs `beforeEach` hooks in registration order), so
+// a test's own env setup wins over the scrub.
+beforeEach(scrubAmbientPiEnv);
 
 type MessageTextPart = { type: "text"; text: string };
 
