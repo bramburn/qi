@@ -127,6 +127,8 @@ This routing remains configurable through the ordinary action bindings. For exam
 | `app.editor.external` | `ctrl+g` | Open in external editor (`externalEditor`, `$VISUAL`, `$EDITOR`, Notepad on Windows, or `nano` elsewhere) |
 | `app.clipboard.pasteImage` | `ctrl+v` (`alt+v` on Windows and WSL) | Paste image or text from clipboard |
 | `app.subagent.experimentsDashboard` | `ctrl+shift+e` | Open the subagent experiments dashboard (only active with `subagent.enableExperiments` enabled) |
+| `app.subagent.bgDashboardUp` | `up` | Select the previous row of the open background-task dashboard (`/subagents`) |
+| `app.subagent.bgDashboardDown` | `down` | Select the next row of the open background-task dashboard (`/subagents`) |
 
 ### Sessions
 

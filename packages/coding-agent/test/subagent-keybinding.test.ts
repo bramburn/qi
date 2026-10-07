@@ -52,3 +52,36 @@ describe("app.subagent.experimentsDashboard default key", () => {
 		expect(defaultKeys(TUI_KEYBINDINGS["tui.editor.cursorLineEnd"])).toContain("ctrl+e");
 	});
 });
+
+/**
+ * The background-task dashboard (`/subagents`) is a non-modal widget below the
+ * editor, so its navigation has to take the keys away from the editor for as
+ * long as it is open. That makes an up/down default deliberate — the opposite
+ * of the ctrl+shift+e rule above — so the safety has to come from the
+ * registration, not from the key table.
+ */
+describe("app.subagent.bgDashboard navigation keys", () => {
+	it("defaults to plain up/down", () => {
+		expect(defaultKeys(KEYBINDINGS["app.subagent.bgDashboardUp"])).toEqual(["up"]);
+		expect(defaultKeys(KEYBINDINGS["app.subagent.bgDashboardDown"])).toEqual(["down"]);
+	});
+
+	it("shares its defaults with the editor cursor keys on purpose", () => {
+		expect(defaultKeys(TUI_KEYBINDINGS["tui.editor.cursorUp"])).toContain("up");
+		expect(defaultKeys(TUI_KEYBINDINGS["tui.editor.cursorDown"])).toContain("down");
+	});
+
+	it("is the only app keybinding claiming up/down", () => {
+		// App actions are matched in registration order and the first match wins,
+		// so up/down must be unambiguous among them for the dashboard to reliably
+		// get the key while it is open.
+		const claimants: string[] = [];
+		for (const [id, definition] of Object.entries(KEYBINDINGS)) {
+			if (!id.startsWith("app.")) continue;
+			for (const key of defaultKeys(definition)) {
+				if (key === "up" || key === "down") claimants.push(id);
+			}
+		}
+		expect(claimants.sort()).toEqual(["app.subagent.bgDashboardDown", "app.subagent.bgDashboardUp"]);
+	});
+});

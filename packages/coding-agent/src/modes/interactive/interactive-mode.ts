@@ -117,6 +117,7 @@ import {
 	clearBackgroundLogOverlay,
 	clearDashboard,
 	type ExperimentsUi,
+	moveSelectedRow,
 	readBackgroundLogTail,
 	renderBackgroundPill,
 	renderExperimentsStatusPill,
@@ -2323,6 +2324,11 @@ export class InteractiveMode {
 		if (this.extensionEditor) {
 			this.hideExtensionEditor();
 		}
+		// The background dashboard owns up/down while it is open, and a session
+		// invalidation or /reload wipes its widget without touching that state —
+		// close it so the keys go back to the editor.
+		if (this.bgLogOverlayOpen) this.closeBackgroundLogOverlay();
+		if (this.bgDashboardOpen) this.closeBackgroundDashboard();
 		this.ui.hideOverlay();
 		this.clearExtensionTerminalInputListeners();
 		this.setExtensionFooter(undefined);
@@ -4480,7 +4486,7 @@ export class InteractiveMode {
 	 * closes the overlay, and Esc is the only documented close path. Enter
 	 * with an empty editor opens the log overlay for the currently selected
 	 * row (the most recent task by default — see renderBackgroundLines sort
-	 * order).
+	 * order), and up/down move that selection.
 	 */
 	private toggleBackgroundDashboard(): void {
 		if (this.bgDashboardOpen) {
@@ -4501,11 +4507,13 @@ export class InteractiveMode {
 		this.bgDashboardOpen = true;
 		this.bgDashboardEscapeHandler = this.defaultEditor.onEscape;
 		this.defaultEditor.onEscape = () => this.closeBackgroundDashboard();
+		this.setBackgroundDashboardNavigation(true);
 	}
 
 	private closeBackgroundDashboard(): void {
 		if (!this.bgDashboardOpen) return;
 		this.bgDashboardOpen = false;
+		this.setBackgroundDashboardNavigation(false);
 		clearBackgroundDashboard(this.createExperimentsUi());
 		if (this.bgDashboardEscapeHandler) {
 			this.defaultEditor.onEscape = this.bgDashboardEscapeHandler;
@@ -4513,11 +4521,38 @@ export class InteractiveMode {
 		}
 	}
 
+	/**
+	 * Bind or unbind the dashboard's up/down navigation.
+	 *
+	 * The dashboard is a non-modal widget below the editor, so the editor
+	 * keeps focus and the keys must be taken from it — but only while the
+	 * dashboard is the surface the user is looking at. The per-task log
+	 * overlay stacks on top of the dashboard, so it hands the keys back; that
+	 * way an arrow key never moves a selection hidden behind the log.
+	 */
+	private setBackgroundDashboardNavigation(active: boolean): void {
+		if (active) {
+			this.defaultEditor.onAction("app.subagent.bgDashboardUp", () => this.moveBackgroundDashboardSelection(-1));
+			this.defaultEditor.onAction("app.subagent.bgDashboardDown", () => this.moveBackgroundDashboardSelection(1));
+			return;
+		}
+		this.defaultEditor.offAction("app.subagent.bgDashboardUp");
+		this.defaultEditor.offAction("app.subagent.bgDashboardDown");
+	}
+
+	/** Move the highlighted row and repaint the dashboard with the new marker. */
+	private moveBackgroundDashboardSelection(delta: number): void {
+		if (this.bgDashboardTasks.length === 0) return;
+		this.bgDashboardSelectedRow = moveSelectedRow(this.bgDashboardSelectedRow, this.bgDashboardTasks.length, delta);
+		showBackgroundDashboard(this.createExperimentsUi(), theme, this.bgDashboardTasks, this.bgDashboardSelectedRow);
+	}
+
 	/** Open the log-tail overlay for one task. The dashboard is the dispatcher. */
 	private openBackgroundLogOverlay(task: BackgroundTask): void {
 		const tail = readBackgroundLogTail(task.id);
 		showBackgroundLogOverlay(this.createExperimentsUi(), theme, task, tail);
 		this.bgLogOverlayOpen = true;
+		this.setBackgroundDashboardNavigation(false);
 		this.bgLogOverlayEscapeHandler = this.defaultEditor.onEscape;
 		this.defaultEditor.onEscape = () => this.closeBackgroundLogOverlay();
 	}
@@ -4525,6 +4560,8 @@ export class InteractiveMode {
 	private closeBackgroundLogOverlay(): void {
 		if (!this.bgLogOverlayOpen) return;
 		this.bgLogOverlayOpen = false;
+		// The dashboard is visible again, so it takes its navigation back.
+		if (this.bgDashboardOpen) this.setBackgroundDashboardNavigation(true);
 		clearBackgroundLogOverlay(this.createExperimentsUi());
 		if (this.bgLogOverlayEscapeHandler) {
 			this.defaultEditor.onEscape = this.bgLogOverlayEscapeHandler;

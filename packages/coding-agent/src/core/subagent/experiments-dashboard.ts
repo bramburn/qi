@@ -186,6 +186,17 @@ function formatBgRow(theme: Theme, task: BackgroundTask, selected: boolean, now:
 	);
 }
 
+/**
+ * Move the selected row by `delta`, wrapping at both ends so holding an arrow
+ * key cycles the list instead of dead-ending on the first/last task. Matches
+ * the wrap behaviour of the TUI select components. An empty list has no row to
+ * select, so the result is 0.
+ */
+export function moveSelectedRow(selectedRow: number, count: number, delta: number): number {
+	if (count <= 0) return 0;
+	return (((selectedRow + delta) % count) + count) % count;
+}
+
 /** Background-dashboard overlay content. Pure: takes the tasks it should render. */
 export function renderBackgroundLines(
 	theme: Theme,
@@ -219,7 +230,7 @@ export function showBackgroundDashboard(
 		ui.notify(lines.join("\n"), "info");
 		return;
 	}
-	const widget = theme.fg("muted", "[enter: open log · esc: close]");
+	const widget = theme.fg("muted", "[↑/↓: select · enter: open log · esc: close]");
 	ui.setWidget(UI_KEYS.BG_DASHBOARD_KEY, [...lines, "", widget], { placement: "belowEditor" });
 }
 

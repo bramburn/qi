@@ -28,6 +28,15 @@ export class CustomEditor extends Editor {
 		this.actionHandlers.set(action, handler);
 	}
 
+	/**
+	 * Remove a handler registered with `onAction`. Scoped overlays (the
+	 * background-task dashboard) bind their navigation keys only while they
+	 * are the visible surface, so the keys fall back to the editor otherwise.
+	 */
+	offAction(action: AppKeybinding): void {
+		this.actionHandlers.delete(action);
+	}
+
 	handleInput(data: string): void {
 		// Check extension-registered shortcuts first
 		if (this.onExtensionShortcut?.(data)) {

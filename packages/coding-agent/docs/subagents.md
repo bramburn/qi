@@ -246,6 +246,8 @@ Research Mode is a suggestion, never an automatic action: when the same tool err
 
 > **Interactive wiring:** with `subagent.enableExperiments` on, `Ctrl+Shift+E` (`app.subagent.experimentsDashboard`) toggles the dashboard below the editor (`Esc` closes it), and the footer shows an experiments pill and a background-task pill as related tools run. The research-mode watcher runs in every session with the flag on: the suggestion is a warning notification plus the `RESEARCH_MODE_TRIGGERED` log event.
 
+> **Background tasks:** `/subagents` toggles the background-task dashboard below the editor. `Up`/`Down` (`app.subagent.bgDashboardUp` / `app.subagent.bgDashboardDown`) move the selection, `Enter` on an empty prompt opens the log tail for the selected task, and `Esc` closes the log, then the dashboard. Up and down are bound to the dashboard only while it is the visible overlay — they stay editor cursor keys otherwise — so the per-task log, which stacks on top, leaves them alone.
+
 ## Coexistence with the example extension
 
 `examples/extensions/subagent/` remains a reference implementation. If a user-symlinked extension registers a tool named `subagent` while the built-in one is enabled, the extension's tool takes precedence and pi logs a one-line warning suggesting removal of the symlink. Nothing is disabled automatically.
