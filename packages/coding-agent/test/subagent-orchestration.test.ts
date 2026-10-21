@@ -136,10 +136,12 @@ function textOf(result: { content: Array<{ type: string; text?: string }> }): st
 
 /** a → (b, c) → d. b and c are independent, so they overlap. */
 const DIAMOND: DagNodeInput[] = [
-	{ role: "a", instructions: "start" },
-	{ role: "b", instructions: "left {{nodes.a.result}}", dependsOn: ["a"] },
-	{ role: "c", instructions: "right {{nodes.a.result}}", dependsOn: ["a"] },
-	{ role: "d", instructions: "join {{nodes.b.result}} + {{nodes.c.result}}", dependsOn: ["b", "c"] },
+	// Read-only tool sets keep the graph concurrent-safe (REQ-C01): an omitted
+	// `tools` inherits bash/edit/write and would serialise the whole graph.
+	{ role: "a", instructions: "start", tools: ["read"] },
+	{ role: "b", instructions: "left {{nodes.a.result}}", dependsOn: ["a"], tools: ["read"] },
+	{ role: "c", instructions: "right {{nodes.a.result}}", dependsOn: ["a"], tools: ["read"] },
+	{ role: "d", instructions: "join {{nodes.b.result}} + {{nodes.c.result}}", dependsOn: ["b", "c"], tools: ["read"] },
 ];
 
 const settle = (ms = 30) => new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -148,11 +150,11 @@ const settle = (ms = 30) => new Promise<void>((resolve) => setTimeout(resolve, m
 // agent dir at a scratch directory so running the suite cannot write into a
 // developer's real `~/.pi/agent`.
 beforeAll(() => {
-	process.env.PI_CODING_AGENT_DIR = mkdtempSync(join(tmpdir(), "pi-dag-agent-"));
+	process.env.QI_CODING_AGENT_DIR = mkdtempSync(join(tmpdir(), "pi-dag-agent-"));
 });
 afterAll(() => {
-	if (process.env.PI_CODING_AGENT_DIR) rmSync(process.env.PI_CODING_AGENT_DIR, { recursive: true, force: true });
-	delete process.env.PI_CODING_AGENT_DIR;
+	if (process.env.QI_CODING_AGENT_DIR) rmSync(process.env.QI_CODING_AGENT_DIR, { recursive: true, force: true });
+	delete process.env.QI_CODING_AGENT_DIR;
 });
 
 // ---------------------------------------------------------------------------
@@ -508,9 +510,9 @@ describe("dag mode (background)", () => {
 		};
 		const trace = newTrace();
 		const nodes: DagNodeInput[] = [
-			{ role: "a", instructions: "x" },
-			{ role: "b", instructions: "y", dependsOn: ["a"] },
-			{ role: "c", instructions: "z", dependsOn: ["b"] },
+			{ role: "a", instructions: "x", tools: ["read"] },
+			{ role: "b", instructions: "y", dependsOn: ["a"], tools: ["read"] },
+			{ role: "c", instructions: "z", dependsOn: ["b"], tools: ["read"] },
 		];
 		const result = await execute(
 			tool(
@@ -537,8 +539,8 @@ describe("dag mode (background)", () => {
 		const settled: Array<{ role: string; error?: string }> = [];
 		const trace = newTrace();
 		const nodes: DagNodeInput[] = [
-			{ role: "a", instructions: "x" },
-			{ role: "b", instructions: "y", dependsOn: ["a"] },
+			{ role: "a", instructions: "x", tools: ["read"] },
+			{ role: "b", instructions: "y", dependsOn: ["a"], tools: ["read"] },
 		];
 		const result = await execute(
 			tool(

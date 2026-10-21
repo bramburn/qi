@@ -20,7 +20,7 @@
 import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { hostname, tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ENV_AGENT_DIR } from "../src/config.ts";
 import {
 	_resetBackgroundRegistryForTests,
@@ -35,6 +35,7 @@ import {
 	inspectSessionLease,
 	releaseSessionLease,
 	SESSION_LEASE_FILE,
+	SESSION_LEASE_MAX_AGE_MS,
 	SessionLeaseConflictError,
 	type SessionLeaseOwner,
 	sessionLeaseDir,
@@ -58,13 +59,13 @@ const DEAD_PID = 999999999;
 
 let agentDir: string;
 const previousAgentDir = process.env[ENV_AGENT_DIR];
-const previousAnalyticsHome = process.env.PI_TEST_ANALYTICS_HOME;
+const previousAnalyticsHome = process.env.QI_TEST_ANALYTICS_HOME;
 
 beforeEach(() => {
 	agentDir = mkdtempSync(join(tmpdir(), "pi-subagent-resume-"));
 	process.env[ENV_AGENT_DIR] = agentDir;
 	// Keep analytics writes inside the temp dir too (hermetic tests).
-	process.env.PI_TEST_ANALYTICS_HOME = agentDir;
+	process.env.QI_TEST_ANALYTICS_HOME = agentDir;
 	_resetBackgroundRegistryForTests();
 });
 
@@ -76,9 +77,9 @@ afterEach(() => {
 		process.env[ENV_AGENT_DIR] = previousAgentDir;
 	}
 	if (previousAnalyticsHome === undefined) {
-		delete process.env.PI_TEST_ANALYTICS_HOME;
+		delete process.env.QI_TEST_ANALYTICS_HOME;
 	} else {
-		process.env.PI_TEST_ANALYTICS_HOME = previousAnalyticsHome;
+		process.env.QI_TEST_ANALYTICS_HOME = previousAnalyticsHome;
 	}
 	rmSync(agentDir, { recursive: true, force: true });
 });
@@ -346,6 +347,63 @@ describe("session-lease", () => {
 		releaseSessionLease(handle);
 	});
 
+	// ------------------------------------------------------------------
+	// REQ-L01: time-based expiry (death PLUS age; a live holder never moves)
+	// ------------------------------------------------------------------
+
+	it("REQ-L01: breaks an expired lease from a dead holder even when its writer cannot be proven gone", () => {
+		const sessionFile = childSession("lease-expired.jsonl");
+		writeStaleLease(canonicalSessionFilePath(sessionFile), {
+			pid: DEAD_PID,
+			writerState: "running",
+			writerPid: DEAD_PID + 1,
+			token: "expired-token",
+			updatedAtMs: Date.now() - SESSION_LEASE_MAX_AGE_MS - 1_000,
+		});
+		const handle = acquireSessionLease(request(sessionFile, "resume-expired"), {
+			pid: process.pid,
+			// The writer pid still reads as alive (the recycled-pid window on win32
+			// where start identity is unprovable) — expiry is what breaks it.
+			isProcessAlive: (pid) => pid !== DEAD_PID,
+		});
+		expect(inspectSessionLease(sessionFile).state).toBe("owned");
+		releaseSessionLease(handle);
+	});
+
+	it("REQ-L01: keeps a fresh lease with a dead holder unbreakable while its writer lives", () => {
+		const sessionFile = childSession("lease-fresh-writer.jsonl");
+		writeStaleLease(canonicalSessionFilePath(sessionFile), {
+			pid: DEAD_PID,
+			writerState: "running",
+			writerPid: DEAD_PID + 1,
+			token: "fresh-writer-token",
+			// Inside the expiry window: REQ-L02.2 still applies — death alone never breaks it.
+			updatedAtMs: Date.now(),
+		});
+		expect(() =>
+			acquireSessionLease(request(sessionFile, "resume-fresh"), {
+				pid: process.pid,
+				isProcessAlive: (pid) => pid !== DEAD_PID,
+			}),
+		).toThrow(SessionLeaseConflictError);
+	});
+
+	it("REQ-L01: never displaces a live holder, however stale the record is", () => {
+		const sessionFile = childSession("lease-stale-alive.jsonl");
+		writeStaleLease(canonicalSessionFilePath(sessionFile), {
+			pid: process.pid,
+			writerState: "none",
+			token: "stale-alive-token",
+			updatedAtMs: Date.now() - SESSION_LEASE_MAX_AGE_MS * 2,
+		});
+		expect(() =>
+			acquireSessionLease(request(sessionFile, "resume-stale-alive"), {
+				pid: process.pid,
+				isProcessAlive: () => true,
+			}),
+		).toThrow(SessionLeaseConflictError);
+	});
+
 	/** Write a lease record by hand, as a crashed predecessor would leave it. */
 	function writeStaleLease(
 		canonicalSessionFile: string,
@@ -354,10 +412,13 @@ describe("session-lease", () => {
 			writerState: SessionLeaseOwner["writerState"];
 			writerPid?: number;
 			token: string;
+			/** Defaults to now — REQ-L01 expiry would otherwise break every stale-written lease. */
+			updatedAtMs?: number;
 		},
 	): void {
 		const leaseDir = sessionLeaseDir(canonicalSessionFile);
 		mkdirSync(leaseDir, { recursive: true });
+		const stamp = overrides.updatedAtMs ?? Date.now();
 		const owner: SessionLeaseOwner = {
 			version: 1,
 			token: overrides.token,
@@ -368,9 +429,9 @@ describe("session-lease", () => {
 			hostname: hostname(),
 			writerState: overrides.writerState,
 			...(overrides.writerPid === undefined ? {} : { writerPid: overrides.writerPid }),
-			acquiredAt: new Date(0).toISOString(),
-			acquiredAtMs: 0,
-			updatedAtMs: 0,
+			acquiredAt: new Date(stamp).toISOString(),
+			acquiredAtMs: stamp,
+			updatedAtMs: stamp,
 		};
 		writeFileSync(join(leaseDir, SESSION_LEASE_FILE), JSON.stringify(owner, null, 2), "utf8");
 	}
@@ -598,6 +659,120 @@ describe("action=resume dispatch", () => {
 			expect(capture).toHaveLength(0);
 		} finally {
 			releaseSessionLease(holder);
+		}
+	});
+});
+
+// ============================================================================
+// D. REQ-L02 — the redirect lease records the child it writes with
+// ============================================================================
+
+describe("REQ-L02: redirect lease writer state wiring", () => {
+	/** Stub runner that reports `spawned` inside the run and inspects the lease around it. */
+	function spawningRunner(hooks: { pid: number | undefined; onSpawn?: () => void }): {
+		runner: SubagentRunner;
+		capture: Array<ReturnType<typeof inspectSessionLease>>;
+	} {
+		const capture: Array<ReturnType<typeof inspectSessionLease>> = [];
+		const runner: SubagentRunner = {
+			async run(request, _signal, onEvent): Promise<SubagentResult> {
+				capture.push(inspectSessionLease(request.spec.sessionFile as string));
+				onEvent?.({ type: "spawned", pid: hooks.pid });
+				hooks.onSpawn?.();
+				capture.push(inspectSessionLease(request.spec.sessionFile as string));
+				return {
+					role: request.spec.role,
+					task: request.task,
+					exitCode: 0,
+					aborted: false,
+					finalOutput: "ok",
+					stderr: "",
+					usage: createEmptyUsage(),
+					messages: [],
+					stopReason: "completed",
+				};
+			},
+			listRunning: () => [],
+		};
+		return { runner, capture };
+	}
+
+	it("records writerState 'spawning' at dispatch and 'running' + writerPid on the spawned event", async () => {
+		const sessionFile = childSession("l02-spawn.jsonl");
+		addRow("bg_l02_spawn", "completed", { sessionFile });
+		const { runner, capture } = spawningRunner({ pid: 42424 });
+
+		const tool = createSubagentToolDefinition(process.cwd(), {
+			runner,
+			registry: getBackgroundRegistry(),
+		});
+		await tool.execute(
+			"tc-l02-spawn",
+			{ action: "resume", id: "bg_l02_spawn" },
+			undefined,
+			undefined,
+			undefined as never,
+		);
+
+		expect(capture).toHaveLength(2);
+		expect(capture[0]?.state).toBe("owned");
+		if (capture[0]?.state === "owned") {
+			expect(capture[0].owner.writerState).toBe("spawning");
+			expect(capture[0].owner.writerPid).toBeUndefined();
+		}
+		expect(capture[1]?.state).toBe("owned");
+		if (capture[1]?.state === "owned") {
+			expect(capture[1].owner.writerState).toBe("running");
+			expect(capture[1].owner.writerPid).toBe(42424);
+		}
+		// The redirect completed, so the lease is released with it.
+		expect(inspectSessionLease(sessionFile).state).toBe("free");
+	});
+
+	it("keeps writerState 'spawning' on a pid-less spawned event, and warns without throwing after release", async () => {
+		const sessionFile = childSession("l02-pidless.jsonl");
+		addRow("bg_l02_pidless", "completed", { sessionFile });
+		let lateEventCallback: ((ev: { type: "spawned"; pid?: number }) => void) | undefined;
+		const { runner, capture } = spawningRunner({
+			pid: undefined,
+			onSpawn: () => {
+				// Capture the wrapper listener so the test can deliver a late event.
+			},
+		});
+		// Re-wrap to capture the listener the runner was handed.
+		const innerRun = runner.run.bind(runner);
+		runner.run = async (request, signal, onEvent) => {
+			lateEventCallback = onEvent as typeof lateEventCallback;
+			return innerRun(request, signal, onEvent);
+		};
+
+		const tool = createSubagentToolDefinition(process.cwd(), {
+			runner,
+			registry: getBackgroundRegistry(),
+		});
+		await tool.execute(
+			"tc-l02-pidless",
+			{ action: "resume", id: "bg_l02_pidless" },
+			undefined,
+			undefined,
+			undefined as never,
+		);
+
+		// A pid-less `spawned` must leave the record at "spawning" — writing
+		// `running` without a pid makes the record malformed and unreadable forever.
+		expect(capture[1]?.state).toBe("owned");
+		if (capture[1]?.state === "owned") {
+			expect(capture[1].owner.writerState).toBe("spawning");
+		}
+		expect(inspectSessionLease(sessionFile).state).toBe("free");
+
+		// REQ-L02.3: a spawned event that arrives after release warns, never throws.
+		const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+		try {
+			expect(() => lateEventCallback?.({ type: "spawned", pid: 99999 })).not.toThrow();
+			expect(warnSpy).toHaveBeenCalled();
+		} finally {
+			warnSpy.mockRestore();
 		}
 	});
 });

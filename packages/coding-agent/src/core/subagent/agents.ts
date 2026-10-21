@@ -12,7 +12,7 @@
  *   1. project — `<cwd>/.pi/agents/*.md` (the same project-dir primitive the
  *      skills and prompt-template loaders use: `join(cwd, CONFIG_DIR_NAME, …)`)
  *   2. user    — `<agentDir>/agents/*.md` (`getAgentDir()`, honouring
- *      `PI_CODING_AGENT_DIR`)
+ *      `QI_CODING_AGENT_DIR`)
  *
  * Frontmatter is read through the shared `parseFrontmatter` primitive, so there
  * is no second YAML parser in the codebase and no new dependency. Only the keys
@@ -26,7 +26,7 @@
 
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
-import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
+import type { ThinkingLevel } from "@bramburn/qi-agent-core";
 import { CONFIG_DIR_NAME, getAgentDir } from "../../config.ts";
 import { parseFrontmatter } from "../../utils/frontmatter.ts";
 import { THINKING_LEVEL_OPTIONS } from "../defaults.ts";

@@ -21,9 +21,9 @@
  */
 
 import { homedir } from "node:os";
-import type { AgentToolResult } from "@earendil-works/pi-agent-core";
-import type { Message } from "@earendil-works/pi-ai";
-import { type Component, Container, Markdown, Spacer, Text } from "@earendil-works/pi-tui";
+import type { AgentToolResult } from "@bramburn/qi-agent-core";
+import type { Message } from "@bramburn/qi-ai";
+import { type Component, Container, Markdown, Spacer, Text } from "@bramburn/qi-tui";
 import { keyHint } from "../../modes/interactive/components/keybinding-hints.ts";
 import { getMarkdownTheme, type Theme } from "../../modes/interactive/theme/theme.ts";
 import type { SubagentToolDetails, SubagentToolInput } from "./subagent-tool.ts";

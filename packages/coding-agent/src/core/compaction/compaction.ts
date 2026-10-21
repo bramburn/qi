@@ -5,10 +5,10 @@
  * and after compaction the session is reloaded.
  */
 
-import type { AgentMessage, StreamFn, ThinkingLevel } from "@earendil-works/pi-agent-core";
-import { contentText, type RetryCallbacks, type RetryPolicy, retryAssistantCall, uuidv7 } from "@earendil-works/pi-ai";
-import type { AssistantMessage, Context, Model, SimpleStreamOptions, Usage } from "@earendil-works/pi-ai/compat";
-import { completeSimple } from "@earendil-works/pi-ai/compat";
+import type { AgentMessage, StreamFn, ThinkingLevel } from "@bramburn/qi-agent-core";
+import { contentText, type RetryCallbacks, type RetryPolicy, retryAssistantCall, uuidv7 } from "@bramburn/qi-ai";
+import type { AssistantMessage, Context, Model, SimpleStreamOptions, Usage } from "@bramburn/qi-ai/compat";
+import { completeSimple } from "@bramburn/qi-ai/compat";
 import { convertToLlm } from "../messages.ts";
 import {
 	buildSessionContext,
@@ -904,12 +904,41 @@ export interface CompactionPreparation {
 	settings: CompactionSettings;
 }
 
+export type CompactionSkipReason = "already-compacted" | "nothing-to-summarize" | "no-cut-point";
+
+export type CompactionPreparationOutcome =
+	| { skipped: false; preparation: CompactionPreparation }
+	| { skipped: true; skipReason: CompactionSkipReason; reason: string };
+
+export function formatCompactionSkipReason(skipReason: CompactionSkipReason): string {
+	switch (skipReason) {
+		case "already-compacted":
+			return "Already compacted (no new entries since last compaction)";
+		case "nothing-to-summarize":
+			return "Nothing to summarize (all entries since last compaction are within the retained recent-token window)";
+		case "no-cut-point":
+			return "No valid cut point found for compaction";
+	}
+}
+
 export function prepareCompaction(
 	pathEntries: SessionEntry[],
 	settings: CompactionSettings,
 ): CompactionPreparation | undefined {
+	const outcome = prepareCompactionResult(pathEntries, settings);
+	return outcome.skipped ? undefined : outcome.preparation;
+}
+
+export function prepareCompactionResult(
+	pathEntries: SessionEntry[],
+	settings: CompactionSettings,
+): CompactionPreparationOutcome {
 	if (pathEntries.length > 0 && pathEntries[pathEntries.length - 1].type === "compaction") {
-		return undefined;
+		return {
+			skipped: true,
+			skipReason: "already-compacted",
+			reason: formatCompactionSkipReason("already-compacted"),
+		};
 	}
 
 	let prevCompactionIndex = -1;
@@ -937,7 +966,11 @@ export function prepareCompaction(
 	// Get UUID of first kept entry
 	const firstKeptEntry = pathEntries[cutPoint.firstKeptEntryIndex];
 	if (!firstKeptEntry?.id) {
-		return undefined; // Session needs migration
+		return {
+			skipped: true,
+			skipReason: "no-cut-point",
+			reason: formatCompactionSkipReason("no-cut-point"),
+		}; // Session needs migration
 	}
 	const firstKeptEntryId = firstKeptEntry.id;
 
@@ -960,7 +993,11 @@ export function prepareCompaction(
 	}
 
 	if (messagesToSummarize.length === 0 && turnPrefixMessages.length === 0) {
-		return undefined;
+		return {
+			skipped: true,
+			skipReason: "nothing-to-summarize",
+			reason: formatCompactionSkipReason("nothing-to-summarize"),
+		};
 	}
 
 	// Extract file operations from messages and previous compaction
@@ -974,14 +1011,17 @@ export function prepareCompaction(
 	}
 
 	return {
-		firstKeptEntryId,
-		messagesToSummarize,
-		turnPrefixMessages,
-		isSplitTurn: cutPoint.isSplitTurn,
-		tokensBefore,
-		previousSummary,
-		fileOps,
-		settings,
+		skipped: false,
+		preparation: {
+			firstKeptEntryId,
+			messagesToSummarize,
+			turnPrefixMessages,
+			isSplitTurn: cutPoint.isSplitTurn,
+			tokensBefore,
+			previousSummary,
+			fileOps,
+			settings,
+		},
 	};
 }
 

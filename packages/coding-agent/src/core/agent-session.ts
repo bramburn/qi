@@ -24,14 +24,8 @@ import type {
 	AgentTool,
 	PrepareNextTurnContext,
 	ThinkingLevel,
-} from "@earendil-works/pi-agent-core";
-import {
-	contentText,
-	createProvider,
-	resolveSummariserModel,
-	SUMMARISER_OVERRIDE_PROVIDER_ID,
-} from "@earendil-works/pi-ai";
-import { openAICompletionsApi } from "@earendil-works/pi-ai/api/openai-completions.lazy";
+} from "@bramburn/qi-agent-core";
+import { contentText } from "@bramburn/qi-ai";
 import type {
 	AssistantMessage,
 	AuthResult,
@@ -40,7 +34,7 @@ import type {
 	ProviderHeaders,
 	TextContent,
 	Usage,
-} from "@earendil-works/pi-ai/compat";
+} from "@bramburn/qi-ai/compat";
 import {
 	clampThinkingLevel,
 	cleanupSessionResources,
@@ -52,7 +46,7 @@ import {
 	type RetryCallbacks,
 	resetApiProviders,
 	streamSimple,
-} from "@earendil-works/pi-ai/compat";
+} from "@bramburn/qi-ai/compat";
 import { getThemeByName, theme } from "../modes/interactive/theme/theme.ts";
 import { stripFrontmatter } from "../utils/frontmatter.ts";
 import { resolvePath } from "../utils/paths.ts";
@@ -61,7 +55,9 @@ import { normalizeToolResultImages } from "../utils/tool-result-images.ts";
 import { formatNoApiKeyFoundMessage, formatNoModelSelectedMessage } from "./auth-guidance.ts";
 import { type BashResult, executeBashWithOperations } from "./bash-executor.ts";
 import {
+	type CompactionPreparationOutcome,
 	type CompactionResult,
+	type CompactionSkipReason,
 	calculateContextTokens,
 	collectEntriesForBranchSummary,
 	compact,
@@ -70,6 +66,7 @@ import {
 	estimateTokens,
 	generateBranchSummary,
 	prepareCompaction,
+	prepareCompactionResult,
 	pruneSession,
 	shouldCompact,
 } from "./compaction/index.ts";
@@ -200,6 +197,9 @@ export type AgentSessionEvent =
 			aborted: boolean;
 			willRetry: boolean;
 			errorMessage?: string;
+			skipped?: boolean;
+			skipReason?: CompactionSkipReason;
+			skipMessage?: string;
 			/** True when the compaction ran in the background (hot-swap apply). */
 			background?: boolean;
 	  }
@@ -423,6 +423,12 @@ export class AgentSession {
 	private _compactionAbortController: AbortController | undefined = undefined;
 	private _autoCompactionAbortController: AbortController | undefined = undefined;
 	private _overflowRecoveryAttempts = 0;
+	/**
+	 * Set once we've warned that the configured compaction model preference
+	 * no longer resolves in the runtime catalog. Warn-once per session so
+	 * auto-compaction doesn't spam the console on every threshold fire.
+	 */
+	private _warnedAboutMissingCompactionModel = false;
 
 	// Background compaction state. Summarization runs concurrently with the
 	// session; the finished summary is held in `_pendingBackgroundCompaction`
@@ -432,6 +438,12 @@ export class AgentSession {
 	// queue treat it as blocking.
 	private _backgroundCompaction: { abortController: AbortController; reason: "manual" | "threshold" } | undefined =
 		undefined;
+	/**
+	 * Leaf entry id (or `"__empty__"`) at which a threshold compaction check
+	 * determined there was nothing to compact. Prevents threshold background
+	 * compaction from re-firing on every prompt until the branch grows.
+	 */
+	private _thresholdCompactionSkippedAtLeafId: string | null | undefined = undefined;
 	private _pendingBackgroundCompaction:
 		| {
 				reason: "manual" | "threshold";
@@ -636,83 +648,45 @@ export class AgentSession {
 		apiKey?: string;
 		headers?: Record<string, string>;
 		env?: Record<string, string>;
-		maxTokens?: number;
-		thinking?: ThinkingLevel;
 	}> {
 		// =====================================================================
-		// PI_SUMMARIZER_* env override — route summarisation through a separate
-		// OpenAI-compatible model when configured. See packages/ai/src/summariser-
-		// env.ts + summariser-model.ts for the env-var contract.
+		// Compaction model preference (configured via /settings → Compaction
+		// model): when the user picked a specific catalog model, route
+		// summarisation through it. The configured model belongs to a real
+		// registered provider, so the auth resolution below works unchanged —
+		// no one-off provider registration needed.
 		//
-		// The strategy: rather than adding new branching throughout the rest of
-		// this method, we register a one-off `Provider` on the ModelRuntime that
-		// carries the override model + its env-supplied apiKey. The downstream
-		// `getAuth(effectiveModel)` call then resolves to that provider via
-		// `model.provider` → `MutableModels.getProvider(id)` — no special-case
-		// branches needed after this block.
-		//
-		// `effectiveModel` starts as the caller-supplied main model. If the
-		// env-var override is configured AND `registerTransientProvider` accepts
-		// the provider (no built-in-id collision), we swap to the override model.
-		// Otherwise `effectiveModel` stays as the main model — every code path
-		// below this block runs against `effectiveModel` rather than `model`.
+		// `effectiveModel` starts as the caller-supplied main model. If a
+		// preference is set AND the model is still available in the runtime
+		// catalog, we swap to it. Otherwise `effectiveModel` stays as the main
+		// model — the "current model" default. Every code path below this
+		// block runs against `effectiveModel` rather than `model`.
 		// =====================================================================
-		const override = resolveSummariserModel();
-		// Pass-through of the env-configured summariser limits. Undefined when no
-		// override is configured (or the optional env vars are unset) — callers then
-		// fall back to the compaction settings defaults.
-		const overrideLimits: { maxTokens?: number; thinking?: ThinkingLevel } = {};
-		if (override?.maxTokens !== undefined) overrideLimits.maxTokens = override.maxTokens;
-		if (override?.thinking !== undefined) overrideLimits.thinking = override.thinking;
 		let effectiveModel = model;
-		if (override) {
-			const overrideProvider = createProvider({
-				// Stable internal id — must match `model.provider` below, otherwise
-				// `ModelRuntime.getAuth()` looks up the wrong provider.
-				id: SUMMARISER_OVERRIDE_PROVIDER_ID,
-				name: "PI Summariser Override",
-				baseUrl: override.model.baseUrl,
-				auth: {
-					// The apiKey is captured by closure here, at call time. If the
-					// user changes `PI_SUMMARIZER_API_KEY` mid-session, a new
-					// summarisation call picks up the new value (next resolveSummariserModel
-					// call reads fresh env). Within a single summarisation call the
-					// captured value is stable.
-					apiKey: {
-						name: "PI_SUMMARIZER_API_KEY",
-						resolve: async () => ({
-							auth: { apiKey: override.apiKey },
-							source: "PI_SUMMARIZER_API_KEY",
-						}),
-					},
-				},
-				// Single-model provider — the override exists for one purpose only.
-				models: [override.model],
-				// openAICompletionsApi() is the universal OpenAI-compatible chat-completions
-				// stream. Same reason summariser-model.ts picks openai-completions:
-				// it's the only API whose request shape is universally emulated.
-				api: openAICompletionsApi(),
-			});
-			// Guarded swap: if a built-in provider already owns this id
-			// (theoretically possible — hardcoded id is uniquely ours, but a
-			// future built-in could conflict), `registerTransientProvider` warns
-			// and returns false. In that case we keep `effectiveModel = model`
-			// and the call falls back to the main agent model.
-			if (this._modelRuntime.registerTransientProvider(overrideProvider)) {
-				// The override is a `Model<"openai-completions">`; the downstream
-				// signatures want `Model<any>`. The cast is sound — generic
-				// parameters are erased at runtime, and `openai-completions`
-				// satisfies the upper-bound any constraint.
-				effectiveModel = override.model as unknown as Model<any>;
+		const compactionModelRef = this.settingsManager.getCompactionModel();
+		if (compactionModelRef) {
+			const configured = this._modelRuntime.getModel(compactionModelRef.provider, compactionModelRef.modelId);
+			if (configured) {
+				effectiveModel = configured;
+			} else if (!this._warnedAboutMissingCompactionModel) {
+				// Warn once per session: the configured model is no longer in
+				// the catalog (provider removed, model renamed, ...). Falling
+				// back to the main model keeps compaction working; the warning
+				// tells the user to re-pick in /settings.
+				this._warnedAboutMissingCompactionModel = true;
+				console.warn(
+					`[pi] Compaction model ${compactionModelRef.provider}/${compactionModelRef.modelId} is not available. ` +
+						"Falling back to the current model for context summarisation.",
+				);
 			}
 		}
 		if (this.agent.streamFunction === streamSimple) {
-			return { ...(await this._getRequiredRequestAuth(effectiveModel)), ...overrideLimits };
+			return await this._getRequiredRequestAuth(effectiveModel);
 		}
 
 		try {
 			const result = await this._modelRuntime.getAuth(effectiveModel);
-			if (!result) return { model: effectiveModel, ...overrideLimits };
+			if (!result) return { model: effectiveModel };
 			const requestModel = result.auth.baseUrl
 				? { ...effectiveModel, baseUrl: result.auth.baseUrl }
 				: effectiveModel;
@@ -721,10 +695,9 @@ export class AgentSession {
 				apiKey: result.auth.apiKey,
 				headers: withoutDeletedHeaders(result.auth.headers),
 				env: result.env,
-				...overrideLimits,
 			};
 		} catch {
-			return { model: effectiveModel, ...overrideLimits };
+			return { model: effectiveModel };
 		}
 	}
 
@@ -2237,6 +2210,23 @@ export class AgentSession {
 	// Compaction
 	// =========================================================================
 
+	private _getEffectiveCompactionSettings() {
+		const settings = { ...this.settingsManager.getCompactionSettings() };
+		// When the DeepSeek Harness bundle is enabled, layer the
+		// ratio-based policy on top of the legacy absolute-token
+		// settings. The harness module's `shouldCompact` and
+		// `findCutPoint` use whichever values are present.
+		const dh = this.settingsManager.getDeepseekHarnessSettings(this.model ?? undefined);
+		if (dh.enabled) {
+			settings.thresholdRatio = settings.thresholdRatio ?? dh.thresholdRatio;
+			settings.retainRatio = settings.retainRatio ?? dh.retainRatio;
+			if (settings.retainRatio && this.model && this.model.contextWindow > 0) {
+				settings.keepRecentTokens = Math.floor(this.model.contextWindow * settings.retainRatio);
+			}
+		}
+		return settings;
+	}
+
 	/**
 	 * Manually compact the session context.
 	 * Aborts current agent operation first.
@@ -2245,7 +2235,7 @@ export class AgentSession {
 	 * path remains for RPC and extension callers that await the result.
 	 * @param customInstructions Optional instructions for the compaction summary
 	 */
-	async compact(customInstructions?: string): Promise<CompactionResult> {
+	async compact(customInstructions?: string): Promise<CompactionResult | undefined> {
 		this._abortBackgroundCompaction();
 		await this.abort();
 		this._compactionAbortController = new AbortController();
@@ -2256,40 +2246,29 @@ export class AgentSession {
 				throw new Error(formatNoModelSelectedMessage());
 			}
 
-			const {
-				model: requestModel,
-				apiKey,
-				headers,
-				env,
-				maxTokens: summariserMaxTokens,
-				thinking: summariserThinking,
-			} = await this._getSummarizationRequestAuth(this.model);
+			const { model: requestModel, apiKey, headers, env } = await this._getSummarizationRequestAuth(this.model);
 
 			const pathEntries = this.sessionManager.getBranch();
-			const settings = this.settingsManager.getCompactionSettings();
+			const settings = this._getEffectiveCompactionSettings();
 
-			// When the DeepSeek Harness bundle is enabled, layer the
-			// ratio-based policy on top of the legacy absolute-token
-			// settings. The harness module's `shouldCompact` and
-			// `findCutPoint` use whichever values are present.
-			const dh = this.settingsManager.getDeepseekHarnessSettings(this.model ?? undefined);
-			if (dh.enabled) {
-				settings.thresholdRatio = settings.thresholdRatio ?? dh.thresholdRatio;
-				settings.retainRatio = settings.retainRatio ?? dh.retainRatio;
-				if (settings.retainRatio && this.model && this.model.contextWindow > 0) {
-					settings.keepRecentTokens = Math.floor(this.model.contextWindow * settings.retainRatio);
-				}
+			const prepOutcome: CompactionPreparationOutcome = prepareCompactionResult(pathEntries, settings);
+			if (prepOutcome.skipped) {
+				const leafKey = pathEntries.length > 0 ? (pathEntries[pathEntries.length - 1].id ?? null) : "__empty__";
+				this._thresholdCompactionSkippedAtLeafId = leafKey;
+				this._compactionAbortController = undefined;
+				this._emit({
+					type: "compaction_end",
+					reason: "manual",
+					result: undefined,
+					aborted: false,
+					willRetry: false,
+					skipped: true,
+					skipReason: prepOutcome.skipReason,
+					skipMessage: prepOutcome.reason,
+				});
+				return undefined;
 			}
-
-			const preparation = prepareCompaction(pathEntries, settings);
-			if (!preparation) {
-				// Check why we can't compact
-				const lastEntry = pathEntries[pathEntries.length - 1];
-				if (lastEntry?.type === "compaction") {
-					throw new Error("Already compacted");
-				}
-				throw new Error("Nothing to compact (session too small)");
-			}
+			const preparation = prepOutcome.preparation;
 
 			let extensionCompaction: CompactionResult | undefined;
 			let fromExtension = false;
@@ -2330,12 +2309,11 @@ export class AgentSession {
 				details = extensionCompaction.details;
 			} else {
 				// Generate compaction result. The summariser's thinking level is
-				// opt-in: the PI_SUMMARIZER_* override wins, then the compaction
-				// settings, defaulting to "off" so reasoning tokens are not
-				// billed and discarded. summaryMaxTokens caps the summariser's
-				// output budget (default 16384).
-				const summaryThinking = summariserThinking ?? this.settingsManager.getCompactionSummaryThinking();
-				const summaryMaxTokens = summariserMaxTokens ?? this.settingsManager.getCompactionSummaryMaxTokens();
+				// opt-in via the compaction settings, defaulting to "off" so
+				// reasoning tokens are not billed and discarded. summaryMaxTokens
+				// caps the summariser's output budget (default 16384).
+				const summaryThinking = this.settingsManager.getCompactionSummaryThinking();
+				const summaryMaxTokens = this.settingsManager.getCompactionSummaryMaxTokens();
 				const result = await compact(
 					preparation,
 					requestModel,
@@ -2363,6 +2341,7 @@ export class AgentSession {
 			}
 
 			this.sessionManager.appendCompaction(summary, firstKeptEntryId, tokensBefore, details, fromExtension, usage);
+			this._thresholdCompactionSkippedAtLeafId = undefined;
 			const newEntries = this.sessionManager.getEntries();
 			const sessionContext = this.sessionManager.buildSessionContext();
 			this.agent.state.messages = sessionContext.messages;
@@ -2461,6 +2440,21 @@ export class AgentSession {
 		) {
 			return;
 		}
+		const pathEntries = this.sessionManager.getBranch();
+		const leafKey = pathEntries.length > 0 ? (pathEntries[pathEntries.length - 1].id ?? null) : "__empty__";
+		if (
+			this._thresholdCompactionSkippedAtLeafId !== undefined &&
+			this._thresholdCompactionSkippedAtLeafId === leafKey
+		) {
+			return;
+		}
+		const settings = this._getEffectiveCompactionSettings();
+		const prepOutcome = prepareCompactionResult(pathEntries, settings);
+		if (prepOutcome.skipped) {
+			this._thresholdCompactionSkippedAtLeafId = leafKey;
+			return;
+		}
+		this._thresholdCompactionSkippedAtLeafId = undefined;
 		void this._launchBackgroundCompaction("threshold", undefined).catch(() => {
 			// Errors are surfaced via the compaction_end event.
 		});
@@ -2499,40 +2493,33 @@ export class AgentSession {
 				throw new Error("Compaction cancelled");
 			}
 
-			const {
-				model: requestModel,
-				apiKey,
-				headers,
-				env,
-				maxTokens: summariserMaxTokens,
-				thinking: summariserThinking,
-			} = await this._getSummarizationRequestAuth(this.model);
+			const { model: requestModel, apiKey, headers, env } = await this._getSummarizationRequestAuth(this.model);
 			if (abortController.signal.aborted) {
 				throw new Error("Compaction cancelled");
 			}
 
 			const pathEntries = snapshot.pathEntries;
 			const previousCompactionId = snapshot.previousCompactionId;
-			const settings = this.settingsManager.getCompactionSettings();
+			const settings = this._getEffectiveCompactionSettings();
 
-			// DeepSeek Harness ratio policy layering, same as compact().
-			const dh = this.settingsManager.getDeepseekHarnessSettings(this.model ?? undefined);
-			if (dh.enabled) {
-				settings.thresholdRatio = settings.thresholdRatio ?? dh.thresholdRatio;
-				settings.retainRatio = settings.retainRatio ?? dh.retainRatio;
-				if (settings.retainRatio && this.model && this.model.contextWindow > 0) {
-					settings.keepRecentTokens = Math.floor(this.model.contextWindow * settings.retainRatio);
-				}
+			const prepOutcome = prepareCompactionResult(pathEntries, settings);
+			if (prepOutcome.skipped) {
+				const leafKey = pathEntries.length > 0 ? (pathEntries[pathEntries.length - 1].id ?? null) : "__empty__";
+				this._thresholdCompactionSkippedAtLeafId = leafKey;
+				this._emit({
+					type: "compaction_end",
+					reason,
+					result: undefined,
+					aborted: false,
+					willRetry: false,
+					skipped: true,
+					skipReason: prepOutcome.skipReason,
+					skipMessage: prepOutcome.reason,
+					background: true,
+				});
+				return undefined;
 			}
-
-			const preparation = prepareCompaction(pathEntries, settings);
-			if (!preparation) {
-				const lastEntry = pathEntries[pathEntries.length - 1];
-				if (lastEntry?.type === "compaction") {
-					throw new Error("Already compacted");
-				}
-				throw new Error("Nothing to compact (session too small)");
-			}
+			const preparation = prepOutcome.preparation;
 
 			let extensionCompaction: CompactionResult | undefined;
 			let fromExtension = false;
@@ -2568,8 +2555,8 @@ export class AgentSession {
 			if (extensionCompaction) {
 				result = extensionCompaction;
 			} else {
-				const summaryThinking = summariserThinking ?? this.settingsManager.getCompactionSummaryThinking();
-				const summaryMaxTokens = summariserMaxTokens ?? this.settingsManager.getCompactionSummaryMaxTokens();
+				const summaryThinking = this.settingsManager.getCompactionSummaryThinking();
+				const summaryMaxTokens = this.settingsManager.getCompactionSummaryMaxTokens();
 				result = await compact(
 					preparation,
 					requestModel,
@@ -2684,6 +2671,7 @@ export class AgentSession {
 			pending.fromExtension,
 			pending.result.usage,
 		);
+		this._thresholdCompactionSkippedAtLeafId = undefined;
 		const newEntries = this.sessionManager.getEntries();
 		const sessionContext = this.sessionManager.buildSessionContext();
 		this.agent.state.messages = sessionContext.messages;
@@ -2883,14 +2871,7 @@ export class AgentSession {
 				return false;
 			}
 
-			const {
-				model: requestModel,
-				apiKey,
-				headers,
-				env,
-				maxTokens: summariserMaxTokens,
-				thinking: summariserThinking,
-			} = await this._getSummarizationRequestAuth(this.model);
+			const { model: requestModel, apiKey, headers, env } = await this._getSummarizationRequestAuth(this.model);
 
 			const pathEntries = this.sessionManager.getBranch();
 
@@ -2951,13 +2932,12 @@ export class AgentSession {
 				// (decision matrix item 12) sends the live conversation
 				// as the request prefix when the DeepSeek Harness bundle
 				// is enabled, reusing the provider's prompt cache for
-				// the conversation bytes. The summariser's thinking level
-				// is opt-in (PI_SUMMARIZER_* override, then compaction
-				// settings, default "off") and its output budget is
-				// capped by summaryMaxTokens (default 16384).
+				// the conversation bytes. The summariser's thinking level is
+				// opt-in via the compaction settings (default "off") and its
+				// output budget is capped by summaryMaxTokens (default 16384).
 				const dhForReplay = this.settingsManager.getDeepseekHarnessSettings(this.model ?? undefined);
-				const summaryThinking = summariserThinking ?? this.settingsManager.getCompactionSummaryThinking();
-				const summaryMaxTokens = summariserMaxTokens ?? this.settingsManager.getCompactionSummaryMaxTokens();
+				const summaryThinking = this.settingsManager.getCompactionSummaryThinking();
+				const summaryMaxTokens = this.settingsManager.getCompactionSummaryMaxTokens();
 				const compactResult = await compact(
 					preparation,
 					requestModel,
@@ -3524,6 +3504,7 @@ export class AgentSession {
 							researchModeTriggerCount: this.settingsManager.getSubagentResearchModeTriggerCount(),
 							maxTotalSpawns: this.settingsManager.getSubagentMaxTotalSpawns(),
 							toolTimeoutMs: this.settingsManager.getSubagentToolTimeoutMs(),
+							maxTurns: this.settingsManager.getSubagentMaxTurns(),
 							maxDepth: this.settingsManager.getSubagentMaxDepth(),
 						}),
 						// Parent-side depth guard. The child-side half — dropping

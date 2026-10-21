@@ -55,8 +55,8 @@ files). `AGENT` rows are single-reader; re-verify before implementing.
 |---|---|---|---|
 | V31 | `updateWriter` declared (`:107`) and implemented (`:455`) with **zero call sites**; `writerState` permanently `none` | `session-lease.ts:107`, `:455` | REQ-L02 |
 | V32 | `defaultGetProcessStartIdentity` returns `undefined` unconditionally on win32, so start identity is unprovable and `writer` is the only proof | `session-lease.ts:284-296` | REQ-L02 |
-| V33 | `result-record.ts`: 27 symbols imported at `background.ts:53-77`, **zero call sites**; replay protocol documented as shipped | `background.ts:9-13`, `:20-26`, `:53-77` | REQ-O03 |
-| V34 | `runDetached` writes the terminal row then notifies; `isOrphanCandidate` admits only `running`/`pending`, so a parent killed in that window loses the notification permanently | `background.ts:585-588`, `:1012-1029` | REQ-O03 |
+| V33 | **FIXED (REQ-O03).** `result-record.ts` is wired via `notifySettled` / `recordSettle` / `completeReplayDelivery` / `claimReplayDeliveries` (`background.ts:1049-1267`) and replayed at startup (`agent-session.ts:581`) | `background.ts:1049-1267`; `agent-session.ts:581`; `test/subagent-bg-replay.test.ts` | REQ-O03 |
+| V34 | **FIXED (REQ-O03).** `notifySettled` writes and claims the durable completion record before invoking `onSettled` across `runDetached` completion, crash synthesis, and `failParkedPromotion` | `background.ts:1049-1081`, `:1322`, `:1441`, `:1717` | REQ-O03 |
 | V35 | Two independent `maxConcurrent` budgets with no shared counter: background queue vs inline pool | `subagent-tool.ts:693`, `:717`, `:1665-1667` | REQ-C02 |
 | V36 | Inline `single` (`:1715`) and `chain` (`:1603`) bypass `mapWithConcurrencyLimit` entirely — counted against neither budget | `subagent-tool.ts:1603`, `:1715` | REQ-C02 |
 | V37 | `mapWithConcurrencyLimit` is a per-invocation pool with no cross-call state; `toolExecution` defaults to `"parallel"` so two concurrent calls each get their own pool | `subagent-tool.ts:565-583`; `packages/agent/src/types.ts:275` | REQ-C02, REQ-C03 |

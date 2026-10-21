@@ -21,6 +21,7 @@
 
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
@@ -353,5 +354,73 @@ describe.skipIf(!gitAvailable)("worktree mutation lock", () => {
 		expect(refExists(repo.repoRoot, "exp/prune-race")).toBe(false);
 		const lockPath = await resolveWorktreeLockPath(repo.repoRoot);
 		expect(existsSync(lockPath)).toBe(false);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// REQ-I04.3 / REQ-I04.4 — the error carries its own diagnostics.
+// ---------------------------------------------------------------------------
+
+describe.skipIf(!gitAvailable)("worktree lock diagnostics (REQ-I04.3, REQ-I04.4)", () => {
+	it("a lock path that cannot be resolved reports reason 'unresolved', null lockPath, and the repo root", async () => {
+		const root = mkdtempSync(join(tmpdir(), "pi-lock-unresolved-"));
+		tempDirs.push(root);
+		const notARepo = join(root, "no-git");
+		mkdirSync(notARepo, { recursive: true });
+
+		let caught: unknown;
+		try {
+			await resolveWorktreeLockPath(notARepo);
+		} catch (error) {
+			caught = error;
+		}
+		expect(caught).toBeInstanceOf(WorktreeLockError);
+		const lockError = caught as WorktreeLockError;
+		expect(lockError.reason).toBe("unresolved");
+		// Never an empty string presented as a known location (REQ-I04.3).
+		expect(lockError.lockPath).toBeNull();
+		expect(lockError.repoRoot).toBe(notARepo);
+	});
+
+	it("a contention that outlives the one permitted stale break reports the spent budget (REQ-I04.4)", async () => {
+		const repo = makeFixtureRepo();
+		const lockPath = await resolveWorktreeLockPath(repo.repoRoot);
+		writeFileSync(lockPath, JSON.stringify({ pid: findDeadPid(), startedAt: Date.now(), token: "stale-a" }));
+
+		// Emulate a rival re-creating the stale lock immediately after the one
+		// permitted break: the unlink never actually removes the file, so the
+		// acquisition spends its stale-break budget and must then say so instead
+		// of naming the dead holder as if it were live.
+		// The lock module takes `unlinkSync` as a builtin named import; mutating the
+		// CJS exports object and calling syncBuiltinESMExports() is the documented
+		// way to reach those bindings from a test.
+		const req = createRequire(import.meta.url);
+		const nodeFs = req("node:fs") as typeof import("node:fs");
+		const syncBuiltinESMExports = req("node:module").syncBuiltinESMExports as () => void;
+		const realUnlinkSync = nodeFs.unlinkSync;
+		const unlinkSpy = vi.spyOn(nodeFs, "unlinkSync").mockImplementation(((
+			path: Parameters<typeof realUnlinkSync>[0],
+		) => {
+			if (String(path) === lockPath) return; // stays in place, as if re-created
+			return realUnlinkSync(path);
+		}) as typeof realUnlinkSync);
+		syncBuiltinESMExports();
+		try {
+			let caught: unknown;
+			try {
+				await withWorktreeLock(repo.repoRoot, () => "ok", { waitMs: 600 });
+			} catch (error) {
+				caught = error;
+			}
+			expect(caught).toBeInstanceOf(WorktreeLockError);
+			const lockError = caught as WorktreeLockError;
+			expect(lockError.reason).toBe("contended");
+			expect(lockError.message).toContain("stale-break budget (1) was spent");
+			expect(lockError.lockPath).toBe(lockPath);
+			expect(lockError.repoRoot).toBe(repo.repoRoot);
+		} finally {
+			unlinkSpy.mockRestore();
+			syncBuiltinESMExports();
+		}
 	});
 });

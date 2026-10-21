@@ -37,6 +37,7 @@ describe("subagent.* settings", () => {
 			researchModeTriggerCount: 3,
 			maxTotalSpawns: 64,
 			toolTimeoutMs: 300_000,
+			maxTurns: 30,
 			maxDepth: 1,
 		});
 	});

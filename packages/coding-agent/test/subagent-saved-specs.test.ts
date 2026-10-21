@@ -22,6 +22,7 @@ function makeSpec(overrides: Partial<SubagentSpec> = {}): SubagentSpec {
 	return {
 		role: "code-reviewer",
 		instructions: "Review the code for bugs and report findings.",
+		description: "Reviews code for bugs and reports findings.",
 		model: "anthropic/claude-sonnet-4-20250514",
 		tools: ["read", "grep", "bash"],
 		cwd: "/work/repo",

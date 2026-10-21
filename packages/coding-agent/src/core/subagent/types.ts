@@ -13,9 +13,12 @@
  * `AgentSession` runner can replace it without touching the tool surface.
  */
 
-import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
-import type { Message } from "@earendil-works/pi-ai";
+import type { ThinkingLevel } from "@bramburn/qi-agent-core";
+import type { Message } from "@bramburn/qi-ai";
 import type { CompletionEscalation } from "./result-record.ts";
+
+/** Worktree isolation mode for a subagent dispatch (REQ-I01). */
+export type SubagentIsolation = "none" | "worktree";
 
 /** How the orchestrator dispatched a set of subagent tasks. */
 export type SubagentMode = "single" | "parallel" | "chain" | "resume" | "dag";
@@ -75,6 +78,8 @@ export interface SubagentSpec {
 	 * piece of context the subagent needs.
 	 */
 	instructions: string;
+	/** One-line description of a saved specialist, rendered into the tool description (REQ-D04). */
+	description?: string;
 	/** Model id (`provider/model` or a bare id resolved by the child). Omit to inherit the parent model. */
 	model?: string;
 	/**
@@ -88,6 +93,17 @@ export interface SubagentSpec {
 	tools?: string[];
 	/** Working directory for the child process. Omit to inherit the parent's cwd. */
 	cwd?: string;
+	/**
+	 * Worktree isolation mode (REQ-I01). `"worktree"` creates an isolated git worktree
+	 * before spawning and passes its path as the child's `cwd`, releasing it on settle.
+	 * Default `"none"`. Creation failure raises an E1-class error and never downgrades silently.
+	 */
+	isolation?: SubagentIsolation;
+	/**
+	 * Explicit admission for detached (`background: true`) execution when the child's
+	 * tool set is not narrowed to non-shell tools (`read`, `grep`, `find`, `ls`) (REQ-P02).
+	 */
+	allowDetachedShell?: boolean;
 	/** Persisted child session file to resume. Wins over `parentSessionFile`. */
 	sessionFile?: string;
 	/**
@@ -184,8 +200,8 @@ export interface SubagentRunRequest {
 	 * `<taskDir>/supervisor/` carries the child's `contact_supervisor` questions and
 	 * the parent's replies (issue #1048). A background run already has one — the
 	 * directory holding its `log.jsonl` — and a foreground run gets one keyed by its
-	 * run id. The runner maps it to `PI_SUBAGENT_CONTROL_DIR` /
-	 * `PI_SUBAGENT_SUPERVISOR_DIR` for the child process; when it is absent the
+	 * run id. The runner maps it to `QI_SUBAGENT_CONTROL_DIR` /
+	 * `QI_SUBAGENT_SUPERVISOR_DIR` for the child process; when it is absent the
 	 * runner derives a default from the run id it minted.
 	 */
 	taskDir?: string;
@@ -201,6 +217,8 @@ export interface SubagentRunRequest {
 	step?: number;
 	/** Hard wall-clock limit. Default: no limit. */
 	timeoutMs?: number;
+	/** Per-child assistant turn limit (REQ-D03). */
+	maxTurns?: number;
 	/**
 	 * When both `timeoutMs` and this are set, the runner emits a
 	 * `checkpoint_pending` event this many milliseconds BEFORE the deadline.
@@ -268,6 +286,8 @@ export interface SubagentResult {
 	 */
 	exitCode: number;
 	aborted: boolean;
+	/** True when the child was terminated for exceeding `maxTurns` (REQ-D03). */
+	turnCapExceeded?: boolean;
 	finalOutput: string;
 	stderr: string;
 	usage: SubagentUsage;
@@ -309,6 +329,8 @@ export interface SubagentResult {
 	outputValidation?: SubagentOutputValidation;
 	/** Host-run verify command outcome, when the spec declared `gate`. */
 	gate?: SubagentGateOutcome;
+	/** Isolated git worktree path used by this run when `isolation: "worktree"` was requested (REQ-I01.5). */
+	worktreePath?: string;
 }
 
 export interface SubagentOutputValidation {

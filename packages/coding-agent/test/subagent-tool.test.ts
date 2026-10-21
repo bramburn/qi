@@ -601,6 +601,9 @@ describe("background chain continuation guard", () => {
 			"t17",
 			{
 				background: true,
+				// REQ-P02: detached children need explicit admission; this guard test
+				// dispatches with the default tool set, so it opts in deliberately.
+				allowDetachedShell: true,
 				chain: [
 					{ role: "s1", instructions: "a" },
 					{ role: "s2", instructions: "b {previous}" },
@@ -620,5 +623,95 @@ describe("background chain continuation guard", () => {
 		expect(settled[1]?.result.role).toBe("s2");
 		expect(settled[1]?.result.errorMessage).toContain("could not be dispatched");
 		expect(updates.some((u) => u.partial.status === "failed")).toBe(true);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// REQ-D05 / REQ-CXT01: the tool description carries the delegation guidance.
+// ---------------------------------------------------------------------------
+
+describe("tool description delegation contract (REQ-D05, REQ-CXT01)", () => {
+	it("states when NOT to delegate, the final-summary-only output contract, and context isolation", () => {
+		const tool = createSubagentToolDefinition(process.cwd());
+		expect(tool.description).toContain("When NOT to delegate");
+		expect(tool.description).toContain("ONLY the subagent's final summary");
+		expect(tool.description).toContain("cannot see this conversation");
+		// REQ-D05.1's named cases.
+		expect(tool.description).toContain("single-file edits");
+		expect(tool.description).toContain("known-location lookups");
+		// REQ-I01 / REQ-P02 guidance rides the description too.
+		expect(tool.description).toContain("isolation: 'worktree'");
+		expect(tool.description).toContain("allowDetachedShell: true");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// REQ-C01: parallel admission gates on per-tool `concurrentSafe`.
+// ---------------------------------------------------------------------------
+
+describe("REQ-C01 parallel concurrency gate", () => {
+	function instrumentedRunner(): {
+		runner: SubagentRunner;
+		maxInFlight: () => number;
+	} {
+		let active = 0;
+		let peak = 0;
+		const runner: SubagentRunner = {
+			async run(request): Promise<SubagentResult> {
+				active += 1;
+				peak = Math.max(peak, active);
+				await new Promise((r) => setTimeout(r, 25));
+				active -= 1;
+				return {
+					role: request.spec.role,
+					task: request.task,
+					exitCode: 0,
+					aborted: false,
+					finalOutput: "ok",
+					stderr: "",
+					usage: createEmptyUsage(),
+					messages: [],
+				};
+			},
+		};
+		return { runner, maxInFlight: () => peak };
+	}
+
+	it("serialises 3 tasks with mutating tools under maxConcurrent: 4", async () => {
+		const { runner, maxInFlight } = instrumentedRunner();
+		const tool = createSubagentToolDefinition(process.cwd(), { runner });
+		await tool.execute(
+			"c01-mut",
+			{
+				tasks: [
+					{ role: "m1", instructions: "x", tools: ["read", "edit"] },
+					{ role: "m2", instructions: "y", tools: ["read", "edit"] },
+					{ role: "m3", instructions: "z", tools: ["bash"] },
+				],
+			},
+			undefined,
+			undefined,
+			{} as never,
+		);
+		expect(maxInFlight()).toBe(1);
+	});
+
+	it("runs 3 read-only tasks concurrently under maxConcurrent: 4", async () => {
+		const { runner, maxInFlight } = instrumentedRunner();
+		const tool = createSubagentToolDefinition(process.cwd(), { runner });
+		await tool.execute(
+			"c01-ro",
+			{
+				tasks: [
+					{ role: "r1", instructions: "x", tools: ["read", "grep"] },
+					{ role: "r2", instructions: "y", tools: ["read", "ls"] },
+					{ role: "r3", instructions: "z", tools: ["grep"] },
+				],
+			},
+			undefined,
+			undefined,
+			{} as never,
+		);
+		expect(maxInFlight()).toBe(3);
 	});
 });

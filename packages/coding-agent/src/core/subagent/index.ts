@@ -93,7 +93,6 @@ export type { SavedSpec } from "./saved-specs.ts";
 export { deleteSpec, listSpecs, loadSpec, saveSpec } from "./saved-specs.ts";
 export type { ShellOptions, ShellResult } from "./shell.ts";
 export { runGit, runShell, runShellLine } from "./shell.ts";
-export { buildStatusInjection } from "./status-injector.ts";
 export type { CollectedStream, StreamPump } from "./stream.ts";
 export { collectStream, createStreamPump } from "./stream.ts";
 export {

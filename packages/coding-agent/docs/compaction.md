@@ -242,43 +242,23 @@ Same as compaction, extensions can store custom data in `details`.
 
 See [`collectEntriesForBranchSummary()`](https://github.com/earendil-works/pi-mono/blob/main/packages/coding-agent/src/core/compaction/branch-summarization.ts), [`prepareBranchEntries()`](https://github.com/earendil-works/pi-mono/blob/main/packages/coding-agent/src/core/compaction/branch-summarization.ts), and [`generateBranchSummary()`](https://github.com/earendil-works/pi-mono/blob/main/packages/coding-agent/src/core/compaction/branch-summarization.ts) for the implementation.
 
-## Summariser Override
+## Summariser Model
 
-By default compaction and branch summarisation call the main agent model. Three `PI_SUMMARIZER_*` env vars route both operations through a separate OpenAI-compatible endpoint instead — useful when you want the main agent on a large model but the summariser on a cheaper / faster one.
+By default compaction and branch summarisation call the main agent model (the session's current model). To route both operations through a separate model — useful when you want the main agent on a large model but the summariser on a cheaper / faster one — pick one in `/settings` → **Compaction model** → *Use specific model*. The picker is the same searchable model list as `/model`, so any configured provider model (DeepSeek, OpenRouter, vLLM, ...) works without extra plumbing. The default, *Use current model*, clears the preference and follows whatever model the session is using.
 
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `PI_SUMMARIZER_BASE_URL` | yes | Base URL of an OpenAI-compatible API (e.g. `https://api.deepseek.com/v1`, `https://openrouter.ai/api/v1`, a vLLM or llama.cpp endpoint). |
-| `PI_SUMMARIZER_MODEL` | yes | Model id passed to that endpoint (e.g. `deepseek-chat`). |
-| `PI_SUMMARIZER_API_KEY` | yes | API key for the endpoint. |
-| `PI_SUMMARIZER_MAX_TOKENS` | no | Positive integer; absolute ceiling on summariser output tokens. Overrides `compaction.summaryMaxTokens`. Invalid values warn and are ignored. |
-| `PI_SUMMARIZER_THINKING` | no | Thinking level for the summariser (`off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`; case-insensitive). Overrides `compaction.summaryThinking`. Unset or `off` keeps reasoning disabled. Invalid values warn and are ignored. |
+The choice persists in `settings.json`:
 
-**Semantics**
+```json
+{
+  "compactionModel": { "provider": "openai", "modelId": "gpt-5-mini" }
+}
+```
 
-- All three required vars must be set; partial sets of the required trio emit `console.warn` and fall back to the main model. Whitespace-only values count as unset. The two optional vars are independent of the trio and never trigger the partial-config warning.
-- When the override is active, `PI_SUMMARIZER_MAX_TOKENS` / `PI_SUMMARIZER_THINKING` take precedence over the settings.json values.
-- The override is **always active** whenever the three vars are present. It does not require `--deepseek-harness`, `--no-deepseek-harness`, or any other flag.
-- The override is an OpenAI-compatible chat-completions call against the configured base URL. DeepSeek, OpenRouter proxies, vLLM, llama.cpp, and other OpenAI-compatible services work without per-provider plumbing. Reasoning is disabled by default; set `PI_SUMMARIZER_THINKING` to opt into a reasoning level on reasoning-capable endpoints.
-- Cost is reported as zero for the override model because the endpoint is unknown to pi's catalog.
-- The override provider is registered on the runtime once per summarisation call with a stable internal id (`pi-summariser-override`). Setting `PI_SUMMARIZER_PROVIDER` is **not** supported — pick a non-built-in value at your own risk; built-in ids are rejected with a warning to avoid clobbering real providers.
+If the configured model is no longer available in the catalog (provider removed, model renamed), summarisation falls back to the current model with a one-time console warning; re-pick in `/settings` to fix it.
 
 **Source**
 
-- [`packages/ai/src/summariser-env.ts`](https://github.com/earendil-works/pi-mono/blob/main/packages/ai/src/summariser-env.ts) — env-var discovery; returns `undefined` when no override.
-- [`packages/ai/src/summariser-model.ts`](https://github.com/earendil-works/pi-mono/blob/main/packages/ai/src/summariser-model.ts) — builds the `Model<"openai-completions">` for the override.
-- [`packages/coding-agent/src/core/agent-session.ts` `_getSummarizationRequestAuth`](https://github.com/earendil-works/pi-mono/blob/main/packages/coding-agent/src/core/agent-session.ts) — wires the override into manual `/compact`, auto-compaction, and the default summarisation path.
-
-**Example**
-
-```bash
-export PI_SUMMARIZER_BASE_URL="https://api.deepseek.com/v1"
-export PI_SUMMARIZER_MODEL="deepseek-chat"
-export PI_SUMMARIZER_API_KEY="sk-..."
-pi
-```
-
-Now every `/compact` (and the auto-compaction threshold) summarises through DeepSeek while the main agent keeps using whatever model you selected.
+- [`packages/coding-agent/src/core/agent-session.ts` `_getSummarizationRequestAuth`](https://github.com/earendil-works/pi-mono/blob/main/packages/coding-agent/src/core/agent-session.ts) — resolves the configured compaction model from the runtime catalog and falls back to the main model when unset or unavailable.
 
 ## Summary Format
 

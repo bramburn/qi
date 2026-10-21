@@ -1071,6 +1071,8 @@ export interface BackgroundRunOptions {
 	parentSessionFile?: string;
 	/** Delegation depth of the child to launch. Root session is 0, so its children are 1. */
 	depth?: number;
+	/** Per-child assistant turn limit (REQ-D03). */
+	maxTurns?: number;
 	/** Called once the task reaches a terminal state. Must not throw. */
 	onSettled?: (taskId: string, result: SubagentResult) => void;
 	/** No hard limit by default: a background task is expected to outlive a turn. */
@@ -1456,6 +1458,7 @@ async function runDetached(
 			logPath: join(getAgentDir(), BG_DIR_NAME, taskId, BG_LOG_FILE),
 			...(options.parentSessionFile === undefined ? {} : { parentSessionFile: options.parentSessionFile }),
 			...(options.timeoutMs === undefined ? {} : { timeoutMs: options.timeoutMs }),
+			...(options.maxTurns === undefined ? {} : { maxTurns: options.maxTurns }),
 		},
 		// No caller signal: a background task must not inherit the turn's abort.
 		undefined,
@@ -1606,10 +1609,16 @@ function dispatchQueueFor(registry: BackgroundRegistry): DispatchQueue {
 	return queue;
 }
 
-/** A cap below 1 would park every task forever; clamp to one slot instead of stalling. */
+/**
+ * Clamp a dispatch cap to a usable slot count.
+ *
+ * `0` is a legitimate cap on the shared path (REQ-C02.2): with a full set of
+ * live inline children the effective background budget is exactly 0, and every
+ * dispatch must park rather than start. Only a non-finite input clamps to 1.
+ */
 export function normalizeDispatchCap(maxConcurrent: number): number {
 	if (!Number.isFinite(maxConcurrent)) return 1;
-	return Math.max(1, Math.trunc(maxConcurrent));
+	return Math.max(0, Math.trunc(maxConcurrent));
 }
 
 /** Whether a parked row may still be promoted to a running task. */

@@ -101,14 +101,14 @@ function failedResult(message = "boom"): SubagentResult {
 
 describe("background settle durability + replay", () => {
 	const previousAgentDir = process.env[ENV_AGENT_DIR];
-	const previousAnalyticsHome = process.env.PI_TEST_ANALYTICS_HOME;
+	const previousAnalyticsHome = process.env.QI_TEST_ANALYTICS_HOME;
 	let agentDir: string | undefined;
 
 	beforeEach(() => {
 		agentDir = mkdtempSync(join(tmpdir(), "pi-bg-replay-"));
 		process.env[ENV_AGENT_DIR] = agentDir;
 		// Keep analytics writes inside the temp dir too (hermetic tests).
-		process.env.PI_TEST_ANALYTICS_HOME = agentDir;
+		process.env.QI_TEST_ANALYTICS_HOME = agentDir;
 		bunRef.current = makeFakeBun();
 		_resetBackgroundRegistryForTests();
 	});
@@ -121,9 +121,9 @@ describe("background settle durability + replay", () => {
 			process.env[ENV_AGENT_DIR] = previousAgentDir;
 		}
 		if (previousAnalyticsHome === undefined) {
-			delete process.env.PI_TEST_ANALYTICS_HOME;
+			delete process.env.QI_TEST_ANALYTICS_HOME;
 		} else {
-			process.env.PI_TEST_ANALYTICS_HOME = previousAnalyticsHome;
+			process.env.QI_TEST_ANALYTICS_HOME = previousAnalyticsHome;
 		}
 		if (agentDir && existsSync(agentDir)) {
 			rmSync(agentDir, { recursive: true, force: true });

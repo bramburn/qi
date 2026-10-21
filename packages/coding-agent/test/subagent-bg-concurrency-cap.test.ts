@@ -105,7 +105,7 @@ function resultRow(registry: BackgroundRegistry, id: string) {
 
 describe("background dispatch concurrency cap", () => {
 	const previousAgentDir = process.env[ENV_AGENT_DIR];
-	const previousAnalyticsHome = process.env.PI_TEST_ANALYTICS_HOME;
+	const previousAnalyticsHome = process.env.QI_TEST_ANALYTICS_HOME;
 	let agentDir: string | undefined;
 	let gate: Gate;
 	let registry: BackgroundRegistry;
@@ -114,7 +114,7 @@ describe("background dispatch concurrency cap", () => {
 	beforeEach(() => {
 		agentDir = mkdtempSync(join(tmpdir(), "pi-bg-cap-"));
 		process.env[ENV_AGENT_DIR] = agentDir;
-		process.env.PI_TEST_ANALYTICS_HOME = agentDir;
+		process.env.QI_TEST_ANALYTICS_HOME = agentDir;
 		bunRef.current = {
 			file(path: string) {
 				return {
@@ -146,8 +146,8 @@ describe("background dispatch concurrency cap", () => {
 		_resetBackgroundRegistryForTests();
 		if (previousAgentDir === undefined) delete process.env[ENV_AGENT_DIR];
 		else process.env[ENV_AGENT_DIR] = previousAgentDir;
-		if (previousAnalyticsHome === undefined) delete process.env.PI_TEST_ANALYTICS_HOME;
-		else process.env.PI_TEST_ANALYTICS_HOME = previousAnalyticsHome;
+		if (previousAnalyticsHome === undefined) delete process.env.QI_TEST_ANALYTICS_HOME;
+		else process.env.QI_TEST_ANALYTICS_HOME = previousAnalyticsHome;
 		if (agentDir && existsSync(agentDir)) rmSync(agentDir, { recursive: true, force: true });
 		agentDir = undefined;
 	});
@@ -417,20 +417,24 @@ describe("background dispatch concurrency cap", () => {
 			expect(gate.started).toEqual(["A", "B", "C", "D"]);
 		});
 
-		it("clamps a nonsensical cap to one slot instead of stalling forever", () => {
-			expect(normalizeDispatchCap(0)).toBe(1);
-			expect(normalizeDispatchCap(-4)).toBe(1);
+		it("clamps a nonsensical cap but parks everything at zero (REQ-C02.2)", () => {
+			// REQ-C02.2: 0 is a legitimate shared-path cap — with a full set of live
+			// inline children the effective background budget is exactly 0, and a
+			// clamp to 1 would wrongly admit one. Only non-finite input clamps to 1.
+			expect(normalizeDispatchCap(0)).toBe(0);
+			expect(normalizeDispatchCap(-4)).toBe(0);
 			expect(normalizeDispatchCap(Number.NaN)).toBe(1);
 			expect(normalizeDispatchCap(Number.POSITIVE_INFINITY)).toBe(1);
 			expect(normalizeDispatchCap(2.9)).toBe(2);
 
-			// A zero cap must still run one task at a time rather than parking all
-			// of them, which is what an unvalidated `maxConcurrent: 0` would do.
+			// At cap 0 no dispatch starts; the row is recorded as pending so the
+			// work is visible rather than silently dropped.
 			const first = dispatch("A", 0);
 			const second = dispatch("B", 0);
-			expect(first.admission).toBe("running");
+			expect(first.admission).toBe("queued");
 			expect(second.admission).toBe("queued");
-			expect(gate.started).toEqual(["A"]);
+			expect(gate.started).toEqual([]);
+			expect(queuedTaskIds(registry)).toEqual([first.taskId, second.taskId]);
 		});
 	});
 

@@ -37,7 +37,7 @@ export const SUPERVISOR_REQUESTS_DIR_NAME = "requests";
 export const SUPERVISOR_REPLIES_DIR_NAME = "replies";
 export const SUPERVISOR_VERSION = 1;
 /** Environment variable naming this run's supervisor dir for the child. */
-export const SUPERVISOR_DIR_ENV = "PI_SUBAGENT_SUPERVISOR_DIR";
+export const SUPERVISOR_DIR_ENV = "QI_SUBAGENT_SUPERVISOR_DIR";
 
 /** A question or answer longer than this is not going to be read carefully. */
 export const SUPERVISOR_MAX_MESSAGE_BYTES = CONTROL_MAX_MESSAGE_BYTES;

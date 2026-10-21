@@ -203,15 +203,37 @@ async function createWorktreeLocked(
  * a concurrent create or prune. Throws `WorktreeLockError` on lock contention
  * timeout.
  */
-export async function removeWorktree(repoRoot: string, worktreePath: string, force: boolean): Promise<GitResult> {
-	return withWorktreeLock(repoRoot, () => removeWorktreeLocked(repoRoot, worktreePath, force));
+export async function removeWorktree(
+	repoRoot: string,
+	worktreePath: string,
+	force: boolean,
+	deleteBranch: boolean = true,
+): Promise<GitResult> {
+	return withWorktreeLock(repoRoot, () => removeWorktreeLocked(repoRoot, worktreePath, force, deleteBranch));
 }
 
-async function removeWorktreeLocked(repoRoot: string, worktreePath: string, force: boolean): Promise<GitResult> {
+/**
+ * The locked-body half of {@link removeWorktree}, exported so a composite
+ * mutation (see {@link discardWorktree}, REQ-I04.1) can run remove + prune +
+ * branch handling inside ONE `withWorktreeLock` acquisition — this function
+ * takes no lock itself (the lock is not reentrant).
+ *
+ * `deleteBranch` (REQ-I04.5): pass `false` to keep `exp/<slug>` after the
+ * worktree is removed — `experiment_discard`'s `keep_branch` default relies on
+ * it, and without the flag the branch was always deleted before the caller
+ * could honour its own setting.
+ */
+export async function removeWorktreeLocked(
+	repoRoot: string,
+	worktreePath: string,
+	force: boolean,
+	deleteBranch: boolean = true,
+): Promise<GitResult> {
 	const args = ["worktree", "remove", worktreePath];
 	if (force) args.push("--force");
 	const res = await git(args, repoRoot);
 	if (res.exitCode !== 0) return res;
+	if (!deleteBranch) return res;
 
 	const branch = `exp/${basename(worktreePath)}`;
 	const branchCheck = await git(["show-ref", "--verify", "--quiet", `refs/heads/${branch}`], repoRoot);
@@ -225,6 +247,27 @@ async function removeWorktreeLocked(repoRoot: string, worktreePath: string, forc
 		};
 	}
 	return res;
+}
+
+/**
+ * Composite discard mutation: remove the worktree, prune stale worktree admin
+ * dirs, and (when `keepBranch` is false) delete `exp/<slug>` — all inside a
+ * single repo-lock acquisition, so no concurrent `createWorktree` can
+ * interleave between remove and prune (REQ-I04.1).
+ */
+export async function discardWorktree(
+	repoRoot: string,
+	worktreePath: string,
+	opts: { force: boolean; keepBranch: boolean },
+): Promise<GitResult> {
+	return withWorktreeLock(repoRoot, async () => {
+		const removed = await removeWorktreeLocked(repoRoot, worktreePath, opts.force, !opts.keepBranch);
+		if (removed.exitCode !== 0 || removed.complete === false) return removed;
+		// Prune is best-effort: a failed prune leaves stale admin dirs behind but
+		// must not turn a successful removal into a reported failure.
+		await git(["worktree", "prune"], repoRoot);
+		return removed;
+	});
 }
 
 /**

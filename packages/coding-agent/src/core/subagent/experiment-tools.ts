@@ -46,10 +46,10 @@ import {
 	currentHead,
 	diffVsParent,
 	isGitRepo,
-	pruneWorktrees,
-	removeWorktree,
+	removeWorktreeLocked,
 	squashSinceParent,
 } from "./worktree.ts";
+import { withWorktreeLock } from "./worktree-lock.ts";
 
 const DEFAULT_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
 
@@ -294,10 +294,16 @@ async function finalizeExperimentMerge(
 ): Promise<void> {
 	const logFile = logPath(cwd, row.id);
 	appendExperimentLogEvent(logFile, { type: "MERGED", strategy, commit: newCommit });
-	try {
-		await removeWorktree(cwd, row.worktreePath, true);
-	} catch {
-		/* removal may fail on Windows; leave it for the user to clean up */
+	// REQ-I04.2: a swallowed removal failure used to write `status: "merged"`
+	// anyway — the row claimed merged while the worktree leaked with no record
+	// it exists. The lock-protected caller runs this inside its composite; the
+	// removal MUST succeed before the row flips.
+	const removed = await removeWorktreeLocked(cwd, row.worktreePath, true, true);
+	if (removed.exitCode !== 0 || removed.complete === false) {
+		throw new Error(
+			removed.error ??
+				`git worktree remove failed after ${strategy} (exit ${removed.exitCode}): ${removed.stderr.trim() || removed.stdout.trim()}`,
+		);
 	}
 	updateExperiment(cwd, row.id, {
 		status: "merged",
@@ -518,66 +524,74 @@ export function createExperimentToolDefinitions(
 			// Read live per dispatch — see SubagentToolOptions.subagentSettings.
 			const worktreeBase = options?.subagentSettings?.().worktreeBase ?? DEFAULT_SUBAGENT_SETTINGS.worktreeBase;
 
-			// Refuse to merge if the main worktree has uncommitted changes (ignoring
-			// the registry dir and the worktree base, which are expected untracked).
-			const status = await runShellLine(
-				`git status --porcelain -- . :!./.pi-experiments :!./.pi-experiments/ :!./${worktreeBase} :!./${worktreeBase}/`,
-				{ cwd },
-			);
-			// A failed or truncated status check must not pass the clean-tree gate.
-			assertGitOk("git status failed", status);
-			if (status.stdout.trim().length > 0) {
-				throw new Error(
-					`Main worktree has uncommitted changes. Commit or stash them before merging an experiment.\n${status.stdout}`,
+			// REQ-I04.1: the WHOLE check-and-mutate body (clean-tree gate, strategy,
+			// finalize → removal) runs under one repo-lock acquisition. Lock
+			// contention therefore surfaces as a typed WorktreeLockError BEFORE any
+			// mutation, and `finalizeExperimentMerge` (which takes no lock of its own)
+			// can never mark the row merged after a failed removal — the row write is
+			// the last statement of this critical section.
+			return withWorktreeLock(cwd, async () => {
+				// Refuse to merge if the main worktree has uncommitted changes (ignoring
+				// the registry dir and the worktree base, which are expected untracked).
+				const status = await runShellLine(
+					`git status --porcelain -- . :!./.pi-experiments :!./.pi-experiments/ :!./${worktreeBase} :!./${worktreeBase}/`,
+					{ cwd },
 				);
-			}
-
-			if (params.strategy === "cherry-pick") {
-				const head = await runShell("git", ["rev-parse", row.branch], { cwd });
-				assertGitOk(`Could not resolve ${row.branch}`, head);
-				const pick = await cherryPickFromBranch(cwd, row.branch, head.stdout.trim());
-				if (pick.exitCode !== 0 || pick.complete === false) {
+				// A failed or truncated status check must not pass the clean-tree gate.
+				assertGitOk("git status failed", status);
+				if (status.stdout.trim().length > 0) {
 					throw new Error(
-						pick.error ??
-							`Cherry-pick failed (exit ${pick.exitCode}): ${pick.stderr.trim() || pick.stdout.trim()}`,
+						`Main worktree has uncommitted changes. Commit or stash them before merging an experiment.\n${status.stdout}`,
 					);
 				}
-				await finalizeExperimentMerge(cwd, row, "cherry-pick", pick.newCommit, onRegistryChanged);
-				return successToolResult(
-					`Cherry-picked ${row.branch} into main as ${pick.newCommit?.slice(0, 7) ?? "(no commit)"}`,
-				);
-			}
 
-			if (params.strategy === "squash") {
-				if (!params.squash_message) {
-					throw new Error("strategy='squash' requires squash_message.");
-				}
-				const sq = await squashSinceParent(cwd, row.branch, row.parentCommit, params.squash_message);
-				if (sq.exitCode !== 0 || sq.complete === false) {
-					throw new Error(
-						sq.error ?? `Squash failed (exit ${sq.exitCode}): ${sq.stderr.trim() || sq.stdout.trim()}`,
+				if (params.strategy === "cherry-pick") {
+					const head = await runShell("git", ["rev-parse", row.branch], { cwd });
+					assertGitOk(`Could not resolve ${row.branch}`, head);
+					const pick = await cherryPickFromBranch(cwd, row.branch, head.stdout.trim());
+					if (pick.exitCode !== 0 || pick.complete === false) {
+						throw new Error(
+							pick.error ??
+								`Cherry-pick failed (exit ${pick.exitCode}): ${pick.stderr.trim() || pick.stdout.trim()}`,
+						);
+					}
+					await finalizeExperimentMerge(cwd, row, "cherry-pick", pick.newCommit, onRegistryChanged);
+					return successToolResult(
+						`Cherry-picked ${row.branch} into main as ${pick.newCommit?.slice(0, 7) ?? "(no commit)"}`,
 					);
 				}
-				if (sq.wasNoOp) {
-					throw new Error("No commits to squash. The experiment worktree has no commits beyond the parent.");
-				}
-				await finalizeExperimentMerge(cwd, row, "squash", sq.newCommit, onRegistryChanged);
-				return successToolResult(
-					`Squashed ${row.branch} into main as ${sq.newCommit?.slice(0, 7) ?? "(no commit)"}`,
-				);
-			}
 
-			const merge = await runShell(
-				"git",
-				["merge", "--no-ff", row.branch, "-m", `Merge experiment ${row.id} (${row.approach})`],
-				{ cwd },
-			);
-			assertGitOk("Merge failed", merge);
-			const head = await runShell("git", ["rev-parse", "HEAD"], { cwd });
-			assertGitOk("Could not resolve HEAD after merge", head);
-			const newCommit = head.stdout.trim();
-			await finalizeExperimentMerge(cwd, row, "merge", newCommit, onRegistryChanged);
-			return successToolResult(`Merged ${row.branch} into main as ${newCommit?.slice(0, 7) ?? "(unknown)"}`);
+				if (params.strategy === "squash") {
+					if (!params.squash_message) {
+						throw new Error("strategy='squash' requires squash_message.");
+					}
+					const sq = await squashSinceParent(cwd, row.branch, row.parentCommit, params.squash_message);
+					if (sq.exitCode !== 0 || sq.complete === false) {
+						throw new Error(
+							sq.error ?? `Squash failed (exit ${sq.exitCode}): ${sq.stderr.trim() || sq.stdout.trim()}`,
+						);
+					}
+					if (sq.wasNoOp) {
+						throw new Error("No commits to squash. The experiment worktree has no commits beyond the parent.");
+					}
+					await finalizeExperimentMerge(cwd, row, "squash", sq.newCommit, onRegistryChanged);
+					return successToolResult(
+						`Squashed ${row.branch} into main as ${sq.newCommit?.slice(0, 7) ?? "(no commit)"}`,
+					);
+				}
+
+				const merge = await runShell(
+					"git",
+					["merge", "--no-ff", row.branch, "-m", `Merge experiment ${row.id} (${row.approach})`],
+					{ cwd },
+				);
+				assertGitOk("Merge failed", merge);
+				const head = await runShell("git", ["rev-parse", "HEAD"], { cwd });
+				assertGitOk("Could not resolve HEAD after merge", head);
+				const newCommit = head.stdout.trim();
+				await finalizeExperimentMerge(cwd, row, "merge", newCommit, onRegistryChanged);
+				return successToolResult(`Merged ${row.branch} into main as ${newCommit?.slice(0, 7) ?? "(unknown)"}`);
+			});
 		},
 	};
 
@@ -591,26 +605,43 @@ export function createExperimentToolDefinitions(
 			const row = getExperiment(cwd, params.experiment_id);
 			if (!row) throw new Error(`Unknown experiment: ${params.experiment_id}`);
 			const keepBranch = params.keep_branch ?? true;
-			if (keepBranch) {
-				const whyPath = join(row.worktreePath, "WHY_IT_FAILED.md");
-				try {
-					await getBun().write(
-						whyPath,
-						`# Why this experiment failed\n\n` +
-							`**Approach:** ${row.approach}\n` +
-							`**Hypothesis:** ${row.hypothesis}\n` +
-							`**Discarded at:** ${new Date().toISOString()}\n\n` +
-							`## Reason\n\n${params.reason}\n\n` +
-							`## Original result\n\n\`\`\`json\n${JSON.stringify(row.result, null, 2)}\n\`\`\`\n`,
-					);
-					await runShellLine('git add WHY_IT_FAILED.md && git commit -m "experiment: record discard reason"', {
-						cwd: row.worktreePath,
-					});
-				} catch {
-					/* worktree may already be unwriteable; continue with removal */
+			// REQ-I04.1: the WHY_IT_FAILED commit, the removal, the conditional
+			// branch delete (folded into removeWorktreeLocked via `!keepBranch`,
+			// REQ-I04.5) and the prune run under ONE repo-lock acquisition — the
+			// split remove+prune window is what the lock exists to close. The row
+			// write stays outside: it only happens once the composite succeeded.
+			const removed = await withWorktreeLock(cwd, async () => {
+				if (keepBranch) {
+					const whyPath = join(row.worktreePath, "WHY_IT_FAILED.md");
+					try {
+						await getBun().write(
+							whyPath,
+							`# Why this experiment failed\n\n` +
+								`**Approach:** ${row.approach}\n` +
+								`**Hypothesis:** ${row.hypothesis}\n` +
+								`**Discarded at:** ${new Date().toISOString()}\n\n` +
+								`## Reason\n\n${params.reason}\n\n` +
+								`## Original result\n\n\`\`\`json\n${JSON.stringify(row.result, null, 2)}\n\`\`\`\n`,
+						);
+						// argv form, never a shell line: the commit message contains spaces
+						// and the shell line would need platform-dependent quoting — the same
+						// rule this file documents for test filters (cmd.exe /c re-parses
+						// embedded quotes differently per platform).
+						await runShell("git", ["add", "WHY_IT_FAILED.md"], { cwd: row.worktreePath });
+						await runShell("git", ["commit", "-m", "experiment: record discard reason"], {
+							cwd: row.worktreePath,
+						});
+					} catch {
+						/* worktree may already be unwriteable; continue with removal */
+					}
 				}
-			}
-			const removed = await removeWorktree(cwd, row.worktreePath, true);
+				const res = await removeWorktreeLocked(cwd, row.worktreePath, true, !keepBranch);
+				if (res.exitCode !== 0 || res.complete === false) return res;
+				// Best-effort prune inside the same acquisition; a failed prune leaves
+				// stale admin dirs but must not mask the successful removal.
+				await runShell("git", ["worktree", "prune"], { cwd });
+				return res;
+			});
 			if (removed.exitCode !== 0 || removed.complete === false) {
 				throw new Error(
 					`${removed.error ?? `git worktree remove failed (exit ${removed.exitCode}): ${removed.stderr.trim()}`}\n\n` +
@@ -618,10 +649,6 @@ export function createExperimentToolDefinitions(
 						` Move-Item "${row.worktreePath}\\node_modules" "${row.worktreePath}\\__nm_backup" -Force\n` +
 						` git worktree remove --force "${row.worktreePath}"`,
 				);
-			}
-			await pruneWorktrees(cwd);
-			if (!keepBranch) {
-				await runShell("git", ["branch", "-D", row.branch], { cwd });
 			}
 			updateExperiment(cwd, row.id, { status: "discarded" });
 			onRegistryChanged?.();

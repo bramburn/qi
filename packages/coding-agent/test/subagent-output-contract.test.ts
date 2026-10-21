@@ -585,6 +585,7 @@ describe("saved subagent specs carry their contract", () => {
 		saveSpec("verifier", {
 			role: "verifier",
 			instructions: "Verify the change.",
+			description: "Verifies a change with schema + gate.",
 			outputSchema: { type: "object", required: ["ok"] },
 			gate: { command: "exit 0", cwd: "packages", timeoutMs: 1000 },
 		});
@@ -604,6 +605,7 @@ describe("saved subagent specs carry their contract", () => {
 		saveSpec("verifier", {
 			role: "verifier",
 			instructions: "Verify the change.",
+			description: "Verifies a change with schema + gate.",
 			outputSchema: { type: "object", required: ["ok"] },
 			gate: { command: PRINT_CWD },
 		});
@@ -627,6 +629,7 @@ describe("saved subagent specs carry their contract", () => {
 		saveSpec("verifier", {
 			role: "verifier",
 			instructions: "Verify the change.",
+			description: "Verifies a change with schema + gate.",
 			gate: { command: "exit 7" },
 		});
 		const tool = createSubagentToolDefinition(process.cwd(), { runner: stubRunner([], "ok") });

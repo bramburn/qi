@@ -1,4 +1,4 @@
-import { TUI_KEYBINDINGS } from "@earendil-works/pi-tui";
+import { TUI_KEYBINDINGS } from "@bramburn/qi-tui";
 import { describe, expect, it } from "vitest";
 import { KEYBINDINGS } from "../src/core/keybindings.ts";
 

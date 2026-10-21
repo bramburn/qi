@@ -1,4 +1,4 @@
-import type { AgentMessage, AgentTool } from "@earendil-works/pi-agent-core";
+import type { AgentMessage, AgentTool } from "@bramburn/qi-agent-core";
 import {
 	type AssistantMessage,
 	type Context,
@@ -7,7 +7,7 @@ import {
 	fauxToolCall,
 	type Model,
 	type SimpleStreamOptions,
-} from "@earendil-works/pi-ai";
+} from "@bramburn/qi-ai";
 import { Type } from "typebox";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { estimateTokens } from "../../src/core/compaction/index.ts";
@@ -150,9 +150,10 @@ describe("AgentSession compaction characterization", () => {
 		const compactionEntries = harness.sessionManager.getEntries().filter((entry) => entry.type === "compaction");
 		const estimatedTokensAfter = harness.session.messages.reduce((sum, message) => sum + estimateTokens(message), 0);
 
-		expect(result.summary).toBe("summary from extension");
-		expect(result.usage).toEqual(summaryUsage);
-		expect(result.estimatedTokensAfter).toBe(estimatedTokensAfter);
+		expect(result, "manual compaction must not skip for a seeded session").toBeDefined();
+		expect(result!.summary).toBe("summary from extension");
+		expect(result!.usage).toEqual(summaryUsage);
+		expect(result!.estimatedTokensAfter).toBe(estimatedTokensAfter);
 		expect(compactionEntries).toHaveLength(1);
 		const compactionEntry = compactionEntries[0];
 		if (compactionEntry?.type === "compaction") {
@@ -226,7 +227,8 @@ describe("AgentSession compaction characterization", () => {
 
 		const result = await harness.session.compact();
 
-		expect(result.summary).toContain("summary from custom stream");
+		expect(result, "manual compaction must not skip for a seeded session").toBeDefined();
+		expect(result!.summary).toContain("summary from custom stream");
 		expect(getStreamCallCount()).toBe(1);
 	});
 
@@ -261,7 +263,8 @@ describe("AgentSession compaction characterization", () => {
 
 		const result = await harness.session.compact();
 
-		expect(result.summary).toContain("summary with bearer auth");
+		expect(result, "manual compaction must not skip for a seeded session").toBeDefined();
+		expect(result!.summary).toContain("summary with bearer auth");
 		expect(harness.faux.state.callCount).toBe(1);
 	});
 
@@ -302,7 +305,8 @@ describe("AgentSession compaction characterization", () => {
 		const result = await harness.session.compact();
 
 		const compactionEntries = harness.sessionManager.getEntries().filter((entry) => entry.type === "compaction");
-		expect(result.usage).toEqual(createUsage(10));
+		expect(result, "manual compaction must not skip for a seeded session").toBeDefined();
+		expect(result!.usage).toEqual(createUsage(10));
 		expect(compactionEntries).toHaveLength(1);
 		expect(compactionEntries[0]?.type === "compaction" ? compactionEntries[0].usage : undefined).toEqual(
 			createUsage(10),

@@ -45,7 +45,12 @@
  * File IO uses `node:fs` deliberately, per AGENTS.md: the lock needs
  * exclusive-create (`openSync(path, "wx")`), a write through the held fd
  * (`writeSync`), and synchronous reads/stat stamps for the staleness and
- * takeover checks. `Bun.write`/`Bun.file` provide none of those.
+ * takeover checks. `Bun.write`/`Bun.file` provide none of those. The calls go
+ * through the default export as property accesses (`fs.openSync(...)`) rather
+ * than destructured named imports: the tests observe lock IO by spying the
+ * shared fs object (`require("node:fs")` + `syncBuiltinESMExports()`), and a
+ * named-import binding captures the function value at module load, which that
+ * seam cannot reach under the Bun-hosted vitest runner.
  *
  * The git subprocess goes through `runShell` (shell.ts) — the same execution
  * mechanism worktree.ts uses. Calling it from here rather than importing
@@ -54,7 +59,7 @@
  * share.
  */
 
-import { closeSync, openSync, readFileSync, statSync, unlinkSync, writeSync } from "node:fs";
+import fs from "node:fs";
 import { join, resolve as resolvePath } from "node:path";
 import { runShell } from "./shell.ts";
 
@@ -74,13 +79,30 @@ const RETRY_MAX_MS = 250;
  */
 const CORRUPT_LOCK_STALE_MS = 30_000;
 
+/**
+ * Why a {@link WorktreeLockError} was raised (REQ-I04.3): `unresolved` means
+ * the lock path itself could not be derived (bad repo / git failure),
+ * `contended` means another holder kept the lock past the wait budget.
+ */
+export type WorktreeLockErrorReason = "unresolved" | "contended";
+
 /** Thrown when the lock stays held past the wait budget, or the repo cannot be locked. */
 export class WorktreeLockError extends Error {
-	readonly lockPath: string;
-	constructor(message: string, lockPath: string) {
+	/** Lock file path, or `null` when it could never be resolved (never `""`). */
+	readonly lockPath: string | null;
+	readonly reason: WorktreeLockErrorReason;
+	/** Repository whose mutation was refused; `""` only for pre-2.1 constructed errors. */
+	readonly repoRoot: string;
+	constructor(
+		message: string,
+		lockPath: string | null,
+		opts?: { reason?: WorktreeLockErrorReason; repoRoot?: string },
+	) {
 		super(message);
 		this.name = "WorktreeLockError";
 		this.lockPath = lockPath;
+		this.reason = opts?.reason ?? (lockPath === null || lockPath === "" ? "unresolved" : "contended");
+		this.repoRoot = opts?.repoRoot ?? "";
 	}
 }
 
@@ -111,7 +133,8 @@ export async function resolveWorktreeLockPath(repoRoot: string): Promise<string>
 		const detail = res.stderr.trim() || res.stdout.trim() || "(no output)";
 		throw new WorktreeLockError(
 			`cannot lock worktree mutations: git rev-parse --git-common-dir failed in ${repoRoot} (exit ${res.exitCode}): ${detail}`,
-			"",
+			null,
+			{ reason: "unresolved", repoRoot },
 		);
 	}
 	return join(resolvePath(repoRoot, out), WORKTREE_LOCK_FILE_NAME);
@@ -162,14 +185,14 @@ interface LockSnapshot {
 function readSnapshot(path: string): LockSnapshot | undefined {
 	let text: string;
 	try {
-		text = readFileSync(path, "utf8");
+		text = fs.readFileSync(path, "utf8");
 	} catch {
 		return undefined; // lock is gone
 	}
 	let size: number;
 	let mtimeMs: number;
 	try {
-		const st = statSync(path);
+		const st = fs.statSync(path);
 		size = st.size;
 		mtimeMs = st.mtimeMs;
 	} catch {
@@ -194,33 +217,36 @@ function breakLockIfUnchanged(path: string, decided: LockSnapshot): void {
 	if (now === undefined) return;
 	if (now.text !== decided.text || now.size !== decided.size || now.mtimeMs !== decided.mtimeMs) return;
 	try {
-		unlinkSync(path);
+		fs.unlinkSync(path);
 	} catch {
 		/* already gone */
 	}
 }
 
-function heldMessage(record: LockRecord | undefined, lockPath: string): string {
+function heldMessage(record: LockRecord | undefined, lockPath: string, brokeStaleLock: boolean): string {
 	const holder = record ? `pid ${record.pid} since ${new Date(record.startedAt).toISOString()}` : "unknown pid";
-	return `another run is mutating worktrees in this repo (${holder}) [${lockPath}]`;
+	// REQ-I04.4: once the one permitted stale break is spent, the holder named
+	// above may be a fresh corpse — say so instead of presenting it as live.
+	const budgetNote = brokeStaleLock ? "; stale-break budget (1) was spent" : "";
+	return `another run is mutating worktrees in this repo (${holder}${budgetNote}) [${lockPath}]`;
 }
 
 /**
  * Acquire the exclusive lock, waiting up to `waitMs`. Returns the
  * per-acquisition token that release() must match.
  */
-async function acquireLock(lockPath: string, waitMs: number): Promise<string> {
+async function acquireLock(lockPath: string, waitMs: number, repoRoot: string): Promise<string> {
 	const deadline = Date.now() + waitMs;
 	let brokeStaleLock = false;
 	let delay = RETRY_BASE_MS;
 	while (true) {
 		const token = crypto.randomUUID();
 		try {
-			const fd = openSync(lockPath, "wx");
+			const fd = fs.openSync(lockPath, "wx");
 			try {
-				writeSync(fd, JSON.stringify({ pid: process.pid, startedAt: Date.now(), token }));
+				fs.writeSync(fd, JSON.stringify({ pid: process.pid, startedAt: Date.now(), token }));
 			} finally {
-				closeSync(fd);
+				fs.closeSync(fd);
 			}
 			return token;
 		} catch (err) {
@@ -230,7 +256,12 @@ async function acquireLock(lockPath: string, waitMs: number): Promise<string> {
 		const snapshot = readSnapshot(lockPath);
 		if (snapshot === undefined) {
 			// Someone just released — retry promptly, but never spin.
-			if (Date.now() >= deadline) throw new WorktreeLockError(heldMessage(undefined, lockPath), lockPath);
+			if (Date.now() >= deadline) {
+				throw new WorktreeLockError(heldMessage(undefined, lockPath, brokeStaleLock), lockPath, {
+					reason: "contended",
+					repoRoot,
+				});
+			}
 			await sleep(delay);
 			delay = Math.min(delay * 2, RETRY_MAX_MS);
 			continue;
@@ -239,13 +270,36 @@ async function acquireLock(lockPath: string, waitMs: number): Promise<string> {
 		const stale =
 			record !== undefined ? !isProcessAlive(record.pid) : Date.now() - snapshot.mtimeMs > CORRUPT_LOCK_STALE_MS;
 		if (stale && !brokeStaleLock) {
-			// Break at most once per acquisition, then wait for a live holder.
+			// Break at most once per acquisition (REQ-I04.4), then re-read: if the
+			// lock is still there with stale content — the same record, or a rival
+			// re-creating one behind our unlink — the budget is spent and no second
+			// break is permitted, so fail as contended (naming the spent budget)
+			// instead of waiting on a holder that will never clear it. Content that
+			// is present but live (a fresh holder took the file) falls through to the
+			// normal wait below.
 			brokeStaleLock = true;
 			breakLockIfUnchanged(lockPath, snapshot);
+			const after = readSnapshot(lockPath);
+			if (after !== undefined) {
+				const afterRecord = parseRecord(after.text);
+				const stillStale =
+					afterRecord !== undefined
+						? !isProcessAlive(afterRecord.pid)
+						: Date.now() - after.mtimeMs > CORRUPT_LOCK_STALE_MS;
+				if (stillStale) {
+					throw new WorktreeLockError(heldMessage(afterRecord, lockPath, true), lockPath, {
+						reason: "contended",
+						repoRoot,
+					});
+				}
+			}
 			continue;
 		}
 		if (Date.now() >= deadline) {
-			throw new WorktreeLockError(heldMessage(record, lockPath), lockPath);
+			throw new WorktreeLockError(heldMessage(record, lockPath, brokeStaleLock), lockPath, {
+				reason: "contended",
+				repoRoot,
+			});
 		}
 		await sleep(delay);
 		delay = Math.min(delay * 2, RETRY_MAX_MS);
@@ -264,7 +318,7 @@ function releaseLock(lockPath: string, token: string): void {
 	const record = parseRecord(snapshot.text);
 	if (!record || record.token !== token || record.pid !== process.pid) return;
 	try {
-		unlinkSync(lockPath);
+		fs.unlinkSync(lockPath);
 	} catch {
 		/* already gone */
 	}
@@ -288,7 +342,7 @@ export async function withWorktreeLock<T>(
 	opts?: { waitMs?: number },
 ): Promise<T> {
 	const lockPath = await resolveWorktreeLockPath(repoRoot);
-	const token = await acquireLock(lockPath, opts?.waitMs ?? DEFAULT_WORKTREE_LOCK_WAIT_MS);
+	const token = await acquireLock(lockPath, opts?.waitMs ?? DEFAULT_WORKTREE_LOCK_WAIT_MS, repoRoot);
 	try {
 		return await action();
 	} finally {

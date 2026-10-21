@@ -22,7 +22,7 @@
 import { closeSync, openSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
-import type { Message } from "@earendil-works/pi-ai";
+import type { Message } from "@bramburn/qi-ai";
 import { trackDetachedChildPid, untrackDetachedChildPid } from "../../utils/shell.ts";
 import { CONTROL_DIR_ENV, controlDirFor } from "./control.ts";
 import { type BunApi, type BunSpawnOptions, getBun } from "./runtime.ts";
@@ -54,6 +54,16 @@ export interface BunProcessRunnerOptions {
 	killGraceMs?: number;
 	/** Per-tool-call wall-clock budget in ms. The child is killed if a single tool call exceeds this. */
 	toolTimeoutMs?: number;
+	/** Default per-child assistant turn cap when `request.maxTurns` is not set (REQ-D03). */
+	maxTurns?: number;
+	/**
+	 * Default JSONL event-log path for a run whose request carries no `logPath`
+	 * (REQ-O02.1): keyed by the runId the runner mints, so inline runs land in
+	 * the same `<taskId>/log.jsonl` layout the background registry reads. The
+	 * shipped tool factory wires this to `inlineTaskDir`; tests and callers that
+	 * want no log omit it.
+	 */
+	inlineLogPathFor?: (runId: string) => string;
 }
 
 // ============================================================================
@@ -335,8 +345,12 @@ export function createBunProcessRunner(options?: BunProcessRunnerOptions): Subag
 					role: request.spec.role,
 					timeoutMs: request.timeoutMs,
 					killGraceMs: options?.killGraceMs,
-					logPath: request.logPath,
+					// REQ-O02.1: an inline run with no explicit logPath still tees its
+					// lifecycle events to `<inlineTaskDir(runId)>/log.jsonl`, the same
+					// layout the dashboard's log overlay reads for background tasks.
+					logPath: request.logPath ?? options?.inlineLogPathFor?.(runId),
 					toolTimeoutMs: options?.toolTimeoutMs,
+					maxTurns: request.maxTurns ?? options?.maxTurns,
 					checkpointBeforeDeadlineMs: request.checkpointBeforeDeadlineMs,
 				};
 
@@ -390,6 +404,7 @@ interface ChildRequest {
 	killGraceMs?: number;
 	logPath?: string;
 	toolTimeoutMs?: number;
+	maxTurns?: number;
 	checkpointBeforeDeadlineMs?: number;
 }
 
@@ -412,6 +427,8 @@ function applyJsonEvent(
 	streams: ChildStreams,
 	emit: SubagentEventListener,
 	resetToolTimer: () => void,
+	maxTurns: number | undefined,
+	onTurnCapReached: () => void,
 ): void {
 	const type = event.type;
 	// Capture session_start before the message-type gate: it is a control event,
@@ -429,6 +446,13 @@ function applyJsonEvent(
 	if (type === "message_end") {
 		applyAssistantMessage(message, streams);
 		emit({ type: "message_end", message });
+		// REQ-D03: the child's own stream handler is the enforcement point — a turn
+		// cap reached in the JSONL handler kills the child through the same
+		// tree-kill path every other kill uses (stdin is "ignore" and the JSONL
+		// channel is one-way outbound, so no graceful wrap-up can be injected).
+		if (maxTurns !== undefined && maxTurns > 0 && streams.usage.turns >= maxTurns) {
+			onTurnCapReached();
+		}
 	} else {
 		emit({ type: "tool_result_end", message });
 	}
@@ -465,6 +489,8 @@ function finishResult(
 	timeoutMs: number | undefined,
 	toolTimedOut: boolean,
 	toolTimeoutMs: number | undefined,
+	turnCapped: boolean,
+	maxTurns: number | undefined,
 ): void {
 	result.messages = streams.messages;
 	result.finalOutput = streams.finalOutput;
@@ -481,7 +507,17 @@ function finishResult(
 		result.aborted = true;
 		result.errorMessage = `Subagent tool call timed out after ${toolTimeoutMs}ms`;
 	}
-	if (killed && !timedOut && !toolTimedOut) result.aborted = true;
+	if (turnCapped) {
+		// REQ-D03.3: partial output is preserved and the stop is explicit, so the
+		// parent (and a later `resume`) can see exactly why the child died.
+		result.aborted = true;
+		result.turnCapExceeded = true;
+		const notice = `[Stopped at turn cap (${maxTurns} turns). Resume this subagent session to continue.]`;
+		result.finalOutput = result.finalOutput ? `${result.finalOutput}\n\n${notice}` : notice;
+		result.stopReason = "turn_cap";
+		result.errorMessage = `Subagent stopped at turn cap (${maxTurns} turns)`;
+	}
+	if (killed && !timedOut && !toolTimedOut && !turnCapped) result.aborted = true;
 }
 
 /** Attach the caller's AbortSignal to a kill callback. Returns a detach function. */
@@ -575,6 +611,7 @@ async function runChild(
 	let killed = false;
 	let timedOut = false;
 	let toolTimedOut = false;
+	let turnCapped = false;
 	const kills = createKillController(proc, child.killGraceMs);
 	const killOnce = () => {
 		killed = true;
@@ -633,8 +670,14 @@ async function runChild(
 	// progress, not stay silent until it exits. The pumps run with the child and
 	// release only after it is gone, so the drain grace bounds the post-exit
 	// wait and never the child's lifetime.
+	const onTurnCapReached = (): void => {
+		turnCapped = true;
+		killOnce();
+	};
 	const stdoutPump = createStreamPump(proc.stdout, (chunk) => {
-		parser.push(chunk, (event) => applyJsonEvent(event, streams, emit, resetToolTimer));
+		parser.push(chunk, (event) =>
+			applyJsonEvent(event, streams, emit, resetToolTimer, child.maxTurns, onTurnCapReached),
+		);
 	});
 	const stderrBuffer = new BoundedText(MAX_STDERR_CHARS);
 	const stderrPump = createStreamPump(proc.stderr, (chunk) => {
@@ -657,13 +700,23 @@ async function runChild(
 	// Flush AFTER the drain, not before: a final JSONL line without a trailing
 	// newline that completes during the drain window sits in the parser buffer
 	// past a pre-release flush, and the run's last event would be dropped.
-	parser.flush((event) => applyJsonEvent(event, streams, emit, resetToolTimer));
+	parser.flush((event) => applyJsonEvent(event, streams, emit, resetToolTimer, child.maxTurns, onTurnCapReached));
 	kills.dispose();
 	if (proc.pid) untrackDetachedChildPid(proc.pid);
 
 	result.stderr = stderrBuffer.text;
 	result.exitCode = exitCode ?? HARD_KILL_EXIT_CODE;
-	finishResult(result, streams, killed, timedOut, child.timeoutMs, toolTimedOut, child.toolTimeoutMs);
+	finishResult(
+		result,
+		streams,
+		killed,
+		timedOut,
+		child.timeoutMs,
+		toolTimedOut,
+		child.toolTimeoutMs,
+		turnCapped,
+		child.maxTurns,
+	);
 	const signalName = killed ? "SIGTERM" : null;
 	emit({ type: "exit", exitCode, signal: signalName });
 	log.append({ type: "EXIT", exitCode, killed });

@@ -10,7 +10,7 @@
 import { appendFileSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { setKeybindings, TuiMainScreen } from "@earendil-works/pi-tui";
+import { setKeybindings, TuiMainScreen } from "@bramburn/qi-tui";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { defaultEditorTheme } from "../../tui/test/test-themes.ts";
 import { VirtualTerminal } from "../../tui/test/virtual-terminal.ts";
@@ -505,6 +505,7 @@ describe("background dashboard navigation wiring", () => {
 		bgLogOverlayOpen: boolean;
 		bgLogOverlayEscapeHandler?: () => void;
 		toggleBackgroundDashboard(): void;
+		collectDashboardTasks(): BackgroundTask[];
 		closeBackgroundDashboard(): void;
 		setBackgroundDashboardNavigation(active: boolean): void;
 		moveBackgroundDashboardSelection(delta: number): void;
@@ -541,6 +542,7 @@ describe("background dashboard navigation wiring", () => {
 			bgLogOverlayOpen: false,
 			bgLogOverlayEscapeHandler: undefined,
 			toggleBackgroundDashboard: methods.toggleBackgroundDashboard,
+			collectDashboardTasks: methods.collectDashboardTasks,
 			closeBackgroundDashboard: methods.closeBackgroundDashboard,
 			setBackgroundDashboardNavigation: methods.setBackgroundDashboardNavigation,
 			moveBackgroundDashboardSelection: methods.moveBackgroundDashboardSelection,

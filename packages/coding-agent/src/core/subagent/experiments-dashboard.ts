@@ -19,6 +19,7 @@ import { getAgentDir } from "../../config.ts";
 import type { Theme } from "../../modes/interactive/theme/theme.ts";
 import { type BackgroundTask, BG_DIR_NAME, BG_LOG_FILE } from "./background.ts";
 import { type ExperimentStatus, listExperiments } from "./experiment-registry.ts";
+import { INLINE_TASK_DIR_NAME } from "./subagent-tool.ts";
 
 export const UI_KEYS = {
 	STATUS_KEY: "experiments",
@@ -264,6 +265,15 @@ export function backgroundLogPath(taskId: string): string {
 }
 
 /**
+ * Resolve the absolute path of an INLINE run's append-only log file
+ * (REQ-O02.1): the same `<taskId>/log.jsonl` layout, keyed by the run id,
+ * under the shared `subagent-control/<runId>/` directory.
+ */
+export function inlineLogPath(runId: string): string {
+	return join(getAgentDir(), INLINE_TASK_DIR_NAME, runId, BG_LOG_FILE);
+}
+
+/**
  * Trusted-root check for every file the dashboard opens. A task id is joined
  * into a filesystem path, so a hostile registry row (`../../somewhere`) must
  * not be able to steer the reader outside our own agent dir. Canonicalizes
@@ -297,8 +307,26 @@ export function readBackgroundLogTail(
 	maxBytes = BG_LOG_MAX_BYTES,
 	maxRecords = BG_LOG_MAX_RECORDS,
 ): BackgroundLogTail {
-	const path = backgroundLogPath(taskId);
-	if (!pathIsUnder(path, join(getAgentDir(), BG_DIR_NAME))) {
+	return readLogTailAt(backgroundLogPath(taskId), join(getAgentDir(), BG_DIR_NAME), maxBytes, maxRecords);
+}
+
+/**
+ * Read the tail of an INLINE run's `log.jsonl` (REQ-O02.1/O02.3). Same bounds,
+ * same record shape, same traversal containment as the background reader — the
+ * overlay renders either source identically. An id that escapes the
+ * `subagent-control` root reads as an empty tail.
+ */
+export function readInlineLogTail(
+	runId: string,
+	maxBytes = BG_LOG_MAX_BYTES,
+	maxRecords = BG_LOG_MAX_RECORDS,
+): BackgroundLogTail {
+	return readLogTailAt(inlineLogPath(runId), join(getAgentDir(), INLINE_TASK_DIR_NAME), maxBytes, maxRecords);
+}
+
+/** Bounded, traversal-checked JSONL tail reader shared by both log sources. */
+function readLogTailAt(path: string, root: string, maxBytes: number, maxRecords: number): BackgroundLogTail {
+	if (!pathIsUnder(path, root)) {
 		return { records: [], truncated: false, totalLines: 0 };
 	}
 	if (!existsSync(path)) return { records: [], truncated: false, totalLines: 0 };

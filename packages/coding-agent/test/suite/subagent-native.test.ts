@@ -10,7 +10,7 @@
 
 import { existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
-import { fauxAssistantMessage, fauxToolCall } from "@earendil-works/pi-ai";
+import { fauxAssistantMessage, fauxToolCall } from "@bramburn/qi-ai";
 import Database from "better-sqlite3";
 import { Type } from "typebox";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -63,9 +63,9 @@ describe("native subagent tool end-to-end", () => {
 			rmSync(analyticsHome, { recursive: true, force: true });
 		}
 		if (previousAnalyticsHome === undefined) {
-			delete process.env.PI_TEST_ANALYTICS_HOME;
+			delete process.env.QI_TEST_ANALYTICS_HOME;
 		} else {
-			process.env.PI_TEST_ANALYTICS_HOME = previousAnalyticsHome;
+			process.env.QI_TEST_ANALYTICS_HOME = previousAnalyticsHome;
 		}
 		previousAnalyticsHome = undefined;
 		analyticsHome = undefined;
@@ -102,10 +102,10 @@ describe("native subagent tool end-to-end", () => {
 
 			// Isolated analytics DB so the assertion reads a real row without
 			// touching the user's telemetry store.
-			previousAnalyticsHome = process.env.PI_TEST_ANALYTICS_HOME;
+			previousAnalyticsHome = process.env.QI_TEST_ANALYTICS_HOME;
 			analyticsHome = join(harness.tempDir, "analytics-home");
 			mkdirSync(analyticsHome, { recursive: true });
-			process.env.PI_TEST_ANALYTICS_HOME = analyticsHome;
+			process.env.QI_TEST_ANALYTICS_HOME = analyticsHome;
 			getAnalyticsStore().beginRun("test-session", null);
 
 			harness.setResponses([

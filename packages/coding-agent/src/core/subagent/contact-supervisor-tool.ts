@@ -2,7 +2,7 @@
  * `contact_supervisor` (issue #1048, Stage 3): the child's way to ask the parent
  * a question when a decision genuinely needs a human or the orchestrating model.
  *
- * Registration is env-gated on `PI_SUBAGENT_SUPERVISOR_DIR` — a child that was
+ * Registration is env-gated on `QI_SUBAGENT_SUPERVISOR_DIR` — a child that was
  * not launched with a supervisor directory must not see this tool, because asking
  * would produce nothing but a hang.
  *
@@ -12,7 +12,7 @@
  * than a silent block.
  */
 
-import type { AgentTool, AgentToolResult } from "@earendil-works/pi-agent-core";
+import type { AgentTool, AgentToolResult } from "@bramburn/qi-agent-core";
 import { type Static, Type } from "typebox";
 import type { ToolDefinition } from "../extensions/types.ts";
 import { wrapToolDefinition } from "../tools/tool-definition-wrapper.ts";

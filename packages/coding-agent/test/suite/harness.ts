@@ -6,15 +6,10 @@ import { createInMemoryModelRegistry, createModelRegistry, getModelRuntime } fro
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { AgentMessage, AgentTool } from "@earendil-works/pi-agent-core";
-import { Agent } from "@earendil-works/pi-agent-core";
-import type {
-	FauxModelDefinition,
-	FauxProviderRegistration,
-	FauxResponseStep,
-	Model,
-} from "@earendil-works/pi-ai/compat";
-import { registerFauxProvider, streamSimple } from "@earendil-works/pi-ai/compat";
+import type { AgentMessage, AgentTool } from "@bramburn/qi-agent-core";
+import { Agent } from "@bramburn/qi-agent-core";
+import type { FauxModelDefinition, FauxProviderRegistration, FauxResponseStep, Model } from "@bramburn/qi-ai/compat";
+import { registerFauxProvider, streamSimple } from "@bramburn/qi-ai/compat";
 import { beforeEach } from "vitest";
 import { ENV_AGENT_DIR } from "../../src/config.ts";
 import { AgentSession, type AgentSessionEvent } from "../../src/core/agent-session.ts";
@@ -32,17 +27,15 @@ import {
 } from "../utilities.ts";
 
 // Ambient `PI_*` variables leak in from whatever shell runs the suite — often a pi
-// session itself, which exports `PI_MODEL`, `PI_PROVIDER`, `PI_SUMMARIZER_*` and
-// `PI_HOTSWAP_SUMMARIZER_IDLE_MS`. They change model routing: with
-// `PI_SUMMARIZER_MODEL`/`PI_SUMMARIZER_API_KEY` set, compaction leaves the
-// session model and calls that real summariser instead of the faux provider, so
-// `test/suite/` reaches a real API (and spends money) while its canned-response
-// assertions fail. Scrub the whole family before each test so a run behaves the
-// same on every machine and only sees the env a test sets itself.
+// session itself, which exports `QI_MODEL` and `QI_PROVIDER`. They change model
+// routing, so `test/suite/` could reach a real API (and spend money) instead of
+// the faux provider its canned-response assertions expect. Scrub the whole
+// family before each test so a run behaves the same on every machine and only
+// sees the env a test sets itself.
 //
-// `PI_OFFLINE` is the one keeper: the vitest config sets it (test.env) to keep
+// `QI_OFFLINE` is the one keeper: the vitest config sets it (test.env) to keep
 // tests off the network, so dropping it would be a safety regression.
-const SCRUBBED_PI_ENV_KEPT = new Set(["PI_OFFLINE"]);
+const SCRUBBED_PI_ENV_KEPT = new Set(["QI_OFFLINE"]);
 
 export function scrubAmbientPiEnv(): void {
 	for (const name of Object.keys(process.env)) {

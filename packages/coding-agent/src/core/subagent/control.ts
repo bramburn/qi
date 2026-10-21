@@ -60,7 +60,7 @@ export const CONTROL_VERSION = 1;
  * reads it. Deliberately not derived from the agent dir: a child must not have
  * to guess which task row is its own.
  */
-export const CONTROL_DIR_ENV = "PI_SUBAGENT_CONTROL_DIR";
+export const CONTROL_DIR_ENV = "QI_SUBAGENT_CONTROL_DIR";
 
 /** Upper bound on the steer text carried by one request, in UTF-8 bytes. */
 export const CONTROL_MAX_MESSAGE_BYTES = 50 * 1024;

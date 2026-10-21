@@ -58,6 +58,16 @@ export const SESSION_LEASE_VERSION = 1;
  * passes tolerate three simultaneous rivals without spinning.
  */
 const MAX_ACQUIRE_ATTEMPTS = 4;
+/**
+ * REQ-L01 (time-based expiry): a lease whose record has not been touched for
+ * this long becomes breakable once its holder pid is provably gone — even when
+ * the recorded writer cannot be proven gone (on win32 process start identity is
+ * unprovable, so a recycled writer pid reads as live forever and nothing else
+ * could ever break the lease). Expiry is death PLUS age: a live holder is never
+ * displaced, and REQ-L02.2 still holds inside the window — death alone never
+ * breaks a `spawning` lease or one whose writer is alive.
+ */
+export const SESSION_LEASE_MAX_AGE_MS = 30 * 60 * 1000;
 /** The only lease-directory basenames `releaseSessionLease` may remove. */
 const LEASE_DIR_PATTERN = /^[0-9a-f]{64}$/;
 
@@ -120,6 +130,8 @@ export interface SessionLeaseOptions {
 	processStartIdentity?: string;
 	isProcessAlive?: (pid: number) => boolean | undefined;
 	getProcessStartIdentity?: (pid: number) => string | undefined;
+	/** REQ-L01 expiry window. Defaults to {@link SESSION_LEASE_MAX_AGE_MS}. */
+	maxAgeMs?: number;
 }
 
 export type SessionLeaseInspection =
@@ -142,7 +154,7 @@ export class SessionLeaseConflictError extends Error {
 	}
 }
 
-/** Resolved lazily: `PI_CODING_AGENT_DIR` can change within a process. */
+/** Resolved lazily: `QI_CODING_AGENT_DIR` can change within a process. */
 export function sessionLeaseRootDir(): string {
 	return join(getAgentDir(), SESSION_LEASES_DIR_NAME);
 }
@@ -305,6 +317,10 @@ interface StaleOptions {
 	hostname: string;
 	isProcessAlive: (pid: number) => boolean | undefined;
 	getProcessStartIdentity: (pid: number) => string | undefined;
+	/** Current time in ms, for the REQ-L01 age check. */
+	now: number;
+	/** Age past which a dead holder's lease is breakable (REQ-L01). */
+	maxAgeMs: number;
 }
 
 function processDemonstrablyGone(pid: number, startIdentity: string | undefined, options: StaleOptions): boolean {
@@ -319,6 +335,11 @@ function processDemonstrablyGone(pid: number, startIdentity: string | undefined,
 function demonstrablyStale(owner: SessionLeaseOwner, options: StaleOptions): boolean {
 	if (owner.hostname !== options.hostname) return false;
 	if (!processDemonstrablyGone(owner.pid, owner.processStartIdentity, options)) return false;
+	// REQ-L01: the holder is provably gone and the record has been silent past
+	// the expiry window — breakable regardless of the writer arm, which on win32
+	// can never prove a recycled pid gone. Within the window the L02 rules below
+	// stand unchanged.
+	if (options.now - owner.updatedAtMs > options.maxAgeMs) return true;
 	// The holder is gone. The child it was writing with is a separate process
 	// that can outlive it, so a lease that recorded a writer is only breakable
 	// once that writer is proven gone as well. "spawning" has no pid to probe
@@ -416,6 +437,8 @@ export function acquireSessionLease(
 		hostname: host,
 		isProcessAlive: options.isProcessAlive ?? processIsAlive,
 		getProcessStartIdentity: getIdentity,
+		now: now(),
+		maxAgeMs: options.maxAgeMs ?? SESSION_LEASE_MAX_AGE_MS,
 	};
 
 	for (let attempt = 0; attempt < MAX_ACQUIRE_ATTEMPTS; attempt++) {

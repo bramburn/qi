@@ -6,14 +6,16 @@
 
 ### Added
 
-- Added `resolveSummariserEnv()` and `resolveSummariserModel()` to `@earendil-works/pi-ai`. The three `PI_SUMMARIZER_*` env vars (`PI_SUMMARIZER_BASE_URL`, `PI_SUMMARIZER_MODEL`, `PI_SUMMARIZER_API_KEY`) — all required — route context summarisation through a one-off OpenAI-compatible model. Both resolvers read `process.env` directly; no `ProviderEnv` parameter is accepted (kept simple so users can flip the override on per shell session). Partial sets log a `console.warn` and fall back to the main model; both functions return `undefined` when no override is configured so callers transparently fall back to the previous behaviour.
 - Added a `VideoContent` content type for video paste support. The Google shared serializer forwards video parts as `inlineData` (Gemini accepts video/* MIME types); the shared message unions are unchanged.
 - Added a `MediaType` vocabulary (`text|image|video|pdf|audio`) for `Model.input`, a `PdfContent` content type, and `modelSupportsMediaUpload()` for media-capability checks. Model catalogs derive input modalities from upstream metadata, and `models.json` `input` (custom model definitions and `modelOverrides`) can declare or override modalities per model.
-- Added optional `PI_SUMMARIZER_MAX_TOKENS` and `PI_SUMMARIZER_THINKING` env vars to the `PI_SUMMARIZER_*` override. `PI_SUMMARIZER_MAX_TOKENS` (positive integer) overrides the summariser output ceiling; `PI_SUMMARIZER_THINKING` (a case-insensitive thinking level: `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`) enables summariser reasoning, with unset or `off` keeping it disabled. Both are independent of the required trio, warn and are ignored on invalid values, and take precedence over `compaction.summaryMaxTokens` / `compaction.summaryThinking` when the override is active.
 
 ### Changed
 
 - Request builds now downgrade media blocks the current model cannot accept to text placeholders (e.g. after a mid-session model swap to a model without video/PDF support), instead of sending them to the provider. Session history keeps the original blocks, so swapping back restores them.
+
+### Fixed
+
+- The OpenRouter model generator now filters catalog entries through `shouldIncludeOpenRouterModel()` (`scripts/openrouter-model-filter.ts`), adding an explicit allowlist for tool-capable models whose live `supported_parameters` metadata does not advertise `tools`. Previously only the hardcoded `auto`/`openrouter/fusion` blocks bypassed the filter, so any other model with lagging metadata was silently dropped from the generated catalog.
 
 ## [0.85.0-b1] - 2026-09-14
 

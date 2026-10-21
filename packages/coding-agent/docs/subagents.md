@@ -139,7 +139,7 @@ Both contracts apply to inline runs only: a `background: true` call that declare
 
 Pass `"background": true` with any mode to detach: the call returns task ids immediately instead of waiting. Background chain steps still run sequentially so `{previous}` keeps working. When a task settles, pi posts a `subagent-background-result` custom message with the outcome and output, queued for the next turn (`deliverAs: "nextTurn"`, `triggerTurn: true`). Background task state lives in an on-disk registry; check it after a restart before assuming a task is still running.
 
-Background dispatch is capped by the same `subagent.maxConcurrent` limit (default 4): a detached call starts up to that many children at once and the rest queue. Overflow is recorded as a `pending` row in the registry — labelled `<role> (queued)`, no process spawned — and promoted in FIFO order whenever a running task settles or is cancelled. So a `background: true` call can no longer start an unbounded number of processes beside the ones already running.
+Background dispatch is capped by the same `subagent.maxConcurrent` budget (default 4) that bounds inline runs — the limit counts every subagent child this pi process has running, not just detached ones, so the worst case is 4 concurrent children in total, not 4 per mode. A detached call starts up to that many children itself and queues the rest. Overflow is recorded as a `pending` row in the registry — labelled `<role> (queued)`, no process spawned — and promoted in FIFO order whenever a running task settles or is cancelled, whether that task was started in the background or inline. Inline runs draw from the same budget, so a full set of inline children holds every background dispatch in the queue until one of them finishes.
 
 A queued task reports its id and queue position in the dispatch result and in `action="status"`, and its result is delivered exactly like a started one: when it settles. Cancelling a queued task drops it from the line without spending a slot. The queue belongs to the session that filled it, so after a restart its `pending` rows are marked crashed alongside running ones — nothing is resumed from a dead session's backlog.
 
@@ -219,7 +219,9 @@ With `enableAnalytics` on, each dispatched run records one `pi_subagent_tasks` r
 - **Match the role to the job.** The `role` is a short specialist label — it labels the run in the UI, logs, and analytics and does not alter the child's prompt. Put any stance or persona differences (e.g. `code-reviewer` vs `scout`) in `instructions`.
 - **Verify instead of trusting.** Give a write/fix step a `gate` pointing at the project's own check command, and give a research or triage step an `outputSchema` so its findings arrive as structured data the next chain step can read. Both are enforced by the host after the child settles, so a confident "tests pass" is either confirmed or reported as a failure.
 
-## Comparison with the npm `pi-subagents` package
+## Comparison with the upstream npm `pi-subagents` package
+
+> **Severed (ADR-0002):** `pi-subagents` was published by the upstream project and is no longer recommended, installed, or maintained alongside `qi`. The paragraph below is kept for historical reference; use the native tool (above) for all delegation.
 
 The native tool covers ad-hoc delegation plus reusable configuration: every call defines its own task, and an [agent definition file](#agent-definition-files) can carry the model, tools, thinking, and standing prompt behind a name. The npm [`pi-subagents`](https://www.npmjs.com/package/pi-subagents) package builds on the same extension API for named, persisted agents with watchdog loops and mission-style task orchestration. Use the native tool for one-shot and short-chain delegation, including named definitions checked into the repo; use the package when you need long-lived named agents or scheduled mission loops.
 

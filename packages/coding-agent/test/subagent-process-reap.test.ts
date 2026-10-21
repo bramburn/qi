@@ -98,13 +98,13 @@ class FakeChild {
 
 describe("background process reaping (REQ-X00 / X01 / X02)", () => {
 	const previousAgentDir = process.env[ENV_AGENT_DIR];
-	const previousAnalyticsHome = process.env.PI_TEST_ANALYTICS_HOME;
+	const previousAnalyticsHome = process.env.QI_TEST_ANALYTICS_HOME;
 	let agentDir: string | undefined;
 
 	beforeEach(() => {
 		agentDir = mkdtempSync(join(tmpdir(), "pi-bg-reap-"));
 		process.env[ENV_AGENT_DIR] = agentDir;
-		process.env.PI_TEST_ANALYTICS_HOME = agentDir;
+		process.env.QI_TEST_ANALYTICS_HOME = agentDir;
 		bunRef.current = makeFakeBun();
 		_resetBackgroundRegistryForTests();
 		_resetBackgroundQueueForTests();
@@ -115,8 +115,8 @@ describe("background process reaping (REQ-X00 / X01 / X02)", () => {
 		_resetBackgroundQueueForTests();
 		if (previousAgentDir === undefined) delete process.env[ENV_AGENT_DIR];
 		else process.env[ENV_AGENT_DIR] = previousAgentDir;
-		if (previousAnalyticsHome === undefined) delete process.env.PI_TEST_ANALYTICS_HOME;
-		else process.env.PI_TEST_ANALYTICS_HOME = previousAnalyticsHome;
+		if (previousAnalyticsHome === undefined) delete process.env.QI_TEST_ANALYTICS_HOME;
+		else process.env.QI_TEST_ANALYTICS_HOME = previousAnalyticsHome;
 		if (agentDir && existsSync(agentDir)) rmSync(agentDir, { recursive: true, force: true });
 		agentDir = undefined;
 	});

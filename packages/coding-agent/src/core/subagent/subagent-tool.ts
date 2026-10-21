@@ -59,8 +59,8 @@
 
 import { existsSync } from "node:fs";
 import { isAbsolute, join, resolve as resolvePath } from "node:path";
-import type { AgentTool, AgentToolResult, AgentToolUpdateCallback, ThinkingLevel } from "@earendil-works/pi-agent-core";
-import type { Message } from "@earendil-works/pi-ai";
+import type { AgentTool, AgentToolResult, AgentToolUpdateCallback, ThinkingLevel } from "@bramburn/qi-agent-core";
+import type { Message } from "@bramburn/qi-ai";
 import { type Static, Type } from "typebox";
 import { getAgentDir } from "../../config.ts";
 import { endSubagentTask, newTaskSpanId, startSubagentTask } from "../analytics-store.ts";
@@ -110,16 +110,19 @@ import {
 	DEFAULT_GATE_TIMEOUT_MS,
 	GATE_OUTPUT_CAP_BYTES,
 	getSubagentResultOutput,
+	type InFlightRun,
 	isFailedSubagentResult,
 	type SubagentEventListener,
 	type SubagentGate,
 	type SubagentGateOutcome,
+	type SubagentIsolation,
 	type SubagentMode,
 	type SubagentResult,
 	type SubagentRunner,
 	type SubagentRunRequest,
 	type SubagentSpec,
 } from "./types.ts";
+import { createWorktree, currentHead, removeWorktree } from "./worktree.ts";
 
 /**
  * Model-facing output cap: parallel per-task summaries, single/chain result
@@ -127,6 +130,69 @@ import {
  * details.
  */
 export const PER_TASK_OUTPUT_CAP = 50 * 1024;
+
+/** Maximum number of saved specs rendered into the subagent tool description (REQ-D04.3). */
+export const MAX_RENDERED_SAVED_SPECS = 16;
+
+/**
+ * Built-in tool capability table (REQ-I02, REQ-P02).
+ * Only pure read-only tools are `concurrentSafe: true` and eligible for un-admitted
+ * detached execution; mutating/shell tools (`bash`, `powershell`, `edit`, `write`, `subagent`)
+ * are `false` (specs/subagent/features/isolation/spec.md §4.2, traceability V28).
+ */
+export const SUBAGENT_TOOL_CONCURRENT_SAFE: Readonly<Record<string, boolean>> = {
+	read: true,
+	grep: true,
+	find: true,
+	ls: true,
+	bash: false,
+	powershell: false,
+	edit: false,
+	write: false,
+	subagent: false,
+};
+
+/**
+ * Core predicate behind REQ-I02 / REQ-C01 / REQ-P02: a tool set is concurrent-safe
+ * (and shell-free) only when it is a non-empty explicit allowlist whose every tool
+ * resolves `concurrentSafe: true`. Omitting `tools` inherits the full coding set
+ * (which includes `bash`, `edit`, `write`), so an omitted or empty list is never
+ * concurrent-safe. A lookup from {@link SubagentToolOptions.isToolConcurrentSafe}
+ * overrides the built-in table per tool name; `undefined` falls back to it.
+ */
+function toolSetIsConcurrentSafe(
+	tools: readonly string[] | undefined,
+	isToolConcurrentSafe?: (toolName: string) => boolean | undefined,
+): boolean {
+	if (tools === undefined || tools.length === 0) return false;
+	return tools.every((name) => {
+		const declared = isToolConcurrentSafe?.(name);
+		if (declared !== undefined) return declared;
+		return SUBAGENT_TOOL_CONCURRENT_SAFE[name.trim()] === true;
+	});
+}
+
+/**
+ * True only when a spec declares an explicit non-empty `tools` allowlist and every
+ * tool in it is marked `concurrentSafe: true` (REQ-I02, REQ-P02 admission helper).
+ */
+export function isConcurrentSafeToolSet(
+	tools: readonly string[] | undefined,
+	isToolConcurrentSafe?: (toolName: string) => boolean | undefined,
+): boolean {
+	return toolSetIsConcurrentSafe(tools, isToolConcurrentSafe);
+}
+
+/**
+ * Per-spec form of {@link isConcurrentSafeToolSet} — the consuming side of
+ * REQ-I02 for parallel/DAG admission (REQ-C01, isolation/spec.md §4.2).
+ */
+export function isSpecConcurrentSafe(
+	spec: { tools?: readonly string[] },
+	isToolConcurrentSafe?: (toolName: string) => boolean | undefined,
+): boolean {
+	return toolSetIsConcurrentSafe(spec.tools, isToolConcurrentSafe);
+}
 
 const subagentSpecProperties = {
 	role: Type.String({
@@ -151,6 +217,19 @@ const subagentSpecProperties = {
 	cwd: Type.Optional(
 		Type.String({
 			description: "Working directory for the subagent. Omit to inherit this session's working directory.",
+		}),
+	),
+	isolation: Type.Optional(
+		Type.Union([Type.Literal("none"), Type.Literal("worktree")], {
+			description:
+				"Filesystem isolation for the subagent ('none' | 'worktree', default 'none'). When 'worktree', an isolated git worktree is created before spawn and passed as the child's cwd, then cleaned up when the child settles. Fails loudly if the worktree cannot be created (never silently downgrades to 'none').",
+			default: "none",
+		}),
+	),
+	allowDetachedShell: Type.Optional(
+		Type.Boolean({
+			description:
+				"Explicit admission to run a detached (`background: true`) subagent with shell or file-mutating tools. Required when `background: true` unless `tools` is narrowed to read-only tools (`read`, `grep`, `find`, `ls`).",
 		}),
 	),
 	outputSchema: Type.Optional(
@@ -228,6 +307,19 @@ export const subagentSchema = Type.Object({
 	cwd: Type.Optional(
 		Type.String({
 			description: "Working directory for the subagent. Omit to inherit this session's working directory.",
+		}),
+	),
+	isolation: Type.Optional(
+		Type.Union([Type.Literal("none"), Type.Literal("worktree")], {
+			description:
+				"Filesystem isolation for the subagent ('none' | 'worktree', default 'none'). When 'worktree', an isolated git worktree is created before spawn and passed as the child's cwd, then cleaned up when the child settles. Fails loudly if the worktree cannot be created (never silently downgrades to 'none').",
+			default: "none",
+		}),
+	),
+	allowDetachedShell: Type.Optional(
+		Type.Boolean({
+			description:
+				"Explicit admission to run a detached (`background: true`) subagent with shell or file-mutating tools. Required when `background: true` unless every dispatched spec narrows `tools` to read-only tools (`read`, `grep`, `find`, `ls`).",
 		}),
 	),
 	// The thinking levels are spelled out because TypeBox infers a literal union
@@ -356,6 +448,12 @@ export const subagentSchema = Type.Object({
 				"Spec name for action 'save-spec' and action 'delete-spec'. A bare filesystem-safe label: no path separators and no '..'. Saving over an existing name overwrites it in place.",
 		}),
 	),
+	description: Type.Optional(
+		Type.String({
+			description:
+				"Required one-line summary for action 'save-spec' describing when to use this saved specialist. Rendered into the subagent tool description so future turns can discover it.",
+		}),
+	),
 });
 
 export type SubagentToolInput = Static<typeof subagentSchema>;
@@ -441,6 +539,12 @@ export interface SubagentToolOptions {
 	 * registry and the task log.
 	 */
 	onBackgroundSettled?: (taskId: string, result: SubagentResult) => void;
+	/**
+	 * Query whether a named tool is marked `concurrentSafe: true` (REQ-I02 / REQ-C01).
+	 * Falls back to the built-in read-only allowlist (`read`, `grep`, `find`, `ls`)
+	 * when omitted or when it returns `undefined`.
+	 */
+	isToolConcurrentSafe?: (toolName: string) => boolean | undefined;
 	/** Background registry. Defaults to the on-disk singleton. Injectable for tests. */
 	registry?: BackgroundRegistry;
 	/** Called after experiment registry mutations so the UI can refresh its status pill. */
@@ -702,9 +806,14 @@ export function resolveResumeTarget(registry: BackgroundRegistry, rawId: string 
 		);
 	}
 	if (row.status === "cancelled") {
-		throw new Error(
-			`Background task ${id} was cancelled, so it cannot be resumed. A cancellation does not signal the detached child — it may still be writing that session file, and resuming would put two processes on one JSONL. Dispatch a fresh run instead.`,
-		);
+		// REQ-D03.4: a turn-cap stop reports `aborted` and therefore lands as
+		// `cancelled`, but unlike a real cancellation it DID signal the child —
+		// the session file is quiescent, so the run stays resumable.
+		if (!row.errorMessage?.includes("turn cap")) {
+			throw new Error(
+				`Background task ${id} was cancelled, so it cannot be resumed. A cancellation does not signal the detached child — it may still be writing that session file, and resuming would put two processes on one JSONL. Dispatch a fresh run instead.`,
+			);
+		}
 	}
 	if (row.sessionFile === undefined) {
 		throw new Error(
@@ -756,6 +865,23 @@ function acquireRedirectLease(action: "steer" | "swap-model" | "resume", target:
 }
 
 /**
+ * Record the child a redirect lease writes with (REQ-L02.1, durability spec §2.3).
+ * `updateWriter` throws when the record is already gone; a late `spawned` event
+ * after the lease was released must warn, never reject the settle path
+ * (REQ-L02.3).
+ */
+function safeUpdateLeaseWriter(
+	lease: SessionLeaseHandle,
+	writer: { state: "none" | "spawning" | "running"; pid?: number },
+): void {
+	try {
+		lease.updateWriter(writer);
+	} catch (err) {
+		console.warn(`[subagent] ${err instanceof Error ? err.message : String(err)}`);
+	}
+}
+
+/**
  * Validate a saved-spec label. Names become file components in the spec store,
  * so they are bare labels: no separators, no `..`, not empty. `site` names the
  * field being checked, for the error message.
@@ -795,6 +921,32 @@ function unknownAgentError(name: string, cwd: string): string {
 }
 
 /**
+ * Render saved specs into the tool description, capped at
+ * {@link MAX_RENDERED_SAVED_SPECS} with the cap disclosed (REQ-D04.2, REQ-D04.3).
+ * Returns "" when nothing is saved or the store cannot be read, so the
+ * description reads exactly as it did before any spec existed.
+ */
+export function formatSavedSpecsForDescription(): string {
+	let specs: ReturnType<typeof listSpecs>;
+	try {
+		specs = listSpecs();
+	} catch {
+		return "";
+	}
+	if (specs.length === 0) return "";
+	const shown = specs.slice(0, MAX_RENDERED_SAVED_SPECS);
+	const entries = shown.map((entry) => {
+		const summary = entry.description ?? entry.spec.description ?? `role=${entry.spec.role}`;
+		return `"${entry.name}" (${summary})`;
+	});
+	const overflow =
+		specs.length > MAX_RENDERED_SAVED_SPECS
+			? ` (showing ${MAX_RENDERED_SAVED_SPECS} of ${specs.length}; run action="list-specs" for all)`
+			: "";
+	return `Saved specialists (dispatch with \`agent: "<name>"\`)${overflow}: ${entries.join("; ")}.`;
+}
+
+/**
  * Registration guard: the `subagent.enabled` master switch and the runtime.
  *
  * The default runner is Bun-only (`pi.dev` ships as a Bun build), so without an
@@ -818,6 +970,8 @@ interface ParentContext {
 	 * child it produces needs exactly the same value.
 	 */
 	depth?: number;
+	/** Per-child assistant turn limit inherited from the live settings (REQ-D03). */
+	maxTurns?: number;
 }
 
 /**
@@ -1036,6 +1190,48 @@ export async function applyOutputContract(
 	return { ...settled, gate, errorMessage: gateFailureMessage(spec.role, gate) };
 }
 
+/** Mint a collision-resistant worktree slug for a subagent run (REQ-I01.2). */
+function makeSubagentWorktreeSlug(role: string): string {
+	const clean = role
+		.toLowerCase()
+		.replace(/[^a-z0-9-]+/g, "-")
+		.replace(/^-+|-+$/g, "")
+		.slice(0, 24);
+	const prefix = clean || "subagent";
+	const rand = Math.random().toString(36).slice(2, 8);
+	return `${prefix}-${Date.now().toString(36)}-${rand}`;
+}
+
+/** Append the worktree disclosure note required by REQ-I01.5. */
+function appendWorktreeNote(output: string, slug: string, worktreePath: string): string {
+	const note = `[Worktree: ${slug} at ${worktreePath}]`;
+	return output.trim() === "" ? note : `${output}\n\n${note}`;
+}
+
+/**
+ * Check REQ-P02 detached-child admission before any background task is spawned.
+ * Returns an E1-class error message naming the offending role and both remedies
+ * when `background: true` is requested without either `allowDetachedShell: true`
+ * or a `tools` allowlist restricted to `{read, grep, find, ls}`.
+ */
+export function checkDetachedAdmission(
+	specs: readonly SubagentSpec[],
+	topLevelAllowDetachedShell?: boolean,
+): string | undefined {
+	for (const spec of specs) {
+		const admitted =
+			topLevelAllowDetachedShell === true || spec.allowDetachedShell === true || isConcurrentSafeToolSet(spec.tools);
+		if (!admitted) {
+			const toolsDesc =
+				spec.tools === undefined || spec.tools.length === 0
+					? "the default tool set (includes bash, edit, write)"
+					: `tools=[${spec.tools.join(", ")}]`;
+			return `Detached subagent admission refused for "${spec.role}": background: true with ${toolsDesc} requires explicit admission. Either pass \`allowDetachedShell: true\` to grant background shell/write access, narrow \`tools\` to read-only tools (\`["read", "grep", "find", "ls"]\`), or omit \`background: true\` to run inline.`;
+		}
+	}
+	return undefined;
+}
+
 /** Run one subagent and record exactly one analytics span for it. */
 async function runOne(
 	runner: SubagentRunner,
@@ -1046,15 +1242,51 @@ async function runOne(
 	step: number | undefined,
 	signal: AbortSignal | undefined,
 	onPartial?: (snapshot: SubagentResult) => void,
+	worktreeBase: string = DEFAULT_SUBAGENT_SETTINGS.worktreeBase,
 ): Promise<SubagentResult> {
-	const cwd = spec.cwd ? (isAbsolute(spec.cwd) ? spec.cwd : resolvePath(baseCwd, spec.cwd)) : baseCwd;
+	const repoCwd = spec.cwd ? (isAbsolute(spec.cwd) ? spec.cwd : resolvePath(baseCwd, spec.cwd)) : baseCwd;
+	let cwd = repoCwd;
+	let createdWorktree: { slug: string; path: string } | undefined;
+	if (spec.isolation === "worktree") {
+		const slug = makeSubagentWorktreeSlug(spec.role);
+		try {
+			const parentCommit = await currentHead(repoCwd);
+			const wt = await createWorktree(repoCwd, slug, parentCommit, worktreeBase);
+			if (wt.exitCode !== 0 || wt.complete === false) {
+				throw new Error(wt.error ?? `git worktree add failed (exit ${wt.exitCode})`);
+			}
+			createdWorktree = { slug, path: wt.worktreePath };
+			cwd = wt.worktreePath;
+		} catch (err) {
+			// REQ-I01.4: worktree creation failure surfaces as an E1-class error and
+			// never silently downgrades to isolation: "none" in the base working tree.
+			const reason = err instanceof Error ? err.message : String(err);
+			const errorMessage = `Worktree isolation failed for subagent "${spec.role}" in ${repoCwd}: ${reason}. No child process was spawned (isolation: "worktree" never silently downgrades to "none"). Fix the repository/worktree state or set isolation: "none" if shared-tree execution is intended.`;
+			return {
+				role: spec.role,
+				task: spec.instructions,
+				exitCode: -1,
+				aborted: false,
+				finalOutput: "",
+				stderr: errorMessage,
+				usage: createEmptyUsage(),
+				...(step === undefined ? {} : { step }),
+				...(spec.gate === undefined ? {} : { gate: skippedGate(spec.gate, repoCwd, "child-failed") }),
+				messages: [],
+				errorMessage,
+			};
+		}
+	}
 	// A schema-bound child gets the format contract in its system prompt; the
 	// authored `instructions` stay the run's task text everywhere they are
 	// reported (result, in-flight snapshot, span label), so nothing downstream
-	// has to know the block was appended.
+	// has to know the block was appended. The child always runs in `cwd` — for
+	// an isolated dispatch that is the worktree, never the base tree.
 	const schemaBlock = spec.outputSchema === undefined ? undefined : buildSchemaInstruction(spec.outputSchema);
 	const childSpec: SubagentSpec =
-		schemaBlock === undefined ? spec : { ...spec, instructions: `${spec.instructions}\n\n${schemaBlock}` };
+		schemaBlock === undefined
+			? { ...spec, cwd }
+			: { ...spec, cwd, instructions: `${spec.instructions}\n\n${schemaBlock}` };
 	const request: SubagentRunRequest = {
 		spec: childSpec,
 		task: spec.instructions,
@@ -1070,6 +1302,7 @@ async function runOne(
 		// runner, so passing the parent path here too is safe.
 		...(parentSessionFile === undefined ? {} : { parentSessionFile }),
 		...(step === undefined ? {} : { step }),
+		...(parent.maxTurns === undefined ? {} : { maxTurns: parent.maxTurns }),
 	};
 
 	const spanId = newTaskSpanId();
@@ -1081,44 +1314,89 @@ async function runOne(
 		const contractProblem = checkContractSpec(spec);
 		if (contractProblem !== undefined) throw new Error(contractProblem);
 
+		// REQ-D03: the parent counts the child's assistant turns off the JSONL
+		// stream and trips its own controller at `maxTurns`. The runner honours
+		// that abort through the same tree-kill path every other kill uses; a
+		// caller abort still flows through unchanged (the two are folded into one
+		// signal, with the caller's listener detached on exit).
+		const maxTurns = parent.maxTurns;
+		const turnController = new AbortController();
+		const onCallerAbort = (): void => turnController.abort();
+		if (signal?.aborted) turnController.abort();
+		else signal?.addEventListener("abort", onCallerAbort, { once: true });
 		let lastText = "";
+		let turnCapTripped = false;
 		const liveUsage = createEmptyUsage();
 		const seen: Message[] = [];
-		const listener: SubagentEventListener | undefined = onPartial
-			? (event) => {
-					if (event.type === "message_end" || event.type === "tool_result_end") {
-						seen.push(event.message);
-					}
-					if (event.type !== "message_end" || event.message.role !== "assistant") return;
-					const message = event.message;
-					if (message.usage) {
-						liveUsage.input += message.usage.input ?? 0;
-						liveUsage.output += message.usage.output ?? 0;
-						liveUsage.cost += message.usage.cost?.total ?? 0;
-						liveUsage.turns += 1;
-					}
-					for (const part of message.content) {
-						if (part.type === "text") lastText = part.text;
-					}
-					onPartial({
-						role: spec.role,
-						task: spec.instructions,
-						exitCode: -1,
-						aborted: false,
-						finalOutput: lastText,
-						stderr: "",
-						usage: { ...liveUsage },
-						...(step === undefined ? {} : { step }),
-						messages: [...seen],
-					});
-				}
-			: undefined;
+		const listener: SubagentEventListener = (event) => {
+			if (event.type === "message_end" || event.type === "tool_result_end") {
+				seen.push(event.message);
+			}
+			if (event.type !== "message_end" || event.message.role !== "assistant") return;
+			const message = event.message;
+			if (message.usage) {
+				liveUsage.input += message.usage.input ?? 0;
+				liveUsage.output += message.usage.output ?? 0;
+				liveUsage.cost += message.usage.cost?.total ?? 0;
+			}
+			liveUsage.turns += 1;
+			for (const part of message.content) {
+				if (part.type === "text") lastText = part.text;
+			}
+			onPartial?.({
+				role: spec.role,
+				task: spec.instructions,
+				exitCode: -1,
+				aborted: false,
+				finalOutput: lastText,
+				stderr: "",
+				usage: { ...liveUsage },
+				...(step === undefined ? {} : { step }),
+				messages: [...seen],
+			});
+			if (maxTurns !== undefined && maxTurns > 0 && liveUsage.turns >= maxTurns && !turnCapTripped) {
+				turnCapTripped = true;
+				turnController.abort();
+			}
+		};
 
-		const result = await runner.run(request, signal, listener);
+		let result: SubagentResult;
+		try {
+			result = await runner.run(request, turnController.signal, listener);
+		} finally {
+			signal?.removeEventListener("abort", onCallerAbort);
+		}
+		if (turnCapTripped && !result.turnCapExceeded) {
+			// Belt and braces: a runner that enforces the cap itself (the shipped
+			// Bun runner, REQ-D03.3) already carries the notice; a stub runner that
+			// merely observed the abort gets the same explicit stop marker here.
+			const notice = `[Stopped at turn cap (${maxTurns} turns). Resume this subagent session to continue.]`;
+			const partial = result.finalOutput || lastText;
+			result = {
+				...result,
+				aborted: true,
+				turnCapExceeded: true,
+				finalOutput: partial ? `${partial}\n\n${notice}` : notice,
+				stopReason: "turn_cap",
+				errorMessage: `Subagent stopped at turn cap (${maxTurns} turns): ${partial ? `${partial}\n\n${notice}` : notice}`,
+			};
+		}
 		const settled = await applyOutputContract(spec, cwd, result, signal);
-		const failed = isFailedSubagentResult(settled);
-		endSubagentTask(spanId, !failed, failed ? (settled.errorMessage ?? `exit code ${settled.exitCode}`) : undefined);
-		return settled;
+		const withWorktree: SubagentResult =
+			createdWorktree === undefined
+				? settled
+				: {
+						...settled,
+						worktreePath: createdWorktree.path,
+						finalOutput: appendWorktreeNote(settled.finalOutput, createdWorktree.slug, createdWorktree.path),
+					};
+		const failed = isFailedSubagentResult(withWorktree);
+		endSubagentTask(
+			spanId,
+			!failed,
+			failed ? (withWorktree.errorMessage ?? `exit code ${withWorktree.exitCode}`) : undefined,
+		);
+		return withWorktree;
 	} catch (err) {
 		// The run never started (spawn failure, runner rejection): report it as a
 		// failed result rather than propagating, so the orchestrator gets a
@@ -1135,9 +1413,17 @@ async function runOne(
 			usage: createEmptyUsage(),
 			...(step === undefined ? {} : { step }),
 			...(spec.gate === undefined ? {} : { gate: skippedGate(spec.gate, cwd, "child-failed") }),
+			...(createdWorktree === undefined ? {} : { worktreePath: createdWorktree.path }),
 			messages: [],
 			errorMessage,
 		};
+	} finally {
+		if (createdWorktree !== undefined) {
+			// Best-effort cleanup on settle (success, failure, contract failure):
+			// awaited so the worktree is gone before the result is reported, and
+			// swallowed so a Windows handle lock can never fail an otherwise-final run.
+			await removeWorktree(repoCwd, createdWorktree.path, true).catch(() => undefined);
+		}
 	}
 }
 
@@ -1190,6 +1476,8 @@ function specFromInput(input: {
 	model?: string;
 	tools?: string[];
 	cwd?: string;
+	isolation?: SubagentIsolation;
+	allowDetachedShell?: boolean;
 	thinking?: ThinkingLevel;
 	outputSchema?: Record<string, unknown>;
 	gate?: SubagentGate;
@@ -1200,6 +1488,8 @@ function specFromInput(input: {
 		...(input.model === undefined ? {} : { model: input.model }),
 		...(input.tools === undefined ? {} : { tools: input.tools }),
 		...(input.cwd === undefined ? {} : { cwd: input.cwd }),
+		...(input.isolation === undefined ? {} : { isolation: input.isolation }),
+		...(input.allowDetachedShell === undefined ? {} : { allowDetachedShell: input.allowDetachedShell }),
 		...(input.thinking === undefined ? {} : { thinking: input.thinking }),
 		...(input.outputSchema === undefined ? {} : { outputSchema: input.outputSchema }),
 		...(input.gate === undefined ? {} : { gate: input.gate }),
@@ -1276,9 +1566,19 @@ function dispatchDetached(args: {
 	parentSessionFile: string | undefined;
 	settings: () => ResolvedSubagentSettings;
 	taskId?: string;
+	/**
+	 * Live count of inline children this session is running (REQ-C02): the
+	 * background budget is `maxConcurrent - liveInlineCount`, so a full set of
+	 * inline children holds every dispatch in the queue. 0 when absent.
+	 */
+	liveInlineCount?: () => number;
+	/** Invoked after a settle releases its slot — pumps waiting inline dispatches (REQ-C03). */
+	onSlotSettled?: () => void;
 	onSettled?: (taskId: string, result: SubagentResult) => void;
 }): { taskId: string; started: boolean; queuePosition: number } {
-	const cap = (): number => args.settings().maxConcurrent;
+	// REQ-C02.2: the effective cap may legitimately be 0 when every slot is
+	// held by live inline children — park everything rather than over-admit.
+	const cap = (): number => Math.max(0, args.settings().maxConcurrent - (args.liveInlineCount?.() ?? 0));
 	let released = false;
 	const request = requestBackgroundDispatch(
 		args.registry,
@@ -1291,6 +1591,7 @@ function dispatchDetached(args: {
 			parentModel: args.parent.model,
 			parentThinkingLevel: args.parent.thinkingLevel,
 			depth: (args.parent.depth ?? 0) + 1,
+			...(args.parent.maxTurns === undefined ? {} : { maxTurns: args.parent.maxTurns }),
 			...(args.parentSessionFile === undefined ? {} : { parentSessionFile: args.parentSessionFile }),
 			...(args.taskId === undefined ? {} : { taskId: args.taskId }),
 			onSettled: (taskId, result) => {
@@ -1299,6 +1600,10 @@ function dispatchDetached(args: {
 				if (!released) {
 					released = true;
 					releaseBackgroundDispatch(args.registry, taskId, cap());
+					// A freed background slot may be the capacity an inline dispatch
+					// has been waiting on (the reverse direction of the same shared
+					// budget), so waiting inline work is pumped here too.
+					args.onSlotSettled?.();
 				}
 				args.onSettled?.(taskId, result);
 			},
@@ -1334,6 +1639,35 @@ function describeDetachedDispatch(registry: BackgroundRegistry, taskIds: string[
 	return `${head}. Queued behind the subagent concurrency cap: ${queuedText}. Each starts when a slot frees, and its result is delivered when it settles.`;
 }
 
+/**
+ * Every `createSubagentToolDefinition` runner getter registered in this
+ * process (REQ-O02.2). The dashboard reads inline runs through
+ * {@link listInlineSubagentRuns} rather than reaching into the tool's private
+ * lazy runner — one definition per session, so the set holds one entry in
+ * practice.
+ */
+const inlineRunSources = new Set<() => SubagentRunner>();
+
+/**
+ * In-flight inline subagent runs across every subagent tool definition in this
+ * process. A runner that cannot be constructed (or reports nothing) is read as
+ * "no visibility", never as "no runs exist" — the optional `listRunning`
+ * contract from `types.ts`.
+ */
+export function listInlineSubagentRuns(): InFlightRun[] {
+	const runs: InFlightRun[] = [];
+	for (const getRunner of inlineRunSources) {
+		try {
+			const runner = getRunner();
+			runs.push(...(runner.listRunning?.() ?? []));
+		} catch {
+			// A runner that cannot be built here reports nothing; the dashboard
+			// still shows the background registry rows.
+		}
+	}
+	return runs;
+}
+
 export function createSubagentToolDefinition(
 	cwd: string,
 	options?: SubagentToolOptions,
@@ -1347,16 +1681,141 @@ export function createSubagentToolDefinition(
 			const liveSettings = options?.subagentSettings?.();
 			defaultRunner = createBunProcessRunner({
 				...(liveSettings?.toolTimeoutMs === undefined ? {} : { toolTimeoutMs: liveSettings.toolTimeoutMs }),
+				...(liveSettings?.maxTurns === undefined ? {} : { maxTurns: liveSettings.maxTurns }),
+				// REQ-O02.1: inline runs tee their lifecycle events to the same
+				// `<taskId>/log.jsonl` layout the background dashboard reads.
+				inlineLogPathFor: (runId) => join(inlineTaskDir(runId), "log.jsonl"),
 			});
 		}
 		return options?.runner ?? defaultRunner;
 	};
+	// REQ-O02.2: the dashboard's inline-run view reads through this registry.
+	inlineRunSources.add(getRunner);
 	// Session-wide spawn counter: one definition owns one counter, so a single
 	// tool registration tracks all spawns in this process. The cap is checked
 	// atomically per call (the proposed count vs. the current counter), so a
 	// batch is either admitted in full or rejected in full — no partial
 	// admission, no two parallel calls slipping through the same hole.
 	let totalSpawnCount = 0;
+
+	// ------------------------------------------------------------------------
+	// Session-wide concurrency budget (REQ-C02, REQ-C03).
+	//
+	// Inline and background runs share one live-children cap
+	// (`subagent.maxConcurrent`). Inline runs acquire a slot on this
+	// session-scoped semaphore before spawning and release it in `finally`,
+	// draining any queued background work on settle; background admission
+	// subtracts the live inline count (`liveInlineCount` on dispatchDetached),
+	// so both paths consult one shared quantity — children actually running.
+	// ------------------------------------------------------------------------
+	let activeInlineCount = 0;
+	const inlineWaiters: Array<{
+		tryAcquire: () => boolean;
+		cleanup: () => void;
+	}> = [];
+
+	const getMaxConcurrent = (): number =>
+		Math.max(1, (options?.subagentSettings?.() ?? DEFAULT_SUBAGENT_SETTINGS).maxConcurrent);
+
+	const getActiveBackgroundCount = (runner: SubagentRunner): number => {
+		const registry = options?.registry ?? getBackgroundRegistry();
+		const runningBg = registry.listRunning().filter((t) => t.status === "running").length;
+		// `listRunning` is optional — a runner that reports nothing must never be
+		// read as "no runs exist" (concurrency spec §2.4.4), hence the registry
+		// fallback in the max below. "reports nothing" only shrinks this arm.
+		const totalRunner = runner.listRunning?.().length ?? 0;
+		return Math.max(runningBg, Math.max(0, totalRunner - activeInlineCount));
+	};
+
+	const getEffectiveBackgroundCap = (): number => Math.max(0, getMaxConcurrent() - activeInlineCount);
+
+	const pumpConcurrencyWaiters = (runner: SubagentRunner): void => {
+		while (inlineWaiters.length > 0) {
+			const max = getMaxConcurrent();
+			const inUse = activeInlineCount + getActiveBackgroundCount(runner);
+			if (inUse >= max) break;
+			const next = inlineWaiters.shift();
+			// A waiter that was aborted between the shift and here returns false and
+			// has already removed its own listener; either way, keep pumping.
+			next?.tryAcquire();
+		}
+		// A live inline waiter implies the budget is spent, so the background
+		// drain below is a no-op then; when the budget freed up it starts queued
+		// background work too — one pump serves both queues.
+		const bgCap = getEffectiveBackgroundCap();
+		if (bgCap > 0) {
+			const registry = options?.registry ?? getBackgroundRegistry();
+			releaseBackgroundDispatch(registry, "", bgCap);
+		}
+	};
+
+	const acquireInlineSlot = (runner: SubagentRunner, signal: AbortSignal | undefined): Promise<() => void> => {
+		if (signal?.aborted) {
+			return Promise.reject(new Error("Subagent dispatch aborted while waiting for a concurrency slot."));
+		}
+		let released = false;
+		const release = (): void => {
+			if (released) return;
+			released = true;
+			activeInlineCount = Math.max(0, activeInlineCount - 1);
+			pumpConcurrencyWaiters(runner);
+		};
+		const max = getMaxConcurrent();
+		const inUse = activeInlineCount + getActiveBackgroundCount(runner);
+		if (inUse < max && inlineWaiters.length === 0) {
+			activeInlineCount += 1;
+			return Promise.resolve(release);
+		}
+		return new Promise<() => void>((resolve, reject) => {
+			const onAbort = (): void => {
+				const idx = inlineWaiters.indexOf(entry);
+				if (idx !== -1) inlineWaiters.splice(idx, 1);
+				entry.cleanup();
+				reject(new Error("Subagent dispatch aborted while waiting for a concurrency slot."));
+			};
+			const entry = {
+				tryAcquire: (): boolean => {
+					entry.cleanup();
+					if (signal?.aborted) {
+						reject(new Error("Subagent dispatch aborted while waiting for a concurrency slot."));
+						return false;
+					}
+					activeInlineCount += 1;
+					resolve(release);
+					return true;
+				},
+				cleanup: (): void => {
+					signal?.removeEventListener("abort", onAbort);
+				},
+			};
+			signal?.addEventListener("abort", onAbort, { once: true });
+			inlineWaiters.push(entry);
+		});
+	};
+
+	/**
+	 * One inline dispatch, bounded by the session-scoped semaphore (REQ-C03):
+	 * every mode — single, chain, parallel, DAG, inline redirect — passes
+	 * through here, so no run counts against neither budget any more.
+	 */
+	const runOneBounded = async (
+		runner: SubagentRunner,
+		spec: SubagentSpec,
+		baseCwd: string,
+		parent: ParentContext,
+		parentSessionFile: string | undefined,
+		step: number | undefined,
+		signal: AbortSignal | undefined,
+		onPartial?: (snapshot: SubagentResult) => void,
+		worktreeBase?: string,
+	): Promise<SubagentResult> => {
+		const releaseSlot = await acquireInlineSlot(runner, signal);
+		try {
+			return await runOne(runner, spec, baseCwd, parent, parentSessionFile, step, signal, onPartial, worktreeBase);
+		} finally {
+			releaseSlot();
+		}
+	};
 
 	// ------------------------------------------------------------------------
 	// Control plane: action = status | stop | interrupt | steer | swap-model |
@@ -1481,7 +1940,11 @@ export function createSubagentToolDefinition(
 			onUpdate: SubagentToolUpdateCallback | undefined;
 			background: boolean;
 		},
-		leaseControl: { handOff: () => void; release: () => void },
+		leaseControl: {
+			lease: SessionLeaseHandle;
+			handOff: () => void;
+			release: () => void;
+		},
 	): Promise<SubagentToolResult> => {
 		const { action, target } = payload;
 		if (target.kind === "inline") {
@@ -1520,6 +1983,26 @@ export function createSubagentToolDefinition(
 		const verb = action === "steer" ? "Steered" : action === "resume" ? "Resumed" : "Re-dispatched with a new model";
 		const head = `${verb} ${target.kind} run ${target.id} (role=${target.role}), resuming child session ${target.sessionFile}`;
 
+		// REQ-L02.1: mark the lease "spawning" before the child exists — the safe
+		// direction for the pre-spawn window — and transition to "running" with
+		// pid when the runner emits `spawned` (only with a valid positive integer
+		// pid; a pid-less `spawned` must leave the record at "spawning", or
+		// `parseOwner` would reject it as malformed and block every later
+		// redirect forever, durability spec §2.5 trap 1).
+		safeUpdateLeaseWriter(leaseControl.lease, { state: "spawning" });
+		const leaseRunner: SubagentRunner = {
+			...payload.runner,
+			run: (req, sig, onEv) =>
+				payload.runner.run(req, sig, (ev) => {
+					if (ev.type === "spawned") {
+						if (typeof ev.pid === "number" && Number.isInteger(ev.pid) && ev.pid > 0) {
+							safeUpdateLeaseWriter(leaseControl.lease, { state: "running", pid: ev.pid });
+						}
+					}
+					onEv?.(ev);
+				}),
+		};
+
 		if (payload.background) {
 			const registry = options?.registry ?? getBackgroundRegistry();
 			// Routed through the capped dispatcher: a steering replacement is a new
@@ -1528,13 +2011,15 @@ export function createSubagentToolDefinition(
 			// behind the cap instead, still holding the lease until it settles.
 			const dispatch = dispatchDetached({
 				registry,
-				runner: payload.runner,
+				runner: leaseRunner,
 				spec,
 				task: spec.instructions,
 				cwd: target.cwd,
 				parent: payload.parent,
 				parentSessionFile: payload.parentSessionFile,
 				settings: () => options?.subagentSettings?.() ?? DEFAULT_SUBAGENT_SETTINGS,
+				liveInlineCount: () => activeInlineCount,
+				onSlotSettled: () => pumpConcurrencyWaiters(payload.runner),
 				// The replacement child outlives this call, so the lease is not
 				// released in the wrapper's finally — it is released when the row
 				// settles, which is the last moment the child can be writing.
@@ -1559,8 +2044,8 @@ export function createSubagentToolDefinition(
 			};
 		}
 
-		const result = await runOne(
-			payload.runner,
+		const result = await runOneBounded(
+			leaseRunner,
 			spec,
 			payload.baseCwd,
 			payload.parent,
@@ -1573,6 +2058,7 @@ export function createSubagentToolDefinition(
 					details: { mode: "single", results: [snapshot], action },
 				});
 			},
+			(options?.subagentSettings?.() ?? DEFAULT_SUBAGENT_SETTINGS).worktreeBase,
 		);
 		if (isFailedSubagentResult(result)) {
 			throw new Error(
@@ -1615,6 +2101,7 @@ export function createSubagentToolDefinition(
 		};
 		try {
 			return await dispatchRedirect(payload, {
+				lease,
 				handOff: () => {
 					handedOff = true;
 				},
@@ -1706,6 +2193,7 @@ export function createSubagentToolDefinition(
 					[
 						` name=${entry.name}`,
 						`role=${entry.spec.role}`,
+						entry.description === undefined ? "" : `description=${clipForListing(entry.description, 80)}`,
 						entry.spec.model === undefined ? "model=<inherit>" : `model=${entry.spec.model}`,
 						entry.spec.tools === undefined ? "tools=<full set>" : `tools=${entry.spec.tools.join(",")}`,
 						entry.spec.cwd === undefined ? "" : `cwd=${entry.spec.cwd}`,
@@ -1731,9 +2219,15 @@ export function createSubagentToolDefinition(
 			const name = validateSpecName(rawParams.name, action);
 			const role = (rawParams.role ?? "").trim();
 			const instructions = (rawParams.instructions ?? "").trim();
+			const description = (rawParams.description ?? "").replace(/\s+/g, " ").trim();
 			if (role === "" || instructions === "") {
 				throw new Error(
-					'Invalid parameters. action="save-spec" stores a dispatch, so it needs `name`, `role`, and `instructions` (plus optional model / tools / cwd).',
+					'Invalid parameters. action="save-spec" stores a dispatch, so it needs `name`, `role`, `description`, and `instructions` (plus optional model / tools / cwd).',
+				);
+			}
+			if (description === "") {
+				throw new Error(
+					'Invalid parameters. action="save-spec" requires `description` — provide a one-line summary of the specialist so it can be rendered into the subagent tool description.',
 				);
 			}
 			// Canonicalize through the same resolver a dispatch uses, so a typo
@@ -1746,16 +2240,16 @@ export function createSubagentToolDefinition(
 					throw new Error(`Unknown model "${requested}" for action="save-spec".`);
 				}
 			}
-			saveSpec(
-				name,
-				specFromInput({
+			saveSpec(name, {
+				...specFromInput({
 					role,
 					instructions,
 					...(model === undefined ? {} : { model }),
 					...(rawParams.tools === undefined ? {} : { tools: rawParams.tools }),
 					...(rawParams.cwd === undefined ? {} : { cwd: rawParams.cwd }),
 				}),
-			);
+				description,
+			});
 			return {
 				content: [
 					{
@@ -2021,11 +2515,8 @@ export function createSubagentToolDefinition(
 			// by that same drain (its row is no longer pending). Cancelling without
 			// this would strand everything behind it until some unrelated settle
 			// happened to fire the pump.
-			releaseBackgroundDispatch(
-				registry,
-				id,
-				(options?.subagentSettings?.() ?? DEFAULT_SUBAGENT_SETTINGS).maxConcurrent,
-			);
+			releaseBackgroundDispatch(registry, id, getEffectiveBackgroundCap());
+			pumpConcurrencyWaiters(runner);
 			const text =
 				outcome.kind === "cancelled-queued"
 					? `Background task ${id} (role=${row.role}) was queued and had not started: marked cancelled and dropped from the concurrency queue. ${reason} No child process was launched for it.`
@@ -2056,12 +2547,23 @@ export function createSubagentToolDefinition(
 	return {
 		name: "subagent",
 		label: "Subagent",
-		description: [
-			"Delegate work to a subagent that runs with a fresh context and returns its final summary.",
-			"Define the subagent per call: `role` (short specialist label) and `instructions` (the complete task — the subagent never sees this conversation, so include all context it needs), optionally `model` (omit to inherit this session's model) and a `tools` allowlist.",
-			"Modes: single (`role` + `instructions`), parallel (`tasks`: independent investigations that can run at once), chain (`chain`: sequential steps where `{previous}` is replaced with the previous step's output).",
-			"Control: `action` manages runs instead of starting one — 'status' lists unfinished runs (with any filed control requests, their receipt state, and the questions a run has asked you), 'stop'/'interrupt' end one, 'steer' (`id` + `message`) redirects a run against its own child session, 'swap-model' (`id` + `model`) does the same on a new model, 'supervisor' (`id` + `replyTo` + `message`) answers a question a run asked with `contact_supervisor`, 'resume' (`id` + optional `message`) re-dispatches a run that has already settled against the child session it left behind, and 'save-spec'/'list-specs'/'delete-spec' manage stored dispatches. Target ids come from a 'status' listing. Controlling a run whose child has detached is not lost: steer/stop/interrupt file the request in the run's control inbox and the child picks it up itself.",
-		].join(" "),
+		// Getter, not a value: the saved-specialist roster (REQ-D04.2) is read
+		// from the on-disk store on every read, so a spec saved this session
+		// appears on the next render without rebuilding the tool.
+		get description() {
+			const savedBlock = formatSavedSpecsForDescription();
+			return [
+				"Delegate work to a subagent that runs in a fresh, isolated context.",
+				"Output contract: you receive ONLY the subagent's final summary (capped at 50 KiB), never its intermediate tool calls or transcript, and the subagent cannot see this conversation.",
+				"When NOT to delegate: do not delegate single-file edits, known-location lookups (`read`/`grep`/`find` you can run in 1-2 calls), or tasks that depend on conversation history you cannot concisely inline into `instructions`.",
+				"Define the subagent per call: `role` (short specialist label) and `instructions` (the complete self-contained task), optionally `model` (omit to inherit this session's model) and a `tools` allowlist.",
+				"Modes: single (`role` + `instructions`), parallel (`tasks`: independent investigations that can run at once), chain (`chain`: sequential steps where `{previous}` is replaced with the previous step's output), dag (`dag`: a dependency graph with `dependsOn`).",
+				"Isolation & concurrency: set `isolation: 'worktree'` to run a child in an isolated git worktree rather than the shared working tree (creation failure fails the dispatch, never downgrades); parallel/DAG batches whose tasks declare mutating or shell tools (`bash`, `edit`, `write`) are serialised automatically unless `tools` is narrowed to read-only tools (`read`, `grep`, `find`, `ls`) or every task is worktree-isolated.",
+				"Background admission: `background: true` requires either `allowDetachedShell: true` or `tools` narrowed to read-only tools (`read`, `grep`, `find`, `ls`) — detached children run unattended, so shell/write access must be granted deliberately.",
+				"Control: `action` manages runs instead of starting one — 'status' lists unfinished runs (with any filed control requests, their receipt state, and the questions a run has asked you), 'stop'/'interrupt' end one, 'steer' (`id` + `message`) redirects a run against its own child session, 'swap-model' (`id` + `model`) does the same on a new model, 'supervisor' (`id` + `replyTo` + `message`) answers a question a run asked with `contact_supervisor`, 'resume' (`id` + optional `message`) re-dispatches a run that has already settled against the child session it left behind, and 'save-spec'/'list-specs'/'delete-spec' manage stored dispatches (save-spec requires a one-line `description`). Target ids come from a 'status' listing. Controlling a run whose child has detached is not lost: steer/stop/interrupt file the request in the run's control inbox and the child picks it up itself.",
+				...(savedBlock ? [savedBlock] : []),
+			].join(" ");
+		},
 		promptSnippet: "Delegate work to a subagent with a fresh context (role + instructions per call)",
 		parameters: subagentSchema,
 
@@ -2078,7 +2580,15 @@ export function createSubagentToolDefinition(
 			// params, unknown model) and single/chain run failures THROW — the loop
 			// turns a thrown error into error content + isError:true. A parallel
 			// batch with per-task failures still resolves: the call itself worked.
-			const parent = { ...(options?.getParentContext?.() ?? {}), depth: options?.depth ?? 0 };
+			// Read live per dispatch — see SubagentToolOptions.subagentSettings.
+			const subagentSettings = options?.subagentSettings?.() ?? DEFAULT_SUBAGENT_SETTINGS;
+			const parent: ParentContext = {
+				...(options?.getParentContext?.() ?? {}),
+				depth: options?.depth ?? 0,
+				// REQ-D03: the live turn cap rides the parent context into every request
+				// builder (inline runOne and detached dispatchDetached) from this one read.
+				maxTurns: subagentSettings.maxTurns,
+			};
 			// Resolved once per dispatch; threading the same value into every
 			// runOne call (single / chain steps / parallel tasks) keeps the
 			// child's `--session-parent` arg identical across steps and lets a
@@ -2105,9 +2615,6 @@ export function createSubagentToolDefinition(
 					onUpdate,
 				);
 			}
-
-			// Read live per dispatch — see SubagentToolOptions.subagentSettings.
-			const subagentSettings = options?.subagentSettings?.() ?? DEFAULT_SUBAGENT_SETTINGS;
 
 			// ----------------------------------------------------------------
 			// Agent dispatch: `agent` names a reusable definition, resolved
@@ -2237,6 +2744,16 @@ export function createSubagentToolDefinition(
 			}
 
 			// ----------------------------------------------------------------
+			// Detached-child admission (REQ-P02, permissions/spec.md §3).
+			// Checked before the spawn budget is committed so a refused background
+			// call does not consume spawn slots or start any task in the batch.
+			// ----------------------------------------------------------------
+			if (params.background === true) {
+				const admissionProblem = checkDetachedAdmission(dispatchedSpecs, params.allowDetachedShell);
+				if (admissionProblem !== undefined) throw new Error(admissionProblem);
+			}
+
+			// ----------------------------------------------------------------
 			// Session-wide spawn budget (subagent.maxTotalSpawns)
 			//
 			// Counted once per dispatched child: chain counts every step, parallel
@@ -2298,17 +2815,40 @@ export function createSubagentToolDefinition(
 				const registry = options?.registry ?? getBackgroundRegistry();
 				const resolveTaskCwd = (spec: SubagentSpec) =>
 					spec.cwd ? (isAbsolute(spec.cwd) ? spec.cwd : resolvePath(cwd, spec.cwd)) : cwd;
-				const fire = (
+				const fire = async (
 					spec: SubagentSpec,
 					taskId: string | undefined,
 					onSettled?: (taskId: string, result: SubagentResult) => void,
-				): string =>
-					dispatchDetached({
+				): Promise<string> => {
+					const repoCwd = resolveTaskCwd(spec);
+					let taskCwd = repoCwd;
+					let createdWorktree: { slug: string; path: string } | undefined;
+					if (spec.isolation === "worktree") {
+						// REQ-I01: created before the row exists, so a failure never
+						// records — let alone starts — a child in the base tree.
+						const slug = makeSubagentWorktreeSlug(spec.role);
+						try {
+							const parentCommit = await currentHead(repoCwd);
+							const wt = await createWorktree(repoCwd, slug, parentCommit, subagentSettings.worktreeBase);
+							if (wt.exitCode !== 0 || wt.complete === false) {
+								throw new Error(wt.error ?? `git worktree add failed (exit ${wt.exitCode})`);
+							}
+							createdWorktree = { slug, path: wt.worktreePath };
+							taskCwd = wt.worktreePath;
+						} catch (err) {
+							const reason = err instanceof Error ? err.message : String(err);
+							throw new Error(
+								`Worktree isolation failed for subagent "${spec.role}" in ${repoCwd}: ${reason}. No child process was spawned (isolation: "worktree" never silently downgrades to "none"). Fix the repository/worktree state or set isolation: "none" if shared-tree execution is intended.`,
+							);
+						}
+					}
+					const settledHandler = onSettled ?? options?.onBackgroundSettled;
+					return dispatchDetached({
 						registry,
 						runner,
-						spec,
+						spec: { ...spec, cwd: taskCwd },
 						task: spec.instructions,
-						cwd: resolveTaskCwd(spec),
+						cwd: taskCwd,
 						parent,
 						parentSessionFile,
 						// Live getter rather than the `subagentSettings` snapshot above: the release
@@ -2317,18 +2857,48 @@ export function createSubagentToolDefinition(
 						// change to subagent.maxConcurrent apply to the drain instead of promoting
 						// against a stale cap.
 						settings: () => options?.subagentSettings?.() ?? DEFAULT_SUBAGENT_SETTINGS,
-						onSettled: onSettled ?? options?.onBackgroundSettled,
+						liveInlineCount: () => activeInlineCount,
+						onSlotSettled: () => pumpConcurrencyWaiters(runner),
+						onSettled:
+							createdWorktree === undefined
+								? settledHandler
+								: (settledTaskId, result) => {
+										const enriched: SubagentResult = {
+											...result,
+											worktreePath: createdWorktree.path,
+											finalOutput: appendWorktreeNote(
+												result.finalOutput,
+												createdWorktree.slug,
+												createdWorktree.path,
+											),
+										};
+										// Best-effort: awaited-as-fire-and-forget (the settle callback is
+										// sync), and a Windows handle lock must not affect the delivery.
+										void removeWorktree(repoCwd, createdWorktree.path, true).catch(() => undefined);
+										settledHandler?.(settledTaskId, enriched);
+									},
 						...(taskId === undefined ? {} : { taskId }),
 					}).taskId;
+				};
 
 				const taskIds: string[] = [];
 				if (singleSpec) {
 					// fire() returns the post-add registry id (add() reassigns on a
 					// collision), so the reported id always matches the registry.
-					taskIds.push(fire(singleSpec, undefined));
+					taskIds.push(await fire(singleSpec, undefined));
 				} else if (tasks.length > 0) {
 					const ids = tasks.map(() => registry.makeTaskId());
-					for (let i = 0; i < tasks.length; i++) taskIds.push(fire(specFromInput(tasks[i]), ids[i]));
+					for (let i = 0; i < tasks.length; i++) {
+						taskIds.push(
+							await fire(
+								specFromInput({
+									...tasks[i],
+									isolation: tasks[i].isolation ?? params.isolation,
+								}),
+								ids[i],
+							),
+						);
+					}
 				} else if (chain.length > 0) {
 					const ids = chain.map(() => registry.makeTaskId());
 					taskIds.push(...ids);
@@ -2365,10 +2935,11 @@ export function createSubagentToolDefinition(
 							/* best-effort */
 						}
 					};
-					const fireStep = (index: number, previousOutput: string): void => {
+					const fireStep = async (index: number, previousOutput: string): Promise<void> => {
 						const stepInput = chain[index];
 						const spec = specFromInput({
 							...stepInput,
+							isolation: stepInput.isolation ?? params.isolation,
 							// Function replacement: a literal $ pattern in `previousOutput`
 							// must not be reinterpreted by `replace`.
 							instructions: stepInput.instructions.replace(/\{previous\}/g, () =>
@@ -2380,7 +2951,7 @@ export function createSubagentToolDefinition(
 						// Record the post-add id back into the tracked arrays (add()
 						// reassigns on a collision) so every later report and the
 						// onSettled callback line up with the registry.
-						const finalId = fire(spec, ids[index], (taskId, result) => {
+						const finalId = await fire(spec, ids[index], (taskId, result) => {
 							// background.ts swallows an onSettled throw as a warn and never
 							// fires the remaining steps, so a sync throw here (a throwing
 							// onBackgroundSettled, or fireStep dispatching the next step)
@@ -2390,7 +2961,12 @@ export function createSubagentToolDefinition(
 								options?.onBackgroundSettled?.(taskId, result);
 								const next = index + 1;
 								if (next >= chain.length || isFailedSubagentResult(result)) return;
-								fireStep(next, result.finalOutput);
+								// The next dispatch is async (a worktree-isolated step creates
+								// its worktree before spawn), so its failure arrives as a
+								// rejection — settle the dead step there instead of dropping it.
+								fireStep(next, result.finalOutput).catch((err) => {
+									failDeadStep(next, err instanceof Error ? err.message : String(err));
+								});
 							} catch (err) {
 								const message = err instanceof Error ? err.message : String(err);
 								const next = index + 1;
@@ -2401,7 +2977,7 @@ export function createSubagentToolDefinition(
 						ids[index] = finalId;
 						taskIds[index] = finalId;
 					};
-					fireStep(0, "");
+					await fireStep(0, "");
 				} else {
 					// DAG detached: every node gets a pre-generated id so the up-front
 					// summary can name the whole graph. Nodes launch as their dependencies
@@ -2409,9 +2985,18 @@ export function createSubagentToolDefinition(
 					// reference) closes its own registry row via onSyntheticSettle.
 					const runId = makeDagRunId();
 					const ids = dag.map(() => registry.makeTaskId());
+					// REQ-I02 / REQ-C01 (background graph): an unsafe batch launches its
+					// nodes serially; each child is still capped by the shared background
+					// queue underneath.
+					const dagConcurrentSafe = dag.every(
+						(node) =>
+							(node.isolation ?? params.isolation) === "worktree" ||
+							isSpecConcurrentSafe(node, options?.isToolConcurrentSafe),
+					);
 					const run = createDagRun({
 						nodes: dag,
 						runId,
+						maxConcurrent: dagConcurrentSafe ? subagentSettings.maxConcurrent : 1,
 						signal,
 						taskIds: ids,
 						onSyntheticSettle: (index, result) => {
@@ -2435,22 +3020,46 @@ export function createSubagentToolDefinition(
 					});
 					taskIds.push(...ids);
 					startDagDetached(run, (launch) => {
-						const spec = specFromInput({ ...launch.node, instructions: launch.instructions });
-						// fire() returns the post-add id (the registry reassigns on a collision).
-						const finalId = fire(spec, ids[launch.index] as string, (taskId, result) => {
-							// background.ts swallows a throwing onSettled as a warn and would
-							// never reach the graph, so guard the notify and always close the
-							// node — exactly once — or its dependents hang forever.
-							try {
-								options?.onBackgroundSettled?.(taskId, result);
-							} catch {
-								/* best-effort */
-							}
-							launch.done(result);
+						const spec = specFromInput({
+							...launch.node,
+							isolation: launch.node.isolation ?? params.isolation,
+							instructions: launch.instructions,
 						});
-						ids[launch.index] = finalId;
-						taskIds[launch.index] = finalId;
-						run.getState().nodes[launch.index].taskId = finalId;
+						// fire() is async (a worktree-isolated node creates its worktree
+						// before spawn) and startDagDetached only catches synchronous
+						// dispatch throws, so an async failure closes the node through
+						// `launch.done` exactly like a synchronous admission failure.
+						void (async () => {
+							// fire() returns the post-add id (the registry reassigns on a collision).
+							const finalId = await fire(spec, ids[launch.index] as string, (taskId, result) => {
+								// background.ts swallows a throwing onSettled as a warn and would
+								// never reach the graph, so guard the notify and always close the
+								// node — exactly once — or its dependents hang forever.
+								try {
+									options?.onBackgroundSettled?.(taskId, result);
+								} catch {
+									/* best-effort */
+								}
+								launch.done(result);
+							});
+							ids[launch.index] = finalId;
+							taskIds[launch.index] = finalId;
+							run.getState().nodes[launch.index].taskId = finalId;
+						})().catch((error) => {
+							const message = error instanceof Error ? error.message : String(error);
+							launch.done({
+								role: launch.node.role,
+								task: launch.instructions,
+								exitCode: -1,
+								aborted: false,
+								finalOutput: "",
+								stderr: message,
+								usage: createEmptyUsage(),
+								messages: [],
+								stopReason: "error",
+								errorMessage: `DAG node ${launch.node.role} could not be dispatched: ${message}`,
+							});
+						});
 					});
 				}
 
@@ -2468,10 +3077,19 @@ export function createSubagentToolDefinition(
 			// ----------------------------------------------------------------
 			if (dag.length > 0) {
 				const runId = makeDagRunId();
+				// REQ-I02 / REQ-C01: a graph containing mutating/shell tools (unless
+				// every node is worktree-isolated) runs with one launch slot — serial,
+				// not merely "capped at maxConcurrent".
+				const dagConcurrentSafe = dag.every(
+					(node) =>
+						(node.isolation ?? params.isolation) === "worktree" ||
+						isSpecConcurrentSafe(node, options?.isToolConcurrentSafe),
+				);
+				const effectiveDagMaxConcurrent = dagConcurrentSafe ? subagentSettings.maxConcurrent : 1;
 				const run = createDagRun({
 					nodes: dag,
 					runId,
-					maxConcurrent: subagentSettings.maxConcurrent,
+					maxConcurrent: effectiveDagMaxConcurrent,
 					signal,
 					onUpdate: (progress) => {
 						onUpdate?.({
@@ -2486,8 +3104,12 @@ export function createSubagentToolDefinition(
 					},
 				});
 				const progress = await runDagInline(run, async (launch) => {
-					const spec = specFromInput({ ...launch.node, instructions: launch.instructions });
-					return runOne(
+					const spec = specFromInput({
+						...launch.node,
+						isolation: launch.node.isolation ?? params.isolation,
+						instructions: launch.instructions,
+					});
+					return runOneBounded(
 						runner,
 						spec,
 						cwd,
@@ -2496,6 +3118,7 @@ export function createSubagentToolDefinition(
 						launch.level + 1,
 						launch.signal,
 						launch.onPartial,
+						subagentSettings.worktreeBase,
 					);
 				});
 				const results = run.getResults();
@@ -2522,18 +3145,29 @@ export function createSubagentToolDefinition(
 					const stepInput = chain[i];
 					const spec = specFromInput({
 						...stepInput,
+						isolation: stepInput.isolation ?? params.isolation,
 						// Function replacement: a literal $ pattern in `previousOutput`
 						// must not be reinterpreted by `replace`.
 						instructions: stepInput.instructions.replace(/\{previous\}/g, () =>
 							truncateModelFacingOutput(previousOutput),
 						),
 					});
-					const result = await runOne(runner, spec, cwd, parent, parentSessionFile, i + 1, signal, (snapshot) => {
-						onUpdate?.({
-							content: [{ type: "text", text: snapshot.finalOutput || "(running)" }],
-							details: { mode: "chain", results: [...results, snapshot] },
-						});
-					});
+					const result = await runOneBounded(
+						runner,
+						spec,
+						cwd,
+						parent,
+						parentSessionFile,
+						i + 1,
+						signal,
+						(snapshot) => {
+							onUpdate?.({
+								content: [{ type: "text", text: snapshot.finalOutput || "(running)" }],
+								details: { mode: "chain", results: [...results, snapshot] },
+							});
+						},
+						subagentSettings.worktreeBase,
+					);
 					results.push(result);
 					if (isFailedSubagentResult(result)) {
 						// A thrown error becomes tool-error content verbatim (agent-loop
@@ -2590,29 +3224,40 @@ export function createSubagentToolDefinition(
 					});
 				};
 
-				const results = await mapWithConcurrencyLimit(
-					tasks,
-					subagentSettings.maxConcurrent,
-					async (task, index) => {
-						const result = await runOne(
-							runner,
-							specFromInput(task),
-							cwd,
-							parent,
-							parentSessionFile,
-							undefined,
-							signal,
-							(snapshot) => {
-								allResults[index] = snapshot;
-								emitParallelUpdate();
-							},
-						);
-						allResults[index] = result;
-						settled[index] = true;
-						emitParallelUpdate();
-						return result;
-					},
+				// REQ-I02 / REQ-C01: parallel admission gates on per-tool
+				// `concurrentSafe`. A batch containing any task with mutating/shell
+				// tools (unless isolated in its own worktree) serialises rather than
+				// running concurrently against the same working tree.
+				const batchIsConcurrentSafe = tasks.every(
+					(task) =>
+						(task.isolation ?? params.isolation) === "worktree" ||
+						isSpecConcurrentSafe(task, options?.isToolConcurrentSafe),
 				);
+				const effectiveConcurrency = batchIsConcurrentSafe ? subagentSettings.maxConcurrent : 1;
+
+				const results = await mapWithConcurrencyLimit(tasks, effectiveConcurrency, async (task, index) => {
+					const result = await runOneBounded(
+						runner,
+						specFromInput({
+							...task,
+							isolation: task.isolation ?? params.isolation,
+						}),
+						cwd,
+						parent,
+						parentSessionFile,
+						undefined,
+						signal,
+						(snapshot) => {
+							allResults[index] = snapshot;
+							emitParallelUpdate();
+						},
+						subagentSettings.worktreeBase,
+					);
+					allResults[index] = result;
+					settled[index] = true;
+					emitParallelUpdate();
+					return result;
+				});
 
 				const successCount = results.filter((r) => !isFailedSubagentResult(r)).length;
 				const summaries = results.map((r) => {
@@ -2640,12 +3285,22 @@ export function createSubagentToolDefinition(
 			// Single
 			// ----------------------------------------------------------------
 			const spec = singleSpec as SubagentSpec;
-			const result = await runOne(runner, spec, cwd, parent, parentSessionFile, undefined, signal, (snapshot) => {
-				onUpdate?.({
-					content: [{ type: "text", text: snapshot.finalOutput || "(running)" }],
-					details: { mode: "single", results: [snapshot] },
-				});
-			});
+			const result = await runOneBounded(
+				runner,
+				spec,
+				cwd,
+				parent,
+				parentSessionFile,
+				undefined,
+				signal,
+				(snapshot) => {
+					onUpdate?.({
+						content: [{ type: "text", text: snapshot.finalOutput || "(running)" }],
+						details: { mode: "single", results: [snapshot] },
+					});
+				},
+				subagentSettings.worktreeBase,
+			);
 			if (isFailedSubagentResult(result)) {
 				// Same cap as the chain throw above: thrown error.message becomes
 				// tool-error content verbatim and has no tool details attached.

@@ -18,7 +18,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { BunApi, BunShell, BunShellCommand } from "../src/core/subagent/runtime.ts";
-import { cherryPickFromBranch, createWorktree, removeWorktree, sanitizeSlug } from "../src/core/subagent/worktree.ts";
+import {
+	cherryPickFromBranch,
+	createWorktree,
+	discardWorktree,
+	removeWorktree,
+	sanitizeSlug,
+} from "../src/core/subagent/worktree.ts";
 
 type SyncSpawn = typeof spawnSync;
 
@@ -272,5 +278,56 @@ describe.skipIf(!gitAvailable)("worktree substrate in a throwaway git repo", () 
 		// The failure must not leave a cherry-pick in progress behind.
 		expect(git(repo.repoRoot, "status", "--porcelain").stdout).toBe("");
 		expect(git(repo.repoRoot, "rev-parse", "-q", "--verify", "CHERRY_PICK_HEAD").exitCode).not.toBe(0);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// REQ-I04.1 / REQ-I04.5 — branch-preserving removal and the discard composite.
+// ---------------------------------------------------------------------------
+
+describe.skipIf(!gitAvailable)("REQ-I04 branch-preserving removal and discardWorktree", () => {
+	it("removeWorktree(..., deleteBranch: false) removes the directory but keeps exp/<slug>", async () => {
+		const repo = makeFixtureRepo();
+		const created = await createWorktree(repo.repoRoot, "Keep Branch", repo.seedCommit, ".worktrees");
+		expect(created.exitCode).toBe(0);
+		expect(refExists(repo.repoRoot, created.branch)).toBe(true);
+
+		const removed = await removeWorktree(repo.repoRoot, created.worktreePath, true, false);
+		expect(removed.exitCode).toBe(0);
+		expect(existsSync(created.worktreePath)).toBe(false);
+		// The whole point of REQ-I04.5: keep_branch must be able to keep the
+		// branch — the old flag was dead because the branch was deleted first.
+		expect(refExists(repo.repoRoot, created.branch)).toBe(true);
+	});
+
+	it("discardWorktree honours keepBranch on both sides of the flag", async () => {
+		const repo = makeFixtureRepo();
+
+		const keep = await createWorktree(repo.repoRoot, "Discard Keep", repo.seedCommit, ".worktrees");
+		expect(keep.exitCode).toBe(0);
+		const kept = await discardWorktree(repo.repoRoot, keep.worktreePath, { force: true, keepBranch: true });
+		expect(kept.exitCode).toBe(0);
+		expect(existsSync(keep.worktreePath)).toBe(false);
+		expect(refExists(repo.repoRoot, keep.branch)).toBe(true);
+
+		const drop = await createWorktree(repo.repoRoot, "Discard Drop", repo.seedCommit, ".worktrees");
+		expect(drop.exitCode).toBe(0);
+		const dropped = await discardWorktree(repo.repoRoot, drop.worktreePath, { force: true, keepBranch: false });
+		expect(dropped.exitCode).toBe(0);
+		expect(existsSync(drop.worktreePath)).toBe(false);
+		expect(refExists(repo.repoRoot, drop.branch)).toBe(false);
+	});
+
+	it("discardWorktree runs remove + prune under one lock (the lock file is gone afterwards)", async () => {
+		const repo = makeFixtureRepo();
+		const created = await createWorktree(repo.repoRoot, "One Lock", repo.seedCommit, ".worktrees");
+		expect(created.exitCode).toBe(0);
+		const lockPath = join(repo.repoRoot, ".git", "pi-worktree.lock");
+		const result = await discardWorktree(repo.repoRoot, created.worktreePath, { force: true, keepBranch: true });
+		expect(result.exitCode).toBe(0);
+		// Released exactly once, no stale lock left behind by the composite.
+		expect(existsSync(lockPath)).toBe(false);
+		// The prune inside the composite dropped the admin dir too.
+		expect(git(repo.repoRoot, "worktree", "list", "--porcelain").stdout).not.toContain("one-lock");
 	});
 });

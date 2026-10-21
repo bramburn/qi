@@ -1,10 +1,10 @@
 /**
  * Agent definition files (issue #1046) seen from the `agent` dispatch field:
- * a markdown file under `.pi/agents/<name>.md` (project scope) or the user-level
+ * a markdown file under `.qi/agents/<name>.md` (project scope) or the user-level
  * agent dir names a reusable agent, and the tool expands it into the inline
  * dispatch fields before mode validation. Saved specs stay the fallback.
  *
- * Every test points ENV_AGENT_DIR at a temp dir, so the real ~/.pi/agent is
+ * Every test points ENV_AGENT_DIR at a temp dir, so the real ~/.qi/agent is
  * never read or written.
  */
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -37,7 +37,7 @@ afterEach(() => {
 });
 
 function writeDefinition(scope: "project" | "user", content: string): void {
-	const dir = scope === "project" ? join(projectDir, ".pi", "agents") : join(agentDir, "agents");
+	const dir = scope === "project" ? join(projectDir, ".qi", "agents") : join(agentDir, "agents");
 	mkdirSync(dir, { recursive: true });
 	// File name is irrelevant: the frontmatter `name` is what discovery reads.
 	writeFileSync(join(dir, "definition.md"), content, "utf-8");
@@ -164,7 +164,7 @@ describe("agent definition dispatch", () => {
 	it("names discovered definitions and saved specs when the agent is unknown", async () => {
 		writeDefinition("project", "---\nname: known-proj\ndescription: A project definition.\n---\n");
 		writeDefinition("user", "---\nname: known-user\ndescription: A user definition.\n---\n");
-		saveSpec("known-spec", { role: "s", instructions: "i" });
+		saveSpec("known-spec", { role: "s", instructions: "i", description: "A known saved spec." });
 		const capture = { requests: [] as SubagentRunRequest[] };
 		let message = "";
 		try {
@@ -177,7 +177,7 @@ describe("agent definition dispatch", () => {
 		expect(message).toContain("known-proj");
 		expect(message).toContain("known-user");
 		expect(message).toContain("known-spec");
-		expect(message).toContain(join(".pi", "agents"));
+		expect(message).toContain(join(".qi", "agents"));
 		expect(capture.requests).toEqual([]);
 	});
 
@@ -190,7 +190,13 @@ describe("agent definition dispatch", () => {
 	});
 
 	it("still dispatches a saved spec, and still rejects per-call instructions for it", async () => {
-		saveSpec("tight", { role: "tight role", instructions: "tight task", tools: ["read"], thinking: "medium" });
+		saveSpec("tight", {
+			role: "tight role",
+			instructions: "tight task",
+			description: "A tightly specified role.",
+			tools: ["read"],
+			thinking: "medium",
+		});
 		const capture = { requests: [] as SubagentRunRequest[] };
 		await dispatch(capture, { agent: "tight" });
 		expect(capture.requests[0].spec).toMatchObject({
