@@ -66,3 +66,6 @@ packages/session-backends/sqlite-node/sqlite-node/
 
 # Sync-upstream script runtime state
 scripts/.upstream-sync-state.json
+
+# windows null-device artifact
+nul
