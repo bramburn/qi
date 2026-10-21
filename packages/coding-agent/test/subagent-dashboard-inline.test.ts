@@ -11,7 +11,7 @@
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { setKeybindings, TuiMainScreen } from "@earendil-works/pi-tui";
+import { setKeybindings, TuiMainScreen } from "@bramburn/qi-tui";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { defaultEditorTheme } from "../../tui/test/test-themes.ts";
 import { VirtualTerminal } from "../../tui/test/virtual-terminal.ts";

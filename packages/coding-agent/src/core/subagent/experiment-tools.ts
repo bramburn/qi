@@ -19,8 +19,8 @@
  */
 
 import { join } from "node:path";
-import type { AgentTool, AgentToolResult } from "@earendil-works/pi-agent-core";
-import { StringEnum } from "@earendil-works/pi-ai";
+import type { AgentTool, AgentToolResult } from "@bramburn/qi-agent-core";
+import { StringEnum } from "@bramburn/qi-ai";
 import { type Static, Type } from "typebox";
 import { DEFAULT_SUBAGENT_SETTINGS } from "../defaults.ts";
 import type { ToolDefinition } from "../extensions/types.ts";

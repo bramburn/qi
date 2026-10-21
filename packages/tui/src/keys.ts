@@ -1152,7 +1152,7 @@ export function matchesKey(data: string, keyId: KeyId): boolean {
 		const isLetter = key >= "a" && key <= "z";
 		const isDigit = isDigitKey(key);
 
-		if (modifier === MODIFIERS.ctrl + MODIFIERS.alt && !_kittyProtocolActive && rawCtrl) {
+		if (modifier === MODIFIERS.ctrl + MODIFIERS.alt &&  rawCtrl) {
 			// Legacy: ctrl+alt+key is ESC followed by the control character.
 			// If that legacy form does not match, continue so CSI-u and
 			// modifyOtherKeys sequences from tmux can still be recognized.
@@ -1286,7 +1286,7 @@ export function parseKey(data: string): string | undefined {
 	if (data === "\x7f") return "backspace";
 	if (data === "\x08") return isWindowsTerminalSession() ? "ctrl+backspace" : "backspace";
 	if (data === "\x1b[Z") return "shift+tab";
-	if (!_kittyProtocolActive && data === "\x1b\r") return "alt+enter";
+	if (data === "\x1b\r") return "alt+enter";
 	if (!_kittyProtocolActive && data === "\x1b ") return "alt+space";
 	if (data === "\x1b\x7f" || data === "\x1b\b") return "alt+backspace";
 	if (!_kittyProtocolActive && data === "\x1bB") return "alt+left";

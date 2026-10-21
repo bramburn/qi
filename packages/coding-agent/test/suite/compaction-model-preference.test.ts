@@ -1,5 +1,5 @@
-import type { AssistantMessage, Context, Model, SimpleStreamOptions } from "@earendil-works/pi-ai";
-import { createAssistantMessageEventStream, fauxAssistantMessage } from "@earendil-works/pi-ai";
+import type { AssistantMessage, Context, Model, SimpleStreamOptions } from "@bramburn/qi-ai";
+import { createAssistantMessageEventStream, fauxAssistantMessage } from "@bramburn/qi-ai";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createHarness, type Harness } from "./harness.ts";
 
