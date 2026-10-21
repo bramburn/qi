@@ -57,30 +57,30 @@ async function runRename(root, packageDir, { captureManifest = false, failChild 
 	return { result, manifest };
 }
 
-test("rewrites name, workspace deps, and upstream repository.url", async () => {
+test("normalises the published scope and rewrites the upstream repository.url", async () => {
 	const root = await mkdtemp(join(tmpdir(), "pi-fork-rename-"));
 	try {
 		const originalManifest = {
-			name: "@earendil-works/pi-coding-agent",
+			name: "@bramburn/qi-coding-agent",
 			version: "0.84.5",
 			dependencies: {
-				"@earendil-works/pi-agent-core": "^0.84.5",
-				"@earendil-works/pi-ai": "^0.84.5",
-				"@earendil-works/pi-client": "^0.84.5",
-				"@earendil-works/pi-protocol": "^0.84.5",
-				"@earendil-works/pi-tui": "^0.84.5",
+				"@bramburn/qi-agent-core": "^0.84.5",
+				"@bramburn/qi-ai": "^0.84.5",
+				"@bramburn/qi-client": "^0.84.5",
+				"@bramburn/qi-protocol": "^0.84.5",
+				"@bramburn/qi-tui": "^0.84.5",
 				"@mariozechner/clipboard": "0.3.9",
 				chalk: "5.6.2",
 			},
 			peerDependencies: {
-				"@earendil-works/pi-ai": "^0.84.5",
+				"@bramburn/qi-ai": "^0.84.5",
 			},
 			optionalDependencies: {
-				"@earendil-works/pi-ai": "0.84.5",
+				"@bramburn/qi-ai": "0.84.5",
 			},
 			devDependencies: {
 				shx: "0.4.0",
-				"@earendil-works/pi-telemetry": "^0.84.5",
+				"@bramburn/qi-telemetry": "^0.84.5",
 			},
 			repository: {
 				type: "git",
@@ -93,27 +93,27 @@ test("rewrites name, workspace deps, and upstream repository.url", async () => {
 		const { result, manifest } = await runRename(root, "packages/coding-agent", { captureManifest: true });
 
 		assert.equal(result.status, 0, `script failed: ${result.stderr}`);
-		assert.match(result.stdout, /renamed: .* -> @bramburn\/pi-coding-agent \(deps: 8 rewrites, repo: rewritten\)/);
+		assert.match(result.stdout, /renamed: .* -> @bramburn\/qi-coding-agent \(deps: 0 rewrites, repo: rewritten\)/);
 		assert.match(result.stdout, /restored: /);
 
 		// The in-flight manifest seen by `npm publish`:
-		assert.equal(manifest.name, "@bramburn/pi-coding-agent");
+		assert.equal(manifest.name, "@bramburn/qi-coding-agent");
 		assert.equal(manifest.repository.url, "git+https://github.com/bramburn/pi.git");
-		// Every workspace dep is now @bramburn/pi-*.
-		assert.ok(manifest.dependencies["@bramburn/pi-agent-core"]);
-		assert.ok(manifest.dependencies["@bramburn/pi-ai"]);
-		assert.ok(manifest.dependencies["@bramburn/pi-client"]);
-		assert.ok(manifest.dependencies["@bramburn/pi-protocol"]);
-		assert.ok(manifest.dependencies["@bramburn/pi-tui"]);
+		// Every workspace dep stays under the published @bramburn/qi-* scope.
+		assert.ok(manifest.dependencies["@bramburn/qi-agent-core"]);
+		assert.ok(manifest.dependencies["@bramburn/qi-ai"]);
+		assert.ok(manifest.dependencies["@bramburn/qi-client"]);
+		assert.ok(manifest.dependencies["@bramburn/qi-protocol"]);
+		assert.ok(manifest.dependencies["@bramburn/qi-tui"]);
 		// Non-earendil deps are untouched.
 		assert.equal(manifest.dependencies["@mariozechner/clipboard"], "0.3.9");
 		assert.equal(manifest.dependencies.chalk, "5.6.2");
-		// peerDependencies + optionalDependencies are also rewritten.
-		assert.ok(manifest.peerDependencies["@bramburn/pi-ai"]);
-		assert.ok(manifest.optionalDependencies["@bramburn/pi-ai"]);
-		// devDependencies is rewritten.
-		assert.ok(manifest.devDependencies["@bramburn/pi-telemetry"]);
-		// No @earendil-works/pi-* keys remain in any dep section.
+		// peerDependencies + optionalDependencies keep the published scope.
+		assert.ok(manifest.peerDependencies["@bramburn/qi-ai"]);
+		assert.ok(manifest.optionalDependencies["@bramburn/qi-ai"]);
+		// devDependencies keeps the published scope.
+		assert.ok(manifest.devDependencies["@bramburn/qi-telemetry"]);
+		// No legacy or upstream scope keys remain in any dep section.
 		for (const section of ["dependencies", "devDependencies", "peerDependencies", "optionalDependencies"]) {
 			for (const key of Object.keys(manifest[section] || {})) {
 				assert.ok(!key.startsWith("@earendil-works/"), `${section}.${key} should have been renamed`);
@@ -132,12 +132,12 @@ test("preserves third-party earendil scope (e.g. @earendil-works/gondolin) and r
 	const root = await mkdtemp(join(tmpdir(), "pi-fork-rename-"));
 	try {
 		const originalManifest = {
-			name: "@earendil-works/pi-coding-agent",
+			name: "@bramburn/qi-coding-agent",
 			version: "0.84.5",
 			dependencies: {
-				"@earendil-works/pi-ai": "^0.84.5",
+				"@bramburn/qi-ai": "^0.84.5",
 				"@earendil-works/gondolin": "0.12.0",
-				"@mariozechner/pi-ai": "npm:@earendil-works/pi-ai@0.1.0",
+				"@mariozechner/pi-ai": "npm:@bramburn/qi-ai@0.1.0",
 			},
 			repository: {
 				type: "git",
@@ -149,16 +149,16 @@ test("preserves third-party earendil scope (e.g. @earendil-works/gondolin) and r
 		const { result, manifest } = await runRename(root, "packages/coding-agent", { captureManifest: true });
 
 		assert.equal(result.status, 0, `script failed: ${result.stderr}`);
-		// Workspace dep renamed.
-		assert.ok(manifest.dependencies["@bramburn/pi-ai"]);
+		// Workspace dep stays under the published scope.
+		assert.ok(manifest.dependencies["@bramburn/qi-ai"]);
 		// Third-party earendil scope (gondolin) is NOT a workspace package, so
 		// it must stay.
 		assert.equal(manifest.dependencies["@earendil-works/gondolin"], "0.12.0");
 		// Registry alias value is preserved verbatim — the value starts with
 		// `npm:` and is a deliberate third-party rewrite, not a workspace link.
-		assert.equal(manifest.dependencies["@mariozechner/pi-ai"], "npm:@earendil-works/pi-ai@0.1.0");
-		// dep count: only 1 rewrite (the workspace @earendil-works/pi-ai dep).
-		assert.match(result.stdout, /deps: 1 rewrite, repo: rewritten/);
+		assert.equal(manifest.dependencies["@mariozechner/pi-ai"], "npm:@bramburn/qi-ai@0.1.0");
+		// dep count: the workspace @bramburn/qi-ai dep needs no rewrite.
+		assert.match(result.stdout, /deps: 0 rewrites, repo: rewritten/);
 	} finally {
 		await rm(root, { recursive: true, force: true });
 	}
@@ -168,10 +168,10 @@ test("leaves repository.url alone when it is already the fork URL", async () => 
 	const root = await mkdtemp(join(tmpdir(), "pi-fork-rename-"));
 	try {
 		const originalManifest = {
-			name: "@earendil-works/pi-ai",
+			name: "@bramburn/qi-ai",
 			version: "0.84.5",
 			dependencies: {
-				"@earendil-works/pi-telemetry": "^0.84.5",
+				"@bramburn/qi-telemetry": "^0.84.5",
 			},
 			repository: {
 				type: "git",
@@ -195,7 +195,7 @@ test("handles a package with no deps and no repository (no-op sections)", async 
 	const root = await mkdtemp(join(tmpdir(), "pi-fork-rename-"));
 	try {
 		const originalManifest = {
-			name: "@earendil-works/pi-tui",
+			name: "@bramburn/qi-tui",
 			version: "0.84.5",
 		};
 		await writeManifest(root, "packages/tui", originalManifest);
@@ -203,7 +203,7 @@ test("handles a package with no deps and no repository (no-op sections)", async 
 		const { result, manifest } = await runRename(root, "packages/tui", { captureManifest: true });
 
 		assert.equal(result.status, 0, `script failed: ${result.stderr}`);
-		assert.equal(manifest.name, "@bramburn/pi-tui");
+		assert.equal(manifest.name, "@bramburn/qi-tui");
 		assert.match(result.stdout, /deps: 0 rewrites, repo: unchanged/);
 
 		const restored = await readManifest(root, "packages/tui");
@@ -213,7 +213,7 @@ test("handles a package with no deps and no repository (no-op sections)", async 
 	}
 });
 
-test("exits non-zero with a clear message when name is not under @earendil-works/pi-", async () => {
+test("exits non-zero with a clear message when name is not under @bramburn/qi-", async () => {
 	const root = await mkdtemp(join(tmpdir(), "pi-fork-rename-"));
 	try {
 		await writeManifest(root, "packages/something", {
@@ -232,7 +232,7 @@ test("exits non-zero with a clear message when name is not under @earendil-works
 		);
 
 		assert.equal(result.status, 2, `expected exit 2, got ${result.status}`);
-		assert.match(result.stderr, /not under @earendil-works\/pi-/);
+		assert.match(result.stderr, /not under @bramburn\/qi-/);
 
 		// Original file is unchanged (we never wrote).
 		const onDisk = JSON.parse(await readManifestRaw(root, "packages/something"));
@@ -242,14 +242,49 @@ test("exits non-zero with a clear message when name is not under @earendil-works
 	}
 });
 
-test("restores the original package.json even when the child exits non-zero", async () => {
+test("rewrites a legacy upstream checkout to the published scope", async () => {
 	const root = await mkdtemp(join(tmpdir(), "pi-fork-rename-"));
 	try {
 		const originalManifest = {
 			name: "@earendil-works/pi-coding-agent",
 			version: "0.84.5",
 			dependencies: {
+				"@earendil-works/pi-agent-core": "^0.84.5",
 				"@earendil-works/pi-ai": "^0.84.5",
+			},
+			repository: {
+				type: "git",
+				url: "git+https://github.com/earendil-works/pi.git",
+			},
+		};
+		await writeManifest(root, "packages/coding-agent", originalManifest);
+
+		const { result, manifest } = await runRename(root, "packages/coding-agent", { captureManifest: true });
+
+		assert.equal(result.status, 0, `script failed: ${result.stderr}`);
+		assert.equal(manifest.name, "@bramburn/qi-coding-agent");
+		assert.ok(manifest.dependencies["@bramburn/qi-agent-core"]);
+		assert.ok(manifest.dependencies["@bramburn/qi-ai"]);
+		assert.match(
+			result.stdout,
+			/renamed: .* -> @bramburn\/qi-coding-agent \(deps: 2 rewrites, repo: rewritten\)/,
+		);
+
+		const restored = await readManifest(root, "packages/coding-agent");
+		assert.deepEqual(restored, originalManifest);
+	} finally {
+		await rm(root, { recursive: true, force: true });
+	}
+});
+
+test("restores the original package.json even when the child exits non-zero", async () => {
+	const root = await mkdtemp(join(tmpdir(), "pi-fork-rename-"));
+	try {
+		const originalManifest = {
+			name: "@bramburn/qi-coding-agent",
+			version: "0.84.5",
+			dependencies: {
+				"@bramburn/qi-ai": "^0.84.5",
 			},
 			repository: {
 				type: "git",
@@ -261,7 +296,7 @@ test("restores the original package.json even when the child exits non-zero", as
 		const { result } = await runRename(root, "packages/coding-agent", { failChild: true });
 
 		assert.equal(result.status, 42, `expected child exit 42 to propagate, got ${result.status}`);
-		assert.match(result.stdout, /renamed: .* -> @bramburn\/pi-coding-agent/);
+		assert.match(result.stdout, /renamed: .* -> @bramburn\/qi-coding-agent/);
 		assert.match(result.stdout, /restored: /);
 
 		// The on-disk file is the original — no half-written state left behind.

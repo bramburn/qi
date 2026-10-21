@@ -19,7 +19,7 @@ import { getAnalyticsDir } from "../config.ts";
 
 /** Test-only override: when set, analytics is written under this home. */
 function resolveAnalyticsDir(): string {
-	const testHome = process.env.PI_TEST_ANALYTICS_HOME;
+	const testHome = process.env.QI_TEST_ANALYTICS_HOME;
 	if (testHome) return join(testHome, "analytics");
 	return getAnalyticsDir();
 }

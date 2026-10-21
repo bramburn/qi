@@ -6,8 +6,8 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { AgentMessage } from "@earendil-works/pi-agent-core";
-import type { AuthEvent, AuthPrompt } from "@earendil-works/pi-ai";
+import type { AgentMessage } from "@bramburn/qi-agent-core";
+import type { AuthEvent, AuthPrompt } from "@bramburn/qi-ai";
 import {
 	type Api,
 	type AssistantMessage,
@@ -18,7 +18,7 @@ import {
 	type PdfContent,
 	type Usage,
 	type VideoContent,
-} from "@earendil-works/pi-ai/compat";
+} from "@bramburn/qi-ai/compat";
 import type {
 	AutocompleteItem,
 	AutocompleteProvider,
@@ -33,14 +33,12 @@ import type {
 	SlashCommand,
 	StackChild,
 	Terminal,
-} from "@earendil-works/pi-tui";
+} from "@bramburn/qi-tui";
 import {
 	CombinedAutocompleteProvider,
 	type Component,
 	Container,
 	fuzzyFilter,
-	getCapabilities,
-	hyperlink,
 	isViewportTUI,
 	Markdown,
 	matchesKey,
@@ -56,7 +54,7 @@ import {
 	type TuiMode,
 	VStack,
 	visibleWidth,
-} from "@earendil-works/pi-tui";
+} from "@bramburn/qi-tui";
 import chalk from "chalk";
 import { spawn, spawnSync } from "child_process";
 import {
@@ -119,6 +117,7 @@ import {
 	type ExperimentsUi,
 	moveSelectedRow,
 	readBackgroundLogTail,
+	readInlineLogTail,
 	renderBackgroundPill,
 	renderExperimentsStatusPill,
 	showBackgroundDashboard,
@@ -126,7 +125,7 @@ import {
 	showDashboard,
 	UI_KEYS,
 } from "../../core/subagent/experiments-dashboard.ts";
-import { isInstallTelemetryEnabled } from "../../core/telemetry.ts";
+import { listInlineSubagentRuns } from "../../core/subagent/subagent-tool.ts";
 import type { TruncationResult } from "../../core/tools/truncate.ts";
 import { hasTrustRequiringProjectResources, ProjectTrustStore } from "../../core/trust-manager.ts";
 import { getUsageCostBreakdown } from "../../core/usage-totals.ts";
@@ -143,10 +142,9 @@ import { parseGitUrl } from "../../utils/git.ts";
 import { processImage } from "../../utils/image-process.ts";
 import { openBrowser } from "../../utils/open-browser.ts";
 import { getCwdRelativePath } from "../../utils/paths.ts";
-import { getPiUserAgent } from "../../utils/pi-user-agent.ts";
 import { killTrackedDetachedChildren } from "../../utils/shell.ts";
 import { ensureTool, type ToolStatus } from "../../utils/tools-manager.ts";
-import { checkForNewPiVersion, type LatestPiRelease } from "../../utils/version-check.ts";
+import { checkForNewQiVersion, type LatestQiRelease } from "../../utils/version-check.ts";
 import { ArminComponent } from "./components/armin.ts";
 import { AssistantMessageComponent } from "./components/assistant-message.ts";
 import { BashExecutionComponent } from "./components/bash-execution.ts";
@@ -653,6 +651,13 @@ export class InteractiveMode {
 
 	// Messages queued while compaction is running
 	private compactionQueuedMessages: CompactionQueuedMessage[] = [];
+	/**
+	 * Skip reason from the most recent skipped `compaction_end` event. Captured
+	 * synchronously while `session.compact()` / `compactInBackground()` resolve
+	 * their skip, so the extension `compact` shortcut can forward the benign
+	 * reason to `onError` (callers render skip-class messages as warnings).
+	 */
+	private lastCompactionSkipMessage: string | undefined = undefined;
 
 	// Shutdown state
 	private shutdownRequested = false;
@@ -1134,7 +1139,7 @@ export class InteractiveMode {
 	async run(): Promise<void> {
 		await this.init();
 
-		if (!process.env.PI_OFFLINE) {
+		if (!process.env.QI_OFFLINE) {
 			const controller = new AbortController();
 			const timeout = setTimeout(() => controller.abort(), 15_000);
 			void refreshModelCatalogs(this.session.modelRuntime, controller.signal)
@@ -1144,7 +1149,7 @@ export class InteractiveMode {
 		}
 
 		// Start version check asynchronously
-		checkForNewPiVersion(this.version).then((newRelease) => {
+		checkForNewQiVersion(this.version).then((newRelease) => {
 			if (newRelease) {
 				this.showNewVersionNotification(newRelease);
 			}
@@ -1253,7 +1258,7 @@ export class InteractiveMode {
 	}
 
 	private async checkForPackageUpdates(): Promise<string[]> {
-		if (process.env.PI_OFFLINE) {
+		if (process.env.QI_OFFLINE) {
 			return [];
 		}
 
@@ -1348,23 +1353,8 @@ export class InteractiveMode {
 		return undefined;
 	}
 
-	private reportInstallTelemetry(version: string): void {
-		if (process.env.PI_OFFLINE) {
-			return;
-		}
-
-		if (!isInstallTelemetryEnabled(this.settingsManager)) {
-			return;
-		}
-
-		void fetch(`https://pi.dev/api/report-install?version=${encodeURIComponent(version)}`, {
-			headers: {
-				"User-Agent": getPiUserAgent(version),
-			},
-			signal: AbortSignal.timeout(5000),
-		})
-			.then(() => undefined)
-			.catch(() => undefined);
+	private reportInstallTelemetry(_version: string): void {
+		// TODO(deferred-porting): severed upstream install telemetry endpoint (ADR-0002 / D4).
 	}
 
 	private getMarkdownThemeWithSettings(): MarkdownTheme {
@@ -2161,8 +2151,21 @@ export class InteractiveMode {
 			compact: (options) => {
 				void (async () => {
 					try {
-						const result = await this.session.compact(options?.customInstructions);
-						options?.onComplete?.(result);
+						this.lastCompactionSkipMessage = undefined;
+						const result = options?.background
+							? await this.session.compactInBackground(options?.customInstructions)
+							: await this.session.compact(options?.customInstructions);
+						if (result) {
+							options?.onComplete?.(result);
+							return;
+						}
+						// Nothing was applied: either a typed skip (nothing to compact)
+						// or the background result was aborted/discarded as stale.
+						// Forward the benign reason via onError so callers can reset
+						// pending state; skip-class messages are surfaced as warnings.
+						const skipReason =
+							this.lastCompactionSkipMessage ?? "Compaction cancelled or superseded; nothing applied";
+						options?.onError?.(new Error(skipReason));
 					} catch (error) {
 						const err = error instanceof Error ? error : new Error(String(error));
 						options?.onError?.(err);
@@ -3509,6 +3512,11 @@ export class InteractiveMode {
 					this.pendingTools.set(event.toolCallId, component);
 				}
 				component.markExecutionStarted();
+				if (event.toolName === "subagent") {
+					// REQ-O02.2: an inline run is live from tool start — refresh the
+					// pills (and an open dashboard) while it runs, not only at settle.
+					this.updateSubagentStatusPills();
+				}
 				this.ui.requestRender();
 				break;
 			}
@@ -3517,6 +3525,9 @@ export class InteractiveMode {
 				const component = this.pendingTools.get(event.toolCallId);
 				if (component) {
 					component.updateResult({ ...event.partialResult, isError: false }, true);
+					if (event.toolName === "subagent") {
+						this.updateSubagentStatusPills();
+					}
 					this.ui.requestRender();
 				}
 				break;
@@ -3598,6 +3609,23 @@ export class InteractiveMode {
 					} else {
 						this.showStatus("Auto-compaction cancelled");
 					}
+				} else if (
+					event.skipped ||
+					(event.errorMessage &&
+						/nothing to compact|already compacted|nothing to summarize|no valid cut point/i.test(
+							event.errorMessage,
+						))
+				) {
+					// Benign skip (typed `skipped` or a legacy skip-class message):
+					// render as a warning/status line, never as an error, and do not
+					// report it to Sentry as a provider failure.
+					const skipMessage = event.errorMessage ?? event.skipMessage ?? "Nothing to compact";
+					this.lastCompactionSkipMessage = skipMessage;
+					if (event.reason === "manual") {
+						this.showWarning(skipMessage);
+					} else if (!event.background) {
+						this.showStatus(skipMessage);
+					}
 				} else if (event.result) {
 					const entries = this.sessionManager.buildContextEntries();
 					if (entries[0]?.type !== "compaction") {
@@ -3628,11 +3656,10 @@ export class InteractiveMode {
 						message: event.errorMessage,
 						stopReason: "compaction_error",
 					});
-					if (event.reason === "manual") {
-						this.showError(event.errorMessage);
+					if (event.reason === "manual" || event.background) {
+						this.showWarning(event.errorMessage);
 					} else {
-						this.chatContainer.addChild(new Spacer(1));
-						this.chatContainer.addChild(new Text(theme.fg("error", event.errorMessage), 1, 0));
+						this.showError(event.errorMessage);
 					}
 				}
 				if (!event.background) {
@@ -4481,6 +4508,35 @@ export class InteractiveMode {
 	}
 
 	/**
+	 * Both live namespaces for the `/subagents` dashboard and the footer pill
+	 * (REQ-O02.2): inline runs from the process runner's `listRunning()`, tagged
+	 * as single/running rows, merged with the background registry rows — newest
+	 * first, exactly the order the registry-only view already used.
+	 */
+	private collectDashboardTasks(): BackgroundTask[] {
+		const inlineTasks: BackgroundTask[] = listInlineSubagentRuns().map((run) => ({
+			id: run.runId,
+			kind: "pi-subprocess",
+			mode: "single",
+			role: run.role,
+			label: `${run.role} (inline)`,
+			task: run.task,
+			status: "running",
+			startedAt: run.startedAt,
+			lastEventAt: run.startedAt,
+			lastOutput: "(inline run in flight)",
+			cwd: run.cwd,
+			ownerPid: process.pid,
+			...(run.pid === undefined ? {} : { pid: run.pid }),
+			...(run.model === undefined ? {} : { model: run.model }),
+			...(run.sessionFile === undefined ? {} : { sessionFile: run.sessionFile }),
+		}));
+		return [...inlineTasks, ...getBackgroundRegistry().snapshot().tasks].sort((a, b) =>
+			a.startedAt < b.startedAt ? 1 : -1,
+		);
+	}
+
+	/**
 	 * Background-task dashboard toggle (the Fleet TUI surface for `/subagents`).
 	 * Mirrors `toggleExperimentsDashboard`: each invocation either opens or
 	 * closes the overlay, and Esc is the only documented close path. Enter
@@ -4497,10 +4553,7 @@ export class InteractiveMode {
 			this.closeBackgroundDashboard();
 			return;
 		}
-		const tasks = getBackgroundRegistry()
-			.snapshot()
-			.tasks.slice()
-			.sort((a, b) => (a.startedAt < b.startedAt ? 1 : -1));
+		const tasks = this.collectDashboardTasks();
 		this.bgDashboardTasks = tasks;
 		this.bgDashboardSelectedRow = 0;
 		showBackgroundDashboard(this.createExperimentsUi(), theme, tasks, 0);
@@ -4549,7 +4602,13 @@ export class InteractiveMode {
 
 	/** Open the log-tail overlay for one task. The dashboard is the dispatcher. */
 	private openBackgroundLogOverlay(task: BackgroundTask): void {
-		const tail = readBackgroundLogTail(task.id);
+		let tail = readBackgroundLogTail(task.id);
+		// An inline run lives in the other namespace: no `subagent-bg/<id>/` row
+		// dir exists for it, so read its own `<inlineTaskDir>/log.jsonl` instead
+		// (REQ-O02.1). Background ids always resolve above — possibly empty.
+		if (tail.records.length === 0 && !task.id.startsWith("bg_")) {
+			tail = readInlineLogTail(task.id);
+		}
 		showBackgroundLogOverlay(this.createExperimentsUi(), theme, task, tail);
 		this.bgLogOverlayOpen = true;
 		this.setBackgroundDashboardNavigation(false);
@@ -4584,10 +4643,16 @@ export class InteractiveMode {
 		);
 		// The registry is user-level and spans every session and project — count
 		// only this session's project. renderBackgroundPill returns undefined at
-		// zero total, which clears the pill.
-		const tasks = getBackgroundRegistry()
-			.snapshot()
-			.tasks.filter((t) => path.resolve(t.cwd) === cwd);
+		// zero total, which clears the pill. Inline runs count here too
+		// (REQ-O02.2): the pill is the always-on view of work in flight.
+		const allTasks = this.collectDashboardTasks();
+		if (this.bgDashboardOpen) {
+			this.bgDashboardTasks = allTasks;
+			this.bgDashboardSelectedRow =
+				allTasks.length === 0 ? 0 : Math.min(this.bgDashboardSelectedRow, allTasks.length - 1);
+			showBackgroundDashboard(this.createExperimentsUi(), theme, allTasks, this.bgDashboardSelectedRow);
+		}
+		const tasks = allTasks.filter((t) => path.resolve(t.cwd) === cwd);
 		this.setExtensionStatus(
 			UI_KEYS.BG_STATUS_KEY,
 			renderBackgroundPill(
@@ -4637,14 +4702,11 @@ export class InteractiveMode {
 		this.ui.requestRender();
 	}
 
-	showNewVersionNotification(release: LatestPiRelease): void {
+	showNewVersionNotification(release: LatestQiRelease): void {
 		const action = theme.fg("accent", `${APP_NAME} update`);
 		const updateInstruction = theme.fg("muted", `New version ${release.version} is available. Run `) + action;
-		const changelogUrl = "https://pi.dev/changelog";
-		const changelogLink = getCapabilities().hyperlinks
-			? hyperlink(theme.fg("accent", changelogUrl), changelogUrl)
-			: theme.fg("accent", changelogUrl);
-		const changelogLine = theme.fg("muted", "Changelog: ") + changelogLink;
+		// TODO(deferred-porting): severed upstream changelog URL (ADR-0002 / D4).
+		const changelogLine = theme.fg("muted", `Run ${theme.bold("/changelog")} to view local release notes.`);
 		const note = release.note?.trim();
 
 		this.chatContainer.addChild(new Spacer(1));
@@ -4956,6 +5018,8 @@ export class InteractiveMode {
 						preference.mode === "specific" && preference.specific
 							? `${preference.specific.provider}/${preference.specific.modelId}`
 							: undefined,
+					compactionModel: this.settingsManager.getCompactionModel(),
+					compactionModelLabel: this.getCompactionModelLabel(),
 				},
 				{
 					onAutoCompactChange: (enabled) => {
@@ -5116,6 +5180,9 @@ export class InteractiveMode {
 					onNewSessionModelChange: (newPreference) => {
 						this.settingsManager.setNewSessionModelPreference(newPreference);
 					},
+					onCompactionModelChange: (model) => {
+						this.settingsManager.setCompactionModel(model);
+					},
 					requestModelSelector: (onPicked) => {
 						// Submenu calls this after closing itself. Show the
 						// model picker, then re-open settings so the user
@@ -5123,12 +5190,12 @@ export class InteractiveMode {
 						//
 						// Persistence of the picked model is owned by the
 						// submenu: the submenu's `callbacks.onChange` is wired
-						// to `onNewSessionModelChange` (see above), which is
-						// what actually calls `setNewSessionModelPreference`.
-						// The host just routes the picker result back into the
-						// submenu via `onPicked(selection)` and re-opens
-						// settings — no direct preference write here.
-						this.pickModelForNewSessionPreference((selection) => {
+						// to the preference setter (e.g. `onNewSessionModelChange`
+						// or `onCompactionModelChange`), which is what actually
+						// persists it. The host just routes the picker result
+						// back into the submenu via `onPicked(selection)` and
+						// re-opens settings — no direct preference write here.
+						this.pickModelForSettingsPreference((selection) => {
 							onPicked(selection);
 							this.showSettingsSelector();
 						});
@@ -5310,8 +5377,9 @@ export class InteractiveMode {
 	/**
 	 * Open the same model picker used by `/model`, but drive it with a
 	 * caller-supplied onPick / onCancel so non-`/model` flows (e.g. the
-	 * "New session model → Use specific model" submenu) can reuse the UI
-	 * without calling `session.setModel`.
+	 * "New session model → Use specific model" and "Compaction model →
+	 * Use specific model" submenus) can reuse the UI without calling
+	 * `session.setModel`.
 	 *
 	 * @param skipHeaderWrite When true, the picker does NOT write the
 	 *   picked model into the current session header. The settings-driven
@@ -5355,16 +5423,17 @@ export class InteractiveMode {
 	}
 
 	/**
-	 * Open the model picker for the "New session model → Use specific
-	 * model" submenu. The callback fires with the picked model or
-	 * undefined on cancel. The settings selector is responsible for
+	 * Open the model picker for a settings submenu that needs a specific
+	 * model (e.g. "New session model → Use specific model" or "Compaction
+	 * model → Use specific model"). The callback fires with the picked model
+	 * or undefined on cancel. The settings selector is responsible for
 	 * re-opening itself after this returns.
 	 *
 	 * Passes `skipHeaderWrite: true` so the picker does NOT mutate the
 	 * current session's header — the user is configuring a global
 	 * preference, not switching the current session's model.
 	 */
-	private pickModelForNewSessionPreference(
+	private pickModelForSettingsPreference(
 		onPicked: (selection: { provider: string; modelId: string } | undefined) => void,
 	): void {
 		this.showModelSelectorWithCallback(
@@ -5377,6 +5446,18 @@ export class InteractiveMode {
 			},
 			/* skipHeaderWrite */ true,
 		);
+	}
+
+	/**
+	 * Human-readable label for the configured compaction model preference.
+	 * Prefers the catalog model name (falling back to `provider/modelId`)
+	 * so the /settings row reads like the /model picker.
+	 */
+	private getCompactionModelLabel(): string | undefined {
+		const ref = this.settingsManager.getCompactionModel();
+		if (!ref) return undefined;
+		const model = this.session.modelRuntime.getModel(ref.provider, ref.modelId);
+		return model ? model.name : `${ref.provider}/${ref.modelId}`;
 	}
 
 	private showModelsSelector(): void {

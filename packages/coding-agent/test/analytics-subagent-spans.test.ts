@@ -51,13 +51,13 @@ function readSpanRow(spanId: string): SpanRow | undefined {
 
 beforeEach(() => {
 	home = mkdtempSync(join(tmpdir(), "pi-analytics-test-"));
-	process.env.PI_TEST_ANALYTICS_HOME = home;
+	process.env.QI_TEST_ANALYTICS_HOME = home;
 	store = getAnalyticsStore();
 });
 
 afterEach(() => {
 	store.close();
-	delete process.env.PI_TEST_ANALYTICS_HOME;
+	delete process.env.QI_TEST_ANALYTICS_HOME;
 	if (existsSync(home)) rmSync(home, { recursive: true, force: true });
 });
 

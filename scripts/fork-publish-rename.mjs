@@ -1,8 +1,8 @@
 #!/usr/bin/env bun
-// Helper for the publish workflow: rename package.json to @bramburn/* before
-// npm publish, then restore on exit. Also rewrites every workspace dep under
-// the @earendil-works/pi-* scope and the repository.url so the published
-// tarball matches the bramburn fork.
+// Helper for the publish workflow: normalise package.json to the published
+// @bramburn/qi-* scope before npm publish, then restore on exit. Also
+// rewrites every workspace dep under that scope and the repository.url so
+// the published tarball matches the fork (D2: published scope @bramburn/qi-*).
 //
 // Usage:
 //   node scripts/fork-publish-rename.mjs <package-dir> <cmd> [args...]
@@ -21,14 +21,19 @@ if (!pkgDir || cmd.length === 0) {
 	process.exit(2);
 }
 
-const WORKSPACE_PREFIX = "@earendil-works/pi-";
-const FORK_PREFIX = "@bramburn/pi-";
+// The published scope is @bramburn/qi-* (D2). Workspace packages are already
+// named under it, so on a current checkout the "rename" is the identity; the
+// legacy upstream spelling is still accepted and rewritten so an old
+// checkout publishes under the fork scope too.
+const UPSTREAM_PREFIX = "@earendil-works/pi-";
+const WORKSPACE_PREFIX = "@bramburn/qi-";
+const FORK_PREFIX = "@bramburn/qi-";
 const UPSTREAM_REPO_URL = "git+https://github.com/earendil-works/pi.git";
 const FORK_REPO_URL = "git+https://github.com/bramburn/pi.git";
 
 // Dep sections to walk. Order matches how npm itself orders package.json
-// fields. Values are rewritten only when the key starts with the workspace
-// scope and the value is not a registry alias (`npm:...`).
+// fields. Values are rewritten only when the key starts with the legacy
+// upstream scope and the value is not a registry alias (`npm:...`).
 const DEP_SECTIONS = [
 	"dependencies",
 	"devDependencies",
@@ -47,17 +52,19 @@ try {
 	process.exit(2);
 }
 
-if (!pkg.name?.startsWith(WORKSPACE_PREFIX)) {
-	console.error(`name "${pkg.name}" is not under ${WORKSPACE_PREFIX}; aborting`);
+if (!pkg.name?.startsWith(WORKSPACE_PREFIX) && !pkg.name?.startsWith(UPSTREAM_PREFIX)) {
+	console.error(`name "${pkg.name}" is not under ${WORKSPACE_PREFIX} or ${UPSTREAM_PREFIX}; aborting`);
 	process.exit(2);
 }
 
 const oldName = pkg.name;
-const newName = FORK_PREFIX + oldName.slice(WORKSPACE_PREFIX.length);
+const newName = oldName.startsWith(UPSTREAM_PREFIX)
+	? FORK_PREFIX + oldName.slice(UPSTREAM_PREFIX.length)
+	: oldName;
 pkg.name = newName;
 
 // Rewrite workspace deps in every dep section. Skips registry aliases
-// (e.g. `"@mariozechner/pi-ai": "npm:@earendil-works/pi-ai@1.0.0"`) —
+// (e.g. `"@mariozechner/pi-ai": "npm:@bramburn/qi-ai@1.0.0"`) —
 // those are deliberate third-party rewrites, not workspace links. Same
 // carve-out as scripts/sync-versions.js.
 let depRewrites = 0;
@@ -66,10 +73,11 @@ for (const section of DEP_SECTIONS) {
 	if (!deps || typeof deps !== "object") continue;
 	if (Array.isArray(deps)) continue; // peerDependenciesMeta is {pkg: {optional: bool}}
 	for (const key of Object.keys(deps)) {
-		if (!key.startsWith(WORKSPACE_PREFIX)) continue;
+		if (key.startsWith(WORKSPACE_PREFIX)) continue; // already the published scope
+		if (!key.startsWith(UPSTREAM_PREFIX)) continue;
 		const value = deps[key];
 		if (typeof value === "string" && value.startsWith("npm:")) continue;
-		const newKey = FORK_PREFIX + key.slice(WORKSPACE_PREFIX.length);
+		const newKey = FORK_PREFIX + key.slice(UPSTREAM_PREFIX.length);
 		if (newKey === key) continue;
 		deps[newKey] = value;
 		delete deps[key];

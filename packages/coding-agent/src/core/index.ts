@@ -131,7 +131,6 @@ export {
 	BG_LOG_MAX_BYTES,
 	BG_LOG_MAX_RECORDS,
 	backgroundLogPath,
-	buildStatusInjection,
 	cherryPickFromBranch,
 	clearBackgroundDashboard,
 	clearBackgroundLogOverlay,

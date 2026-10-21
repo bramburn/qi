@@ -6,7 +6,7 @@
  * - `pi --mode json "prompt"` - JSON event stream
  */
 
-import type { AssistantMessage, ImageContent } from "@earendil-works/pi-ai";
+import type { AssistantMessage, ImageContent } from "@bramburn/qi-ai";
 import type { AgentSessionRuntime } from "../core/agent-session-runtime.ts";
 import { flushRawStdout, waitForRawStdoutBackpressure, writeRawStdout } from "../core/output-guard.ts";
 import { reportProviderError } from "../core/sentry.ts";
@@ -251,7 +251,7 @@ export async function runPrintMode(runtimeHost: AgentSessionRuntime, options: Pr
 
 		// Child side of the control plane (#1047): a backgrounded run is a `pi --mode json`
 		// process, so this is where its own session exists. When the spawner names a control
-		// inbox with PI_SUBAGENT_CONTROL_DIR, poll it and apply the filed action to this
+		// inbox with QI_SUBAGENT_CONTROL_DIR, poll it and apply the filed action to this
 		// process's session: steer text joins the live turn, interrupt and stop abort it.
 		// No env var means no watcher and no polling, which is the ordinary case.
 		controlWatcher = createControlWatcherFromEnv({

@@ -9,7 +9,7 @@ const repoRoot = resolve(scriptDir, "..");
 const codingAgentDir = join(repoRoot, "packages/coding-agent");
 const rootLockfilePath = join(repoRoot, "package-lock.json");
 const shrinkwrapPath = join(codingAgentDir, "npm-shrinkwrap.json");
-const internalPackagePrefix = "@earendil-works/pi-";
+const internalPackagePrefix = "@bramburn/qi-";
 const allowedInstallScriptPackages = new Map([
 	["@google/genai@1.52.0", "preinstall is a no-op in the published package"],
 	["protobufjs@7.6.5", "postinstall only warns about protobufjs version scheme mismatches"],
@@ -136,7 +136,7 @@ function isInternalPackageName(name) {
 
 function swapForkScope(name) {
 	// Map the upstream workspace scope to the fork scope (and back),
-	// preserving the `pi-` segment so `@earendil-works/pi-agent-core`
+	// preserving the `pi-` segment so `@bramburn/qi-agent-core`
 	// maps to `@bramburn/pi-agent-core` (not `@bramburn/agent-core`).
 	if (typeof name !== "string") return name;
 	if (name.startsWith(`${internalPackagePrefix}`)) {
@@ -166,7 +166,7 @@ function getInternalWorkspaces(lockPackages) {
 		// `fork-publish-rename.mjs` swaps the publishing package's name and
 		// workspace deps, the publishing package.json lists deps under
 		// `@bramburn/pi-*` while the lockfile and other workspace
-		// package.json files still use `@earendil-works/pi-*`. The shrinkwrap
+		// package.json files still use `@bramburn/qi-*`. The shrinkwrap
 		// must therefore resolve either spelling back to the same workspace.
 		const lockName = isInternalPackageName(entry.name) ? entry.name : undefined;
 		const pkgName = isInternalPackageName(packageJson.name) ? packageJson.name : undefined;

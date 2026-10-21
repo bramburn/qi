@@ -8,7 +8,7 @@
  * - after `offAction`, the keys fall back to the editor again, so an unbound
  *   dashboard can never leave up/down dead.
  */
-import { setKeybindings, TuiMainScreen } from "@earendil-works/pi-tui";
+import { setKeybindings, TuiMainScreen } from "@bramburn/qi-tui";
 import { afterEach, describe, expect, it } from "vitest";
 import { defaultEditorTheme } from "../../tui/test/test-themes.ts";
 import { VirtualTerminal } from "../../tui/test/virtual-terminal.ts";

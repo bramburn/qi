@@ -1,4 +1,4 @@
-import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
+import type { ThinkingLevel } from "@bramburn/qi-agent-core";
 import type { SubagentSettings } from "./settings-manager.ts";
 
 export const DEFAULT_THINKING_LEVEL: ThinkingLevel = "medium";
@@ -32,6 +32,8 @@ export const DEFAULT_SUBAGENT_SETTINGS: ResolvedSubagentSettings = {
 	maxTotalSpawns: 64,
 	/** Per-tool-call budget inside a child subagent. */
 	toolTimeoutMs: 300_000,
+	/** Max assistant turns per child subagent before the parent kills the run (REQ-D03). */
+	maxTurns: 30,
 	/**
 	 * Deepest delegation level this process may spawn.
 	 *

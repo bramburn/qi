@@ -7,8 +7,8 @@
 
 import { existsSync, statSync } from "node:fs";
 import { createInterface } from "node:readline";
-import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
-import { type ImageContent, type Model, modelsAreEqual } from "@earendil-works/pi-ai";
+import type { ThinkingLevel } from "@bramburn/qi-agent-core";
+import { type ImageContent, type Model, modelsAreEqual } from "@bramburn/qi-ai";
 import chalk from "chalk";
 import { type Args, type Mode, parseArgs, printHelp } from "./cli/args.ts";
 import {
@@ -401,9 +401,9 @@ function validateSessionParentFlags(parsed: Args): void {
 	if (parsed.sessionParent === undefined) return;
 
 	const conflictingFlags = [
-		parsed.noSession ? '--no-session' : undefined,
-		parsed.noSessionParent ? '--no-session-parent' : undefined,
-		parsed.fork ? '--fork' : undefined,
+		parsed.noSession ? "--no-session" : undefined,
+		parsed.noSessionParent ? "--no-session-parent" : undefined,
+		parsed.fork ? "--fork" : undefined,
 	].filter((flag): flag is string => flag !== undefined);
 
 	if (conflictingFlags.length > 0) {
@@ -412,7 +412,7 @@ function validateSessionParentFlags(parsed: Args): void {
 	}
 
 	const value = parsed.sessionParent;
-	if (!value.includes('/') && !value.includes('\\') && !value.endsWith('.jsonl')) {
+	if (!value.includes("/") && !value.includes("\\") && !value.endsWith(".jsonl")) {
 		console.error(chalk.red(`Error: --session-parent expects a session file path ending in .jsonl, got '${value}'`));
 		process.exit(1);
 	}
@@ -760,10 +760,10 @@ export interface MainOptions {
 export async function main(args: string[], options?: MainOptions) {
 	resetTimings();
 	const extensionFactories = [...builtInExtensions, ...(options?.extensionFactories ?? [])];
-	const offlineMode = args.includes("--offline") || isTruthyEnvFlag(process.env.PI_OFFLINE);
+	const offlineMode = args.includes("--offline") || isTruthyEnvFlag(process.env.QI_OFFLINE);
 	if (offlineMode) {
-		process.env.PI_OFFLINE = "1";
-		process.env.PI_SKIP_VERSION_CHECK = "1";
+		process.env.QI_OFFLINE = "1";
+		process.env.QI_SKIP_VERSION_CHECK = "1";
 	}
 
 	const sentryContext = initSentryIfEnabled();
@@ -829,7 +829,7 @@ async function runMainBody(
 	time("parseArgs");
 
 	if (parsed.version) {
-		console.log(`pi ${VERSION} [${FORK_NAME}]`);
+		console.log(`qi ${VERSION} [${FORK_NAME}]`);
 		process.exit(0);
 	}
 
@@ -1168,9 +1168,9 @@ async function runMainBody(
 		process.exit(1);
 	}
 
-	const startupBenchmark = isTruthyEnvFlag(process.env.PI_STARTUP_BENCHMARK);
+	const startupBenchmark = isTruthyEnvFlag(process.env.QI_STARTUP_BENCHMARK);
 	if (startupBenchmark && appMode !== "interactive") {
-		console.error(chalk.red("Error: PI_STARTUP_BENCHMARK only supports interactive mode"));
+		console.error(chalk.red("Error: QI_STARTUP_BENCHMARK only supports interactive mode"));
 		process.exit(1);
 	}
 

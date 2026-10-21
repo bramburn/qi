@@ -1,6 +1,6 @@
-import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
-import type { Transport } from "@earendil-works/pi-ai";
-import type { TerminalCapabilities, TuiMode } from "@earendil-works/pi-tui";
+import type { ThinkingLevel } from "@bramburn/qi-agent-core";
+import type { Transport } from "@bramburn/qi-ai";
+import type { TerminalCapabilities, TuiMode } from "@bramburn/qi-tui";
 import { randomUUID } from "crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { dirname, join } from "path";
@@ -182,6 +182,8 @@ export interface SubagentSettings {
 	maxTotalSpawns?: number;
 	/** Per-tool-call wall-clock budget inside a child subagent. Default 300_000 (5 min). */
 	toolTimeoutMs?: number;
+	/** Max assistant turns per child subagent before the parent kills the run. Default 30 (REQ-D03). */
+	maxTurns?: number;
 	/**
 	 * Deepest delegation level allowed, where 0 is the top-level session.
 	 * Default 1 — one level of subagents, no grandchildren. 0 forbids delegation.
@@ -218,6 +220,12 @@ export interface Settings {
 	modelThinkingLevels?: Record<string, ThinkingLevel>; // per-model default thinking level overrides keyed by "provider/modelId"
 	/** New-session model preference; global-only. */
 	newSessionModel?: NewSessionModelPreference;
+	/**
+	 * Model used for context summarisation (manual /compact, auto-compaction,
+	 * branch summaries): a catalog model reference. Absent = use the session's
+	 * current model. Global-only; configured from /settings → Compaction model.
+	 */
+	compactionModel?: { provider: string; modelId: string };
 	/** Most recently selected model (provider + modelId). Updated on every
 	 * setModel / cycleModel call. Global-only. */
 	lastUsedModel?: { provider: string; modelId: string };
@@ -866,6 +874,21 @@ export class SettingsManager {
 		this.save();
 	}
 
+	getCompactionModel(): { provider: string; modelId: string } | undefined {
+		return this.settings.compactionModel;
+	}
+
+	/**
+	 * Set (or, with `undefined`, clear) the model used for context
+	 * summarisation. Clearing restores the default: the session's current
+	 * model. Global-only.
+	 */
+	setCompactionModel(model: { provider: string; modelId: string } | undefined): void {
+		this.globalSettings.compactionModel = model;
+		this.markModified("compactionModel");
+		this.save();
+	}
+
 	getLastUsedModel(): { provider: string; modelId: string } | undefined {
 		const lastUsed = this.settings.lastUsedModel;
 		if (!lastUsed) return undefined;
@@ -1382,7 +1405,7 @@ export class SettingsManager {
 		if (this.settings.terminal?.clearOnShrink !== undefined) {
 			return this.settings.terminal.clearOnShrink;
 		}
-		return process.env.PI_CLEAR_ON_SHRINK === "1";
+		return process.env.QI_CLEAR_ON_SHRINK === "1";
 	}
 
 	setClearOnShrink(enabled: boolean): void {
@@ -1497,7 +1520,7 @@ export class SettingsManager {
 	}
 
 	getShowHardwareCursor(): boolean {
-		return this.settings.showHardwareCursor ?? process.env.PI_HARDWARE_CURSOR === "1";
+		return this.settings.showHardwareCursor ?? process.env.QI_HARDWARE_CURSOR === "1";
 	}
 
 	setShowHardwareCursor(enabled: boolean): void {
@@ -1620,6 +1643,17 @@ export class SettingsManager {
 		return typeof value === "number" && Number.isFinite(value)
 			? Math.max(0, Math.floor(value))
 			: DEFAULT_SUBAGENT_SETTINGS.toolTimeoutMs;
+	}
+
+	/**
+	 * Per-child assistant turn cap (REQ-D03). 0 disables the cap; the default is
+	 * DEFAULT_SUBAGENT_SETTINGS.maxTurns.
+	 */
+	getSubagentMaxTurns(): number {
+		const value = this.settings.subagent?.maxTurns;
+		return typeof value === "number" && Number.isFinite(value)
+			? Math.max(0, Math.floor(value))
+			: DEFAULT_SUBAGENT_SETTINGS.maxTurns;
 	}
 
 	/**
