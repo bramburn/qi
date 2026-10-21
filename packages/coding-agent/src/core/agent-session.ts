@@ -57,6 +57,7 @@ import { type BashResult, executeBashWithOperations } from "./bash-executor.ts";
 import {
 	type CompactionPreparationOutcome,
 	type CompactionResult,
+	CompactionSkippedError,
 	type CompactionSkipReason,
 	calculateContextTokens,
 	collectEntriesForBranchSummary,
@@ -2234,6 +2235,10 @@ export class AgentSession {
 	 * Interactive mode uses {@link compactInBackground} instead; this blocking
 	 * path remains for RPC and extension callers that await the result.
 	 * @param customInstructions Optional instructions for the compaction summary
+	 * @throws {CompactionSkippedError} When preparation finds nothing eligible to
+	 * summarise, after emitting `compaction_end` with `skipped: true` and
+	 * `errorMessage: undefined` (ADR-0005 / R28). Genuine failures reject with
+	 * the underlying error as before.
 	 */
 	async compact(customInstructions?: string): Promise<CompactionResult | undefined> {
 		this._abortBackgroundCompaction();
@@ -2266,7 +2271,11 @@ export class AgentSession {
 					skipReason: prepOutcome.skipReason,
 					skipMessage: prepOutcome.reason,
 				});
-				return undefined;
+				// ADR-0005 / R28: the blocking path rejects with a typed skip so
+				// direct RPC/SDK callers get a distinguishable outcome. The skip
+				// event emitted above is the single terminal notification
+				// (skipped: true, errorMessage undefined).
+				throw new CompactionSkippedError(prepOutcome.skipReason, prepOutcome.reason);
 			}
 			const preparation = prepOutcome.preparation;
 
@@ -2381,6 +2390,12 @@ export class AgentSession {
 			});
 			return compactionResult;
 		} catch (error) {
+			if (error instanceof CompactionSkippedError) {
+				// ADR-0005 / R28: the typed skip already emitted its own
+				// compaction_end (skipped: true, errorMessage undefined); never
+				// emit a second, failure-flavoured event for a benign no-op.
+				throw error;
+			}
 			const message = error instanceof Error ? error.message : String(error);
 			const aborted = message === "Compaction cancelled" || (error instanceof Error && error.name === "AbortError");
 			this._compactionAbortController = undefined;
@@ -2408,9 +2423,11 @@ export class AgentSession {
 	 * arrive after the snapshot sit after the compaction entry on the branch
 	 * and are kept verbatim.
 	 *
-	 * Resolves with the applied result, `undefined` when the run was aborted or
-	 * its result discarded as stale, and rejects on error (also emitted as a
-	 * `compaction_end` event).
+	 * Resolves with the applied result, `undefined` when the run was aborted,
+	 * its result discarded as stale, or preparation was a benign skip
+	 * (matching `Promise<CompactionResult | undefined>`), and rejects on error
+	 * (also emitted as a `compaction_end` event). Unlike {@link compact}, a
+	 * skip never rejects here (ADR-0005 / R28).
 	 */
 	compactInBackground(customInstructions?: string): Promise<CompactionResult | undefined> {
 		if (this._compactionAbortController !== undefined || this._autoCompactionAbortController !== undefined) {

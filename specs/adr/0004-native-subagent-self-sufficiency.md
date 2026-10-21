@@ -1,6 +1,6 @@
 # ADR-0004: Native subagent subsystem is the only subagent implementation
 
-**Status:** proposed
+**Status:** accepted
 **Date:** 2026-10-20
 **Domain:** subagents
 
@@ -18,7 +18,7 @@ Under decisions D1, D4, and D5 (`specs/batch/batch-context.md` §1), `qi` is sev
 
 We will maintain `packages/coding-agent/src/core/subagent/` as the sole subagent implementation in `qi`, remove `packages/coding-agent/examples/extensions/subagent/` and all documentation references to it or to the external `pi-subagents` npm package, keep `packages/agent/src` free of subagent code, and load agent definitions exclusively from local directories.
 
-[ASSUMPTION: Removing `packages/coding-agent/examples/extensions/subagent/` does not require changes to root `package.json` workspaces because only `with-deps`, `custom-provider-anthropic`, `custom-provider-gitlab-duo`, `sandbox`, and `gondolin` are listed in `package.json:7-13` — rationale: verified by direct read of root `package.json:5-14`.]
+Removing `packages/coding-agent/examples/extensions/subagent/` needs no changes to root `package.json` workspaces, because only `with-deps`, `custom-provider-anthropic`, `custom-provider-gitlab-duo`, `sandbox`, and `gondolin` are listed in `package.json:7-13` (verified by direct read of root `package.json:5-14`).
 
 ## Consequences
 

@@ -369,7 +369,8 @@ distinguishing log line now comes from `scripts/publish-with-skip.mjs`:
 | --- | --- | --- |
 | `version already on npm, treating as success (idempotent)` | npm returned HTTP 403 `You cannot publish over the previously published versions`. Expected on re-runs. | nothing |
 | `ENEEDAUTH / registry auth failure. ... Configure it under the package's npmjs.com Settings -> Trusted Publishers` | The npm trusted publisher entry for this package is missing, or its workflow filename / environment / repository doesn't match the running workflow. | Add or fix the entry per `## npm trusted publisher setup` above, then re-run the workflow (`gh workflow run publish.yml --repo bramburn/pi --ref v<version> -f tag=v<version>`). |
-| `Cannot resolve @bramburn/pi-<x> from root. No matching lockfile entry found.` | `fork-publish-rename.mjs` has rewritten the publishing package's deps to `@bramburn/pi-*` and the shrinkwrap / install-lock script can't find a matching workspace entry. | The shrinkwrap fix in this branch builds a fork-scope-aware workspace index; ensure both `scripts/generate-coding-agent-shrinkwrap.mjs` and `generate-coding-agent-install-lock.mjs` are on the latest version, then re-run the workflow. |
+
+(Publish-time package renaming via `scripts/fork-publish-rename.mjs` was removed on 2026-10-20: workspace packages are renamed in-tree to `@bramburn/qi-*` per ADR-0001, so the `Cannot resolve @bramburn/pi-<x>` failure mode can no longer occur.)
 
 ### Windows prebuild file lock
 

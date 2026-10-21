@@ -1,6 +1,7 @@
 import { fauxAssistantMessage } from "@earendil-works/pi-ai";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+	CompactionSkippedError,
 	DEFAULT_COMPACTION_SETTINGS,
 	prepareCompaction,
 	prepareCompactionResult,
@@ -68,14 +69,22 @@ describe("compaction typed skip result and threshold latch", () => {
 		expect(prepareCompaction(smallSession, DEFAULT_COMPACTION_SETTINGS)).toBeUndefined();
 	});
 
-	it("emits skipped compaction_end without errorMessage or throwing on manual compact() and compactInBackground()", async () => {
+	it("emits skipped compaction_end without errorMessage, rejects blocking compact() with CompactionSkippedError, and resolves compactInBackground() undefined", async () => {
 		const harness = await createHarness();
 		harnesses.push(harness);
 		harness.setResponses([fauxAssistantMessage("hi there")]);
 		await harness.session.prompt("hello");
 
-		const blockingResult = await harness.session.compact();
-		expect(blockingResult).toBeUndefined();
+		// ADR-0005 / R28: the blocking path rejects with a typed skip after
+		// emitting the terminal skipped event (no errorMessage).
+		const rejection = await harness.session.compact().catch((error: unknown) => error);
+		expect(rejection).toBeInstanceOf(CompactionSkippedError);
+		expect((rejection as CompactionSkippedError).skipReason).toBe("nothing-to-summarize");
+		expect((rejection as CompactionSkippedError).name).toBe("CompactionSkippedError");
+		// The message must match the hot-swap extension's skip-downgrade regex (R28).
+		expect((rejection as CompactionSkippedError).message).toMatch(
+			/Nothing to compact|Already compacted|nothing to summarize|no valid cut point/i,
+		);
 		const manualEnds = harness.eventsOfType("compaction_end");
 		expect(manualEnds).toHaveLength(1);
 		expect(manualEnds[0]).toMatchObject({
@@ -89,6 +98,7 @@ describe("compaction typed skip result and threshold latch", () => {
 		expect(manualEnds[0].errorMessage).toBeUndefined();
 		expect(manualEnds[0].skipMessage).toContain("Nothing to summarize");
 
+		// ADR-0005 / R28: the background path resolves undefined on skip.
 		const bgResult = await harness.session.compactInBackground();
 		expect(bgResult).toBeUndefined();
 		const allEnds = harness.eventsOfType("compaction_end");

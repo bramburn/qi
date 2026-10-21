@@ -162,11 +162,11 @@ function getInternalWorkspaces(lockPackages) {
 			continue;
 		}
 		// Accept the workspace if either the lockfile's recorded name or the
-		// on-disk package.json's name is under the internal prefix. After
-		// `fork-publish-rename.mjs` swaps the publishing package's name and
-		// workspace deps, the publishing package.json lists deps under
-		// `@bramburn/pi-*` while the lockfile and other workspace
-		// package.json files still use `@bramburn/qi-*`. The shrinkwrap
+		// on-disk package.json's name is under the internal prefix. A
+		// publishing package.json may still list deps under the legacy fork
+		// scope `@bramburn/pi-*` (as produced by the removed publish-time
+		// rename script, ADR-0001) while the lockfile and other workspace
+		// package.json files use `@bramburn/qi-*`. The shrinkwrap
 		// must therefore resolve either spelling back to the same workspace.
 		const lockName = isInternalPackageName(entry.name) ? entry.name : undefined;
 		const pkgName = isInternalPackageName(packageJson.name) ? packageJson.name : undefined;
@@ -188,10 +188,11 @@ function getInternalWorkspaces(lockPackages) {
 function buildInternalWorkspaceIndex(workspaces) {
 	// Index every workspace under its known names plus the swapped fork /
 	// upstream equivalent so lookups succeed regardless of which scope the
-	// caller requests. fork-publish-rename renames the publishing
-	// package's deps to @bramburn/pi-* without touching the lockfile or
-	// other workspaces' package.json files; without this index, the
-	// renamed dep names would resolve to "no matching lockfile entry".
+	// caller requests. A publishing package.json may be rewritten to the
+	// legacy fork scope @bramburn/pi-* (removed publish-time rename,
+	// ADR-0001) without touching the lockfile or other workspaces'
+	// package.json files; without this index, those dep names would
+	// resolve to "no matching lockfile entry".
 	const index = new Map();
 	for (const workspace of workspaces.values()) {
 		for (const name of new Set([workspace.lockName, workspace.pkgName])) {
@@ -368,8 +369,7 @@ function generateShrinkwrap() {
 		const workspace = internalWorkspaceIndex.get(item.name);
 		if (workspace) {
 			// Preserve the requested name (typically the fork-scope spelling
-			// after fork-publish-rename has rewritten the publishing
-			// package's deps) so the shrinkwrap output's `node_modules/<name>`
+			// of the publishing package's deps) so the shrinkwrap output's `node_modules/<name>`
 			// paths and resolved tarball URLs match the published tarball.
 			const outputName = item.name ?? workspace.pkgName;
 			const outputPath = `node_modules/${outputName}`;

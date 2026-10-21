@@ -10,7 +10,7 @@ This specification defines the requirements for cutting all ties between `qi` an
 
 **Priority:** MUST
 **Statement:** The system exposes `qi` as its sole command-line executable name without providing a `pi` executable alias.
-**Rationale:** Decision D1 mandates a full hard cut with no legacy aliases. Currently `packages/coding-agent/package.json:11` maps `"pi": "dist/bundle/cli.js"`, `packages/coding-agent/package.json:41` compiles `--outfile dist/pi`, `packages/coding-agent/src/config.ts:512-513` sets `APP_NAME = piConfigName || "pi"` and `APP_TITLE = piConfigName ? APP_NAME : "π"`, and `packages/coding-agent/src/cli/startup-ui.ts:34` sets `OFFICIAL_APP_NAME = "pi"`. `[ASSUMPTION: APP_TITLE in packages/coding-agent/src/config.ts:513 becomes "qi" rather than "π" — rationale: D1 requires removing all pi/π identity markers in favour of qi]`
+**Rationale:** Decision D1 mandates a full hard cut with no legacy aliases. Currently `packages/coding-agent/package.json:11` maps `"pi": "dist/bundle/cli.js"`, `packages/coding-agent/package.json:41` compiles `--outfile dist/pi`, `packages/coding-agent/src/config.ts:512-513` sets `APP_NAME = piConfigName || "pi"` and `APP_TITLE = piConfigName ? APP_NAME : "π"`, and `packages/coding-agent/src/cli/startup-ui.ts:34` sets `OFFICIAL_APP_NAME = "pi"`. `APP_TITLE` in `packages/coding-agent/src/config.ts:513` becomes `"qi"` rather than `"π"`, because D1 requires removing all pi/π identity markers in favour of qi.
 **Acceptance criteria:**
 - AC1: Given the coding-agent package manifest, when inspecting its executable entry map, then the only entry key is `qi` mapped to `dist/bundle/cli.js` with no `pi` key present.
 - AC2: Given a standalone binary build, when the binary artifact is produced, then the output filename is `qi` (or `qi.exe` on Windows) with no `pi` binary produced.
@@ -21,7 +21,7 @@ This specification defines the requirements for cutting all ties between `qi` an
 
 **Priority:** MUST
 **Statement:** The system names the root workspace `qi-monorepo` while naming all published workspace packages under the `@bramburn/qi-*` scope.
-**Rationale:** Decision D2 replaces all 11 `@earendil-works/pi-*` packages with `@bramburn/qi-*` and renames the root workspace in `package.json:2` from `pi-monorepo` to `qi-monorepo`. Currently `packages/coding-agent/package.json:2,51-56` and sibling packages declare `@earendil-works/pi-*` and `scripts/fork-publish-rename.mjs:21-22` rewrites them to `@bramburn/pi-*` only during publishing. `[ASSUMPTION: All 11 workspace package.json manifests and internal workspace imports are renamed in-tree to @bramburn/qi-* rather than rewritten transiently at publish time — rationale: D1 and D2 require cutting all earendil ties and eliminating publish-time shrinkwrap drift noted in AGENTS.md:323]`
+**Rationale:** Decision D2 replaces all 11 `@earendil-works/pi-*` packages with `@bramburn/qi-*` and renames the root workspace in `package.json:2` from `pi-monorepo` to `qi-monorepo`. Currently `packages/coding-agent/package.json:2,51-56` and sibling packages declare `@earendil-works/pi-*` and `scripts/fork-publish-rename.mjs:21-22` rewrites them to `@bramburn/pi-*` only during publishing. All 11 workspace `package.json` manifests and their internal workspace imports are renamed in-tree to `@bramburn/qi-*` rather than rewritten transiently at publish time: D1 and D2 cut all earendil ties and eliminate the publish-time shrinkwrap drift noted in `AGENTS.md:323`, so the now-redundant `scripts/fork-publish-rename.mjs` and its test are deleted (ADR-0001).
 **Acceptance criteria:**
 - AC1: Given the root workspace manifest, when reading its `name` field, then the value is `"qi-monorepo"`.
 - AC2: Given all 11 publishable workspace package manifests, when inspecting their `name` fields and internal workspace dependency keys, then every package uses `@bramburn/qi-*` and zero `@earendil-works/pi-*` or `@bramburn/pi-*` package names remain.
@@ -31,7 +31,7 @@ This specification defines the requirements for cutting all ties between `qi` an
 
 **Priority:** MUST
 **Statement:** The system resolves global user state under `~/.qi/agent` (with sibling `~/.qi/analytics`) plus project state under `.qi/` without reading from `~/.pi` or `.pi/`.
-**Rationale:** Decision D1 requires user state at `~/.qi/` and project state at `.qi/`, breaking `.pi` immediately. Currently `packages/coding-agent/package.json:6-8` sets `"piConfig": { "configDir": ".pi" }`, `packages/coding-agent/src/config.ts:514,540-596` sets `CONFIG_DIR_NAME = ".pi"`, `getAgentDir()` -> `~/.pi/agent`, `getAnalyticsDir()` -> `~/.pi/analytics`, and `getDebugLogPath()` -> `~/.pi/agent/pi-debug.log`, `packages/coding-agent/src/core/settings-manager.ts:360` reads `<cwd>/.pi/settings.json`, and `packages/coding-agent/src/core/session-manager.ts:375` stores sessions under `~/.pi/agent/sessions`. `[ASSUMPTION: The package manifest configuration key at packages/coding-agent/package.json:6 and packages/coding-agent/src/config.ts:500 is renamed from piConfig to qiConfig with configDir ".qi" — rationale: removes the legacy piConfig identifier from runtime config]`
+**Rationale:** Decision D1 requires user state at `~/.qi/` and project state at `.qi/`, breaking `.pi` immediately. Currently `packages/coding-agent/package.json:6-8` sets `"piConfig": { "configDir": ".pi" }`, `packages/coding-agent/src/config.ts:514,540-596` sets `CONFIG_DIR_NAME = ".pi"`, `getAgentDir()` -> `~/.pi/agent`, `getAnalyticsDir()` -> `~/.pi/analytics`, and `getDebugLogPath()` -> `~/.pi/agent/pi-debug.log`, `packages/coding-agent/src/core/settings-manager.ts:360` reads `<cwd>/.pi/settings.json`, and `packages/coding-agent/src/core/session-manager.ts:375` stores sessions under `~/.pi/agent/sessions`. The package manifest configuration key at `packages/coding-agent/package.json:6` and `packages/coding-agent/src/config.ts:500` is renamed from `piConfig` to `qiConfig` with `configDir: ".qi"`, removing the legacy `piConfig` identifier from runtime config.
 **Acceptance criteria:**
 - AC1: Given `QI_CODING_AGENT_DIR` is unset, when path helpers in `config.ts` are called, then `CONFIG_DIR_NAME` is `".qi"`, `getAgentDir()` resolves to `~/.qi/agent`, `getAnalyticsDir()` resolves to `~/.qi/analytics`, and `getDebugLogPath()` resolves to `~/.qi/agent/qi-debug.log`.
 - AC2: Given a project workspace containing `.pi/settings.json`, `.pi/agents/*.md`, or `.pi/skills/` without a `.qi/` directory, when the system loads project settings, agents, or skills, then `.pi/` is ignored and only `.qi/` is consulted.
@@ -62,7 +62,7 @@ This specification defines the requirements for cutting all ties between `qi` an
 
 **Priority:** MUST
 **Statement:** The system identifies `@bramburn/qi-coding-agent`, `qi`, plus `.qi` as the official distribution metadata across startup checks, self-update guidance, plus version reporting.
-**Rationale:** `packages/coding-agent/src/cli/startup-ui.ts:33-46` gates first-time setup on `OFFICIAL_PACKAGE_NAME = "@earendil-works/pi-coding-agent"`, `OFFICIAL_APP_NAME = "pi"`, and `OFFICIAL_CONFIG_DIR_NAME = ".pi"`, while `packages/coding-agent/src/config.ts:346` points binary self-update instructions to `https://github.com/earendil-works/pi-mono/releases/latest` and `config.ts:518` defines `FORK_NAME = "bramburn"`. `[UNRESOLVED: Should qi --version retain the "[bramburn]" suffix (`qi <version> [bramburn]`) at packages/coding-agent/src/main.ts:832 or print `qi <version>` now that qi is its own brand? — suggested: Retain FORK_NAME = "bramburn" and print `qi <version> [bramburn]` per AGENTS.md §Forking unless the maintainer elects to drop the suffix]`
+**Rationale:** `packages/coding-agent/src/cli/startup-ui.ts:33-46` gates first-time setup on `OFFICIAL_PACKAGE_NAME = "@earendil-works/pi-coding-agent"`, `OFFICIAL_APP_NAME = "pi"`, and `OFFICIAL_CONFIG_DIR_NAME = ".pi"`, while `packages/coding-agent/src/config.ts:346` points binary self-update instructions to `https://github.com/earendil-works/pi-mono/releases/latest` and `config.ts:518` defines `FORK_NAME = "bramburn"`. `qi --version` retains the `[bramburn]` suffix: `FORK_NAME = "bramburn"` stays and `packages/coding-agent/src/main.ts:832` prints `qi <version> [bramburn]` per AGENTS.md §Forking, because D1 bans pi legacy identity, not fork branding (R-REBRAND-006 AC2 is satisfied either way).
 **Acceptance criteria:**
 - AC1: Given `startup-ui.ts` distribution constants, when `isOfficialDistribution` is called with runtime `PACKAGE_NAME`, `APP_NAME`, and `CONFIG_DIR_NAME`, then it returns `true` for `@bramburn/qi-coding-agent`, `qi`, and `.qi`.
 - AC2: Given binary installation mode in `getSelfUpdateUnavailableInstruction` (`config.ts:346`), when update instructions are formatted, then the download URL references `https://github.com/bramburn/pi/releases/latest` (or `bramburn/qi`) and not `earendil-works/pi-mono`.
@@ -76,35 +76,35 @@ This specification defines the requirements for cutting all ties between `qi` an
 **Acceptance criteria:**
 - AC1: Given `QI_OFFLINE` is unset and network access is enabled, when the system starts, checks for updates, reports installation, opens changelogs, or manages packages, then zero outbound requests target `pi.dev/api/latest-version`, `pi.dev/api/report-install`, `pi.dev/api/installer/releases`, `pi.dev/install.sh`, `pi.dev/changelog`, `pi.dev/session`, or `pi.dev/packages`.
 - AC2: Given the runtime source files under `packages/*/src/`, when searching for the literal domain `pi.dev`, then zero matches are found.
-**Source:** Decision D4 (`specs/batch/batch-context.md`), derived from `ADR-0002`
+**Source:** Decision D4 (`specs/batch/batch-context.md`), derived from `ADR-0002`, `ADR-0006`
 
 ### R-REBRAND-008: Session sharing fallback without `pi.dev/session`
 
 **Priority:** SHOULD
-**Statement:** The system should construct session share links from `QI_SHARE_VIEWER_URL` when configured, or if `QI_SHARE_VIEWER_URL` is unset, it must omit any `pi.dev/session` URL in favour of the raw gist URL or a configuration diagnostic.
-**Rationale:** `packages/coding-agent/src/config.ts:526-531` defaults `getShareViewerUrl` to `https://pi.dev/session/#<gistId>` and `packages/coding-agent/src/core/session-share.ts:29` emits event type `pi.share`. Decision D4 severs `pi.dev/session` while Decision D6 defers replacement share viewer infrastructure. `[ASSUMPTION: Event type at packages/coding-agent/src/core/session-share.ts:29 is renamed from "pi.share" to "qi.share" — rationale: D1 hard cut of pi identifiers]`
+**Statement:** The system should construct session share links from `QI_SHARE_VIEWER_URL` when configured, or if `QI_SHARE_VIEWER_URL` is unset, it must omit any `pi.dev/session` URL in favour of the raw gist URL.
+**Rationale:** `packages/coding-agent/src/config.ts:526-531` defaults `getShareViewerUrl` to `https://pi.dev/session/#<gistId>` and `packages/coding-agent/src/core/session-share.ts:29` emits event type `pi.share`. Decision D4 severs `pi.dev/session` while Decision D6 defers replacement share viewer infrastructure. The session-share event type is renamed from `"pi.share"` to `"qi.share"` (D1 hard cut of pi identifiers; emitted at `packages/coding-agent/src/modes/interactive/session-share.ts:29`). When `QI_SHARE_VIEWER_URL` is unset, `getShareViewerUrl()` returns the raw Gist `html_url` (R23) so `/share` remains functional without `pi.dev`.
 **Acceptance criteria:**
 - AC1: Given `QI_SHARE_VIEWER_URL` is set to `https://viewer.example.com/session/`, when a session is shared, then the viewer URL uses `https://viewer.example.com/session/#<gistId>`.
-- AC2: Given `QI_SHARE_VIEWER_URL` is unset, when a session is shared, then no `pi.dev/session` URL is returned or displayed.
+- AC2: Given `QI_SHARE_VIEWER_URL` is unset, when a session is shared, then the raw GitHub Gist URL is returned and no `pi.dev/session` URL is returned or displayed.
 **Source:** Decisions D4, D6 (`specs/batch/batch-context.md`), derived from `ADR-0002`
 
 ### R-REBRAND-009: No `earendil` identifiers in runtime configuration surfaces
 
 **Priority:** MUST
-**Statement:** The system contains no `earendil` or `earendil-works` strings in runtime configuration modules, command-line entrypoints, or extension loader module-resolution maps.
-**Rationale:** Evidence in `packages/coding-agent/src/config.ts:346,511`, `packages/coding-agent/src/cli/startup-ui.ts:33`, and `packages/coding-agent/src/core/extensions/loader.ts:57-70,111-135` shows runtime references to `@earendil-works/*` and `earendil-works`. `[UNRESOLVED: Should packages/coding-agent/src/core/extensions/loader.ts:57-70,111-135 resolve only @bramburn/qi-* module specifiers (strict D1) or also alias @earendil-works/pi-* for unported 0.85 extensions (D3/D6)? — suggested: Resolve @bramburn/qi-* as primary and record any temporary 0.85 extension loader shim in ADR-0003]`
+**Statement:** The system contains no `earendil` or `earendil-works` strings in runtime configuration modules or command-line entrypoints, while the extension loader resolves `@bramburn/qi-*` module specifiers as primary alongside a strictly-scoped temporary shim for unported 0.85 extensions.
+**Rationale:** Evidence in `packages/coding-agent/src/config.ts:346,511`, `packages/coding-agent/src/cli/startup-ui.ts:33`, and `packages/coding-agent/src/core/extensions/loader.ts:57-70,111-135` shows runtime references to `@earendil-works/*` and `earendil-works`. The extension loader resolves `@bramburn/qi-*` as primary and additionally keeps a strictly-scoped temporary `@earendil-works/pi-*` → qi module-resolution shim inside `packages/coding-agent/src/core/extensions/loader.ts` ONLY, so pinned 0.85 extensions keep loading until porting (D3/D6); the shim is recorded as a temporary shim in ADR-0003. Config, CLI, and state surfaces stay hard-cut with no aliases.
 **Acceptance criteria:**
 - AC1: Given `packages/coding-agent/src/config.ts`, `packages/coding-agent/src/cli/**`, `packages/coding-agent/src/main.ts`, and `packages/*/package.json`, when searching for `earendil`, then zero matches exist.
-- AC2: Given an extension that imports `@bramburn/qi-coding-agent`, `@bramburn/qi-ai`, `@bramburn/qi-agent-core`, or `@bramburn/qi-tui`, when loaded by the extension loader, then the bundled module resolves without error.
-**Source:** Decisions D1, D2, D4 (`specs/batch/batch-context.md`), derived from `ADR-0001`
+- AC2: Given an extension that imports `@bramburn/qi-coding-agent`, `@bramburn/qi-ai`, `@bramburn/qi-agent-core`, or `@bramburn/qi-tui` (or a pinned 0.85 extension importing the temporary `@earendil-works/pi-*` shim in `loader.ts`), when loaded by the extension loader, then the bundled module resolves without error.
+**Source:** Decisions D1, D2, D3, D4, D6 (`specs/batch/batch-context.md`), derived from `ADR-0001`, `ADR-0003`
 
 ### R-REBRAND-010: Upstream synchronization tooling is removed or disabled
 
 **Priority:** MUST
 **Statement:** The system removes or disables all scripts plus documentation workflows that synchronize versions or merge history from `earendil-works/pi`.
-**Rationale:** `scripts/sync-versions.js`, `scripts/README-sync-upstream.md`, `scripts/fork-publish-rename.mjs`, `README.md:12-16`, and `AGENTS.md:273-290` maintain an upstream sync workflow against `earendil-works/pi` that is obsolete once `qi` severing is complete. `[ASSUMPTION: scripts/README-sync-upstream.md and scripts/fork-publish-rename.mjs are deleted while scripts/sync-versions.js is retained solely for internal @bramburn/qi-* lockstep version bumping with all @earendil-works references removed — rationale: package.json:37-39 version:patch/minor/major scripts depend on sync-versions.js]`
+**Rationale:** `scripts/sync-versions.js`, `scripts/README-sync-upstream.md`, `scripts/fork-publish-rename.mjs`, `README.md:12-16`, and `AGENTS.md:273-290` maintain an upstream sync workflow against `earendil-works/pi` that is obsolete once `qi` severing is complete. `scripts/README-sync-upstream.md` and `scripts/fork-publish-rename.mjs` (with its test) are deleted while `scripts/sync-versions.js` is retained solely for internal `@bramburn/qi-*` lockstep version bumping with all `@earendil-works` references removed, because `package.json:37-39` `version:patch/minor/major` scripts depend on `sync-versions.js`.
 **Acceptance criteria:**
-- AC1: Given the `scripts/` directory, when inspecting files and contents, then `scripts/README-sync-upstream.md` and `scripts/fork-publish-rename.mjs` do not exist and `scripts/sync-versions.js` contains zero `earendil` references.
+- AC1: Given the `scripts/` directory, when inspecting files and contents, then `scripts/README-sync-upstream.md` and `scripts/fork-publish-rename.mjs` (plus its test) do not exist and `scripts/sync-versions.js` contains zero `earendil` references.
 - AC2: Given `README.md`, when reading the release and repository overview, then upstream sync tracking claims (`Tracks origin/main (earendil-works/pi)`) are absent.
 **Source:** Decision D4 (`specs/batch/batch-context.md`), derived from `ADR-0002`
 
@@ -130,6 +130,6 @@ This specification defines the requirements for cutting all ties between `qi` an
 
 ## Traceability
 
-- **Realised by contracts / behaviors / impl plans:** None (`REQ-REBRAND` is governed directly by `ADR-0001` and `ADR-0002`).
-- **Depends on ADRs:** `ADR-0001`, `ADR-0002`.
+- **Realised by contracts / behaviors / impl plans:** None (`REQ-REBRAND` is governed directly by accepted ADRs `ADR-0001`, `ADR-0002`, and `ADR-0006`).
+- **Depends on ADRs:** `ADR-0001`, `ADR-0002`, `ADR-0006`.
 - **References specs:** `REQ-EXT`, `ADR-0003`.

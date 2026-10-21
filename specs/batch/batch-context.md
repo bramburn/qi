@@ -12,6 +12,7 @@ Shared input for the qi spec/review batch (mimo-v2.6-pro). Read fully before sta
 | D4 | Upstream couplings | Sever all earendil-controlled endpoints: `pi.dev/api/latest-version`, `pi.dev/api/report-install`, `pi.dev/api/installer/releases`, `pi.dev/install.sh`, `pi.dev/changelog`, `pi.dev/session`, `pi.dev/packages` gallery. Removals/replacements deferred to a later porting phase where noted. |
 | D5 | Subagent scope | ALL actionable open items in `specs/subagent/requirements.md` are in scope: P1 DEFECTs REQ-L02/C02/C03/I04, P1 GAPs REQ-I01/I02/P02, all P2 rows. REQ-IP01 (P3 CANDIDATE) excluded — not scheduled. |
 | D6 | Deferred (out of scope now) | Porting/API compatibility work, replacement endpoints (own changelog/version/share infra), telemetry replacement decisions. |
+| D7 | State migrations WAIVED (2026-10-21, human) | **No `.pi` -> `.qi` or `~/.pi` -> `~/.qi` migration.** The 21 tracked `.pi/**` project files stay where they are (historical project config; runtime reads `.qi/` and simply ignores them). `~/.pi/agent` remains the live store for the running pi session; `~/.qi` is not seeded from it. The manual-migration guide in `rebrand-sweep-checklist.md` section 3 is reference-only, not planned work. |
 
 ## 2. Environment facts
 

@@ -921,6 +921,26 @@ export function formatCompactionSkipReason(skipReason: CompactionSkipReason): st
 	}
 }
 
+/**
+ * Typed error raised by the blocking `AgentSession.compact()` path when
+ * compaction is a benign no-op (skip) rather than a genuine failure.
+ *
+ * The skip emits `compaction_end` with `skipped: true` and
+ * `errorMessage: undefined` *before* this error is thrown, so direct RPC/SDK
+ * callers can distinguish a typed skip from a real summarisation failure via
+ * `error instanceof CompactionSkippedError`. The background path
+ * (`compactInBackground()`) never throws it: it resolves `undefined` instead.
+ */
+export class CompactionSkippedError extends Error {
+	readonly skipReason: CompactionSkipReason;
+
+	constructor(skipReason: CompactionSkipReason, message?: string) {
+		super(message ?? formatCompactionSkipReason(skipReason));
+		this.name = "CompactionSkippedError";
+		this.skipReason = skipReason;
+	}
+}
+
 export function prepareCompaction(
 	pathEntries: SessionEntry[],
 	settings: CompactionSettings,

@@ -16,6 +16,7 @@ import { getModel, streamSimple } from "@bramburn/qi-ai/compat";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { AgentSession, type AgentSessionEvent } from "../src/core/agent-session.ts";
 import { AuthStorage } from "../src/core/auth-storage.ts";
+import { CompactionSkippedError } from "../src/core/compaction/index.ts";
 import { SessionManager } from "../src/core/session-manager.ts";
 import { SettingsManager } from "../src/core/settings-manager.ts";
 import { createCodingTools } from "../src/index.ts";
@@ -193,8 +194,11 @@ describe.skipIf(!API_KEY)("AgentSession compaction e2e", () => {
 		await session.prompt("Say hello");
 		await session.agent.waitForIdle();
 
-		// Manually trigger compaction and check events
-		await session.compact();
+		// Manually trigger compaction and check events. This single-exchange
+		// session has nothing eligible to summarise, so the blocking path
+		// rejects with the typed skip (ADR-0005 / R28) after emitting its
+		// terminal compaction events.
+		await expect(session.compact()).rejects.toBeInstanceOf(CompactionSkippedError);
 
 		const compactionEvents = events.filter((e) => e.type === "compaction_start" || e.type === "compaction_end");
 		expect(compactionEvents).toHaveLength(2);

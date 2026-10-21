@@ -1,6 +1,6 @@
 # ADR-0002: Sever all earendil-controlled endpoints and sync tooling
 
-**Status:** draft
+**Status:** accepted
 **Date:** 2026-10-20
 **Domain:** rebrand
 
@@ -30,12 +30,12 @@ We will remove or disable every runtime network call, default URL constant, docu
 - Removes obsolete upstream merge instructions and publish-rename workarounds (`R-REBRAND-010`).
 
 **Negative:**
-- Automatic startup latest-version checks and binary self-update release lookups via `pi.dev` are disabled until replacement infrastructure is scheduled (`D6`).
+- Automatic startup latest-version checks and binary self-update release lookups via `pi.dev` are disabled until replacement infrastructure is scheduled (`D6`, see `ADR-0006` for npm-registry self-update resolution).
 - Session sharing (`/share`) no longer defaults to a hosted `pi.dev/session/` web viewer unless the user sets `QI_SHARE_VIEWER_URL` (`R-REBRAND-008`).
 
 **Neutral:**
-- `[ASSUMPTION: checkLatestVersion() in packages/coding-agent/src/utils/version-check.ts:5 and reportInstall() in packages/coding-agent/src/modes/interactive/interactive-mode.ts:1360 are stubbed to no-op without network I/O — rationale: D4 severs pi.dev endpoints while D6 defers replacement version/telemetry infrastructure]`
-- `[UNRESOLVED: When QI_SHARE_VIEWER_URL is unset, should /share return the raw GitHub Gist URL or abort with a configuration error? — suggested: Return the raw Gist html_url in getShareViewerUrl() when QI_SHARE_VIEWER_URL is unset so /share remains functional without pi.dev]`
+- `reportInstall()` (`reportInstallTelemetry()` in `packages/coding-agent/src/modes/interactive/interactive-mode.ts:1356`) is stubbed to a no-op without network I/O: D4 severs `pi.dev` endpoints while D6 defers replacement telemetry infrastructure. The startup version check (`checkLatestVersion` / `version-check.ts`) is severed from `pi.dev` too and, under ADR-0006, re-pointed at the public npm registry packument for `@bramburn/qi-coding-agent` (`QI_OFFLINE` degrades to a silent, network-free skip).
+- When `QI_SHARE_VIEWER_URL` is unset, `getShareViewerUrl()` returns the raw GitHub Gist `html_url` so `/share` remains functional without `pi.dev` (the raw-URL option of R-REBRAND-008's "raw gist URL or a configuration diagnostic").
 
 ## Alternatives considered
 
@@ -46,13 +46,13 @@ We will remove or disable every runtime network call, default URL constant, docu
 ## Compliance checklist
 
 - [ ] `grep -rn 'pi\.dev' packages/*/src/ packages/coding-agent/docs/ README.md website/` returns zero matches.
-- [ ] `grep -rn 'earendil-works' packages/*/src/ scripts/ .github/workflows/` returns zero matches (`packages/coding-agent/src/config.ts:346` points to `https://github.com/bramburn/pi/releases/latest`).
+- [ ] `grep -rn 'earendil-works' packages/*/src/ scripts/ .github/workflows/` returns zero matches (outside the temporary `ADR-0003` loader shim in `packages/coding-agent/src/core/extensions/loader.ts`; `packages/coding-agent/src/config.ts:346` points to `https://github.com/bramburn/pi/releases/latest`).
 - [ ] `scripts/README-sync-upstream.md` and `scripts/fork-publish-rename.mjs` are removed from the tree.
 - [ ] `packages/coding-agent/src/core/session-share.ts:29` uses `"qi.share"` and `packages/coding-agent/src/config.ts:526-531` reads `process.env.QI_SHARE_VIEWER_URL` with no `pi.dev` fallback.
-- [ ] Unit test asserts that startup version check and post-update install telemetry make zero `fetch` calls when `QI_OFFLINE` is unset.
+- [ ] Unit test asserts that post-update install telemetry makes zero `fetch` calls under any configuration, and that the startup version check makes zero `fetch` calls when `QI_OFFLINE` is set (`test/version-check.test.ts`); when online it queries only the public npm registry packument, never `pi.dev` (ADR-0006).
 
 ## Traceability
 
 - **Realises requirements:** `REQ-REBRAND` (`R-REBRAND-007`, `R-REBRAND-008`, `R-REBRAND-009`, `R-REBRAND-010`, `R-REBRAND-011`).
 - **Depends on ADRs:** `ADR-0001`.
-- **Referenced by specs:** `REQ-REBRAND`.
+- **Referenced by specs:** `REQ-REBRAND`, `ADR-0006`.

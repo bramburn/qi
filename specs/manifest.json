@@ -4,7 +4,13 @@
 	"stack": ["typescript", "bun"],
 	"domains": ["rebrand", "extensions", "subagents", "compaction"],
 	"not_applicable": {
-		"ux": "CLI/TUI product; this change set alters text strings only, no visual token surface. Screen/design-token specs carry no decisions for these four domains."
+		"ux": "CLI/TUI product; this change set alters text strings only, no visual token surface. Screen/design-token specs carry no decisions for these four domains.",
+		"ts_env_contracts": "not_applicable — the environment-variable surface is constrained normatively by R-REBRAND-004 (full QI_* inventory with acceptance criteria) and documented in packages/coding-agent/docs/environment-variables.md; no specs/contracts/env/ schema is shipped for this batch.",
+		"ts_server_vs_client_components": "not_applicable — no React/Next.js rendering surface; the product is a CLI/TUI, so the Server-vs-Client component ADR gotcha does not arise.",
+		"ts_app_router_route_groups": "not_applicable — no App Router; domain scoping for batch derivation is done via manifest.domains (G11)."
+	},
+	"stack_appendix": {
+		"typescript": "§8.3 structural-typing gotcha addressed — the only cross-boundary contracts are machine-validated JSON Schema documents with $schema, examples, and additionalProperties: false (CONTRACT-EXT-COMPAT-MANIFEST), not .ts interface contracts."
 	},
 	"specs": [
 		{
@@ -13,7 +19,7 @@
 			"domain": "rebrand",
 			"path": "00-requirements/features/rebrand-requirements.md",
 			"title": "qi rebrand and earendil cut-off requirements",
-			"status": "draft",
+			"status": "accepted",
 			"depends_on": [],
 			"governs": [
 				"packages/*/package.json",
@@ -31,7 +37,7 @@
 			"domain": "rebrand",
 			"path": "adr/0001-qi-hard-cut-rebrand.md",
 			"title": "Hard-cut rename to qi with no legacy aliases",
-			"status": "draft",
+			"status": "accepted",
 			"depends_on": [],
 			"governs": ["packages/coding-agent/src/config.ts", "packages/coding-agent/package.json"],
 			"verifies": []
@@ -42,9 +48,20 @@
 			"domain": "rebrand",
 			"path": "adr/0002-sever-upstream-endpoints.md",
 			"title": "Sever all earendil-controlled endpoints and sync tooling",
-			"status": "draft",
+			"status": "accepted",
 			"depends_on": ["ADR-0001"],
 			"governs": ["packages/coding-agent/src/**", "scripts/*"],
+			"verifies": []
+		},
+		{
+			"id": "ADR-0006",
+			"type": "adr",
+			"domain": "rebrand",
+			"path": "adr/0006-npm-registry-self-update.md",
+			"title": "qi self-update resolves versions from the npm registry",
+			"status": "accepted",
+			"depends_on": ["ADR-0002"],
+			"governs": ["packages/coding-agent/src/utils/version-check.ts", "packages/coding-agent/src/package-manager-cli.ts"],
 			"verifies": []
 		},
 		{
@@ -53,7 +70,7 @@
 			"domain": "extensions",
 			"path": "00-requirements/features/extensions-requirements.md",
 			"title": "0.85-compatible extension install pinning requirements",
-			"status": "draft",
+			"status": "accepted",
 			"depends_on": [],
 			"governs": [
 				"packages/coding-agent/src/core/package-manager.ts",
@@ -68,7 +85,7 @@
 			"domain": "extensions",
 			"path": "adr/0003-extension-compat-manifest.md",
 			"title": "Extension compatibility manifest resolved at install",
-			"status": "draft",
+			"status": "accepted",
 			"depends_on": [],
 			"governs": ["packages/coding-agent/src/core/package-manager.ts"],
 			"verifies": []
@@ -79,8 +96,19 @@
 			"domain": "extensions",
 			"path": "contracts/json-schema/extension-compat-manifest.schema.json",
 			"title": "extension-compat manifest (v1)",
-			"status": "draft",
+			"status": "accepted",
 			"depends_on": ["ADR-0003"],
+			"governs": ["packages/coding-agent/src/core/package-manager.ts"],
+			"verifies": []
+		},
+		{
+			"id": "CONTRACT-EXT-COMPAT-MANIFEST-EXAMPLES",
+			"type": "contract",
+			"domain": "extensions",
+			"path": "contracts/json-schema/extension-compat-manifest.examples.md",
+			"title": "extension-compat manifest (v1) — policy & examples",
+			"status": "accepted",
+			"depends_on": ["CONTRACT-EXT-COMPAT-MANIFEST"],
 			"governs": ["packages/coding-agent/src/core/package-manager.ts"],
 			"verifies": []
 		},
@@ -90,7 +118,7 @@
 			"domain": "extensions",
 			"path": "features/extensions/install-pinning.feature",
 			"title": "Install-time version pinning",
-			"status": "draft",
+			"status": "accepted",
 			"depends_on": ["REQ-EXT"],
 			"aspirational": true,
 			"governs": [],
@@ -102,7 +130,7 @@
 			"domain": "extensions",
 			"path": "impl/extensions-phase.md",
 			"title": "Extensions compat-pin implementation phase",
-			"status": "draft",
+			"status": "accepted",
 			"depends_on": ["REQ-EXT", "ADR-0003", "CONTRACT-EXT-COMPAT-MANIFEST"],
 			"governs": ["packages/coding-agent/src/core/package-manager.ts"],
 			"verifies": []
@@ -113,11 +141,11 @@
 			"domain": "subagents",
 			"path": "00-requirements/features/subagents-requirements.md",
 			"title": "Native subagent self-sufficiency and defect-closure requirements",
-			"status": "draft",
+			"status": "accepted",
 			"depends_on": [],
 			"governs": [
 				"packages/coding-agent/src/core/subagent/**",
-				"docs/subagents.md",
+				"packages/coding-agent/docs/subagents.md",
 				"specs/subagent/**"
 			],
 			"verifies": []
@@ -139,9 +167,9 @@
 			"domain": "subagents",
 			"path": "adr/0004-native-subagent-self-sufficiency.md",
 			"title": "Native subagent subsystem is the only subagent implementation",
-			"status": "draft",
+			"status": "accepted",
 			"depends_on": [],
-			"governs": ["packages/coding-agent/src/core/subagent/**", "docs/subagents.md"],
+			"governs": ["packages/coding-agent/src/core/subagent/**", "packages/coding-agent/docs/subagents.md"],
 			"verifies": []
 		},
 		{
@@ -150,7 +178,7 @@
 			"domain": "subagents",
 			"path": "impl/subagents-phase.md",
 			"title": "Subagent defect-closure implementation phase",
-			"status": "draft",
+			"status": "accepted",
 			"depends_on": ["REQ-SUBAG", "ADR-0004"],
 			"governs": ["packages/coding-agent/src/core/subagent/**"],
 			"verifies": []
@@ -161,7 +189,7 @@
 			"domain": "compaction",
 			"path": "adr/0005-compaction-skip-not-error.md",
 			"title": "Compaction no-op is a typed skip, not a user-facing error",
-			"status": "draft",
+			"status": "accepted",
 			"depends_on": [],
 			"governs": ["packages/coding-agent/src/core/agent-session.ts", "packages/coding-agent/src/core/compaction/compaction.ts", "packages/coding-agent/src/modes/interactive/interactive-mode.ts"],
 			"verifies": []
@@ -172,7 +200,7 @@
 			"domain": "compaction",
 			"path": "00-requirements/features/compaction-requirements.md",
 			"title": "Compaction error-surface requirements (screenshot errors)",
-			"status": "draft",
+			"status": "accepted",
 			"depends_on": [],
 			"governs": ["packages/coding-agent/src/core/agent-session.ts", "packages/agent/src/harness/compaction/**"],
 			"verifies": []
@@ -183,7 +211,7 @@
 			"domain": "compaction",
 			"path": "impl/compaction-phase.md",
 			"title": "Compaction error-fix implementation phase",
-			"status": "draft",
+			"status": "accepted",
 			"depends_on": ["REQ-COMPACTION"],
 			"governs": ["packages/coding-agent/src/core/agent-session.ts"],
 			"verifies": []

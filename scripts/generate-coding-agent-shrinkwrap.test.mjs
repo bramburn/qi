@@ -3,10 +3,11 @@
 // The shrinkwrap script regenerates packages/coding-agent/npm-shrinkwrap.json
 // from the root package-lock.json. It also runs as part of coding-agent's
 // `prepublishOnly` hook inside the fork publish workflow, which means it
-// has to keep working after fork-publish-rename.mjs has rewritten the
-// publishing package's name and workspace deps to the @bramburn/* scope
-// while the root lockfile and the other workspace package.json files
-// still use @bramburn/qi-*. Without the fork-scope swap in the
+// has to keep working when a publishing package's name and workspace deps
+// use the @bramburn/* fork scope (historically rewritten at publish time
+// by the removed fork-publish-rename.mjs script; ADR-0001 now renames
+// in-tree) while the root lockfile and the other workspace package.json
+// files still use @bramburn/qi-*. Without the fork-scope swap in the
 // workspace index, `npm run shrinkwrap` aborts with:
 //   Cannot resolve @bramburn/pi-agent-core from root.
 //   No matching lockfile entry found.
@@ -158,9 +159,9 @@ function buildRepoTree(overrides = {}) {
 	};
 	// packages/coding-agent depends on two workspace packages, plus the
 	// install-script packages and a platform-specific optional dep that
-	// the shrinkwrap validator requires. After fork-publish-rename, its
-	// name and its workspace deps use the @bramburn/* scope. The other
-	// workspace package.json files are unchanged on disk.
+	// the shrinkwrap validator requires. When its name and workspace deps
+	// use the @bramburn/* fork scope, the other workspace package.json
+	// files are unchanged on disk.
 	const codingAgentPackage = {
 		name: "@bramburn/qi-coding-agent",
 		version: "0.85.0-b1",
@@ -230,7 +231,7 @@ test("regenerates shrinkwrap with published-scope names when no fork rename happ
 	}
 });
 
-test("resolves @bramburn/* workspace deps after fork-publish-rename rewrites the publishing package.json", async () => {
+test("resolves @bramburn/* workspace deps when the publishing package.json uses the legacy fork scope", async () => {
 	const repoRoot = await makeRepo({
 		codingAgentPackage: {
 			name: "@bramburn/pi-coding-agent",

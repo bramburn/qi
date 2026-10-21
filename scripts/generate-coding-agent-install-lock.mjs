@@ -169,11 +169,11 @@ function getInternalWorkspaces(lockPackages) {
 			continue;
 		}
 		// Accept the workspace if either the lockfile's recorded name or the
-		// on-disk package.json's name is under the internal prefix. After
-		// `fork-publish-rename.mjs` swaps the publishing package's name and
-		// workspace deps, the publishing package.json lists deps under
-		// `@bramburn/pi-*` while the lockfile and other workspace
-		// package.json files still use `@bramburn/qi-*`. The install
+		// on-disk package.json's name is under the internal prefix. A
+		// publishing package.json may still list deps under the legacy fork
+		// scope `@bramburn/pi-*` (as produced by the removed publish-time
+		// rename script, ADR-0001) while the lockfile and other workspace
+		// package.json files use `@bramburn/qi-*`. The install
 		// lock must therefore resolve either spelling back to the same
 		// workspace directory.
 		const lockName = isInternalPackageName(entry.name) ? entry.name : undefined;
@@ -451,8 +451,7 @@ function generateInstallLock() {
 		const workspace = internalWorkspaceIndex.get(item.name);
 		if (workspace) {
 			// Preserve the requested name (typically the fork-scope spelling
-			// after fork-publish-rename has rewritten the publishing
-			// package's deps) so the install-lock output's
+			// of the publishing package's deps) so the install-lock output's
 			// `node_modules/<name>` paths and resolved tarball URLs match
 			// the published tarball.
 			const outputName = item.name ?? workspace.pkgName;

@@ -1,6 +1,6 @@
 # ADR-0001: Hard-cut rename to qi with no legacy aliases
 
-**Status:** draft
+**Status:** accepted
 **Date:** 2026-10-20
 **Domain:** rebrand
 
@@ -24,8 +24,8 @@ We will execute a full hard-cut rename to `qi`—renaming the CLI binary to `qi`
 - Existing scripts invoking `pi` or reading `PI_SESSION_ID` / `PI_CODING_AGENT` break immediately (`D1`).
 
 **Neutral:**
-- `[ASSUMPTION: All 11 workspace package.json files are renamed in-tree to @bramburn/qi-* and scripts/fork-publish-rename.mjs is deleted — rationale: D2 sets published package identity to @bramburn/qi-* and D1 requires a hard cut]`
-- `[UNRESOLVED: Should packages/coding-agent/src/core/extensions/loader.ts:57-70,111-135 retain a module-resolution alias from @earendil-works/pi-* to @bramburn/qi-* for pinned 0.85 extensions until porting (D3/D6), or drop it immediately under D1? — suggested: Drop in config/CLI surfaces immediately and scope any 0.85 extension loader shim strictly to ADR-0003]`
+- All 11 workspace `package.json` files are renamed in-tree to `@bramburn/qi-*` and `scripts/fork-publish-rename.mjs` (with its test) is deleted: D2 sets published package identity to `@bramburn/qi-*` and D1 requires a hard cut (publish-time rewriting is redundant once the tree is renamed).
+- Config, CLI, and state surfaces drop every `@earendil-works` alias immediately under D1, while `packages/coding-agent/src/core/extensions/loader.ts` keeps a strictly-scoped temporary module-resolution shim (`@earendil-works/pi-*` → qi modules, confined to `loader.ts` ONLY) so pinned 0.85 extensions keep loading until porting (D3/D6); the shim is recorded as a temporary shim in ADR-0003.
 
 ## Alternatives considered
 
@@ -45,4 +45,4 @@ We will execute a full hard-cut rename to `qi`—renaming the CLI binary to `qi`
 
 - **Realises requirements:** `REQ-REBRAND` (`R-REBRAND-001`, `R-REBRAND-002`, `R-REBRAND-003`, `R-REBRAND-004`, `R-REBRAND-005`, `R-REBRAND-006`, `R-REBRAND-009`, `R-REBRAND-011`, `R-REBRAND-012`).
 - **Depends on ADRs:** None.
-- **Referenced by specs:** `ADR-0002`, `ADR-0003`.
+- **Referenced by specs:** `ADR-0002`, `ADR-0003`, `ADR-0006`.

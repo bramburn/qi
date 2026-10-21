@@ -3,7 +3,7 @@
 	"$id": "https://bramburn.github.io/qi/schemas/extension-compat-manifest.v1.schema.json",
 	"title": "extension-compat manifest (v1)",
 	"description": "Checked-in compatibility manifest mapping known third-party extensions (npm pi-package keyword and 0.85 gallery snapshot) to 0.85-compatible version constraints. Backwards-compatibility policy: additive-only within v1 (new optional properties may be added to root or PackageCompatEntry without a version bump); any breaking change (removing required fields, narrowing types/patterns, or changing resolution semantics) requires bumping the top-level version field to 2. Companion examples and resolution traces live in specs/contracts/json-schema/extension-compat-manifest.examples.md.",
-	"$comment": "Phase C draft markers & ## Traceability — Realises: REQ-EXT (R-EXT-001, R-EXT-005, R-EXT-006). Depends on: ADR-0003. References: specs/contracts/json-schema/extension-compat-manifest.examples.md, IMPL-EXTENSIONS. [ASSUMPTION: Git-only gallery extensions without an npm package name are keyed in packages by 'git:<host>/<owner>/<repo>' while npm-published extensions are keyed by their canonical npm package name — rationale: packages/coding-agent/src/core/package-manager.ts:1691-1704 uses npm:<name> and git:<host>/<path> as canonical package identities] [UNRESOLVED: Whether deprecated/abandoned extensions that never worked on 0.85 should be represented with an explicit 'status: incompatible' enum or omitted — suggested: represent via compatibleRange '<0.0.0' with notes explaining the incompatibility so the user gets E_EXT_NO_COMPATIBLE_VERSION plus the note]",
+	"$comment": "## Traceability — Realises: REQ-EXT (R-EXT-001, R-EXT-005, R-EXT-006, R-EXT-007). Depends on: ADR-0003. References: specs/contracts/json-schema/extension-compat-manifest.examples.md, IMPL-EXTENSIONS. Keying scheme (resolved): git-only gallery extensions without an npm package name are keyed in packages by 'git:<host>/<owner>/<repo>' while npm-published extensions are keyed by their canonical npm package name, because packages/coding-agent/src/core/package-manager.ts:1691-1704 uses npm:<name> and git:<host>/<path> as canonical package identities and the propertyNames pattern below encodes exactly this dual scheme. Deprecated/abandoned extensions that never worked on 0.85 are represented via compatibleRange '<0.0.0' with notes explaining the incompatibility (no 'status' enum field), so the user gets E_EXT_NO_COMPATIBLE_VERSION plus the note.",
 	"type": "object",
 	"required": ["version", "baselineVersion", "generatedAt", "packages"],
 	"additionalProperties": false,
@@ -61,8 +61,8 @@
 					"type": "string",
 					"minLength": 1,
 					"maxLength": 128,
-					"description": "Valid node-semver range (parsed via semver.validRange) or exact semver version designating all releases of this package compatible with the 0.85 host API.",
-					"examples": ["<=1.4.2", "^1.0.0 <1.5.0", "0.9.3"]
+					"description": "Valid node-semver range (parsed via semver.validRange) or exact semver version designating all releases of this package compatible with the 0.85 host API. Use '<0.0.0' for deprecated/incompatible packages that have no 0.85-compatible release.",
+					"examples": ["<=1.4.2", "^1.0.0 <1.5.0", "0.9.3", "<0.0.0"]
 				},
 				"recommendedVersion": {
 					"type": "string",

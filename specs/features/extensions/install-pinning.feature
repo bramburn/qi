@@ -121,6 +121,15 @@ Feature: Install-time extension version pinning
     Then the command exits with a non-zero status reporting "E_EXT_NO_COMPATIBLE_VERSION"
     And user settings contain no entry for "legacy-only-ext"
 
+  @requirement:R-EXT-007
+  @error-path
+  Scenario: Force flag overrides fail-hard for a listed package with no compatible version
+    Given the bundled 0.85 compatibility manifest lists package "legacy-only-ext" with compatible constraint "<=0.5.0"
+    And the package registry publishes only version "1.0.0" for "legacy-only-ext"
+    When the user runs the package install command with force for unpinned "npm:legacy-only-ext"
+    Then the package installer emits a warning that no version satisfies the constraint "<=0.5.0"
+    And the package installer installs "legacy-only-ext" at exact version "1.0.0"
+
   @requirement:R-EXT-008
   @happy-path
   Scenario: Valid installed extension loads its registered tools and commands into the host
@@ -136,8 +145,10 @@ Feature: Install-time extension version pinning
     Then partial registrations from the failing extension are discarded
     And the host reports a load error naming the extension path and failure message
 
-# [ASSUMPTION: CLI output after installAndPersist displays the resolved spec (e.g. 'Installed npm:alpha-ext@1.4.2') — rationale: packages/coding-agent/src/package-manager-cli.ts:956 currently logs the raw source string]
-# [UNRESOLVED: Whether installing an unpinned git URL listed in the manifest persists '@<gitRef>' into settings.json — suggested: yes, persist 'https://github.com/example/alpha-ext@v1.4.2']
+# Resolved (R33): CLI output after installAndPersist displays the resolved spec (e.g. 'Installed npm:alpha-ext@1.4.2');
+# packages/coding-agent/src/package-manager-cli.ts:956 logs the resolved source string rather than the raw input string.
+# Resolved (R34): installing an unpinned git URL listed in the manifest persists '@<gitRef>' into settings.json
+# (see 'Installing an unpinned listed repository pins to the manifest default revision' above).
 #
 # ## Traceability
 # - Realises: REQ-EXT (R-EXT-001, R-EXT-002, R-EXT-003, R-EXT-004, R-EXT-005, R-EXT-006, R-EXT-007, R-EXT-008)

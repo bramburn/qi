@@ -9,8 +9,9 @@
 - **Within v1 (additive-only):** New optional fields may be added to the root manifest object or to `$defs/PackageCompatEntry` without incrementing `version`. Consumers must ignore unknown optional fields only after a minor schema revision adds them; the checked-in schema enforces `additionalProperties: false` in CI so typos in the checked-in manifest fail `bun run check`.
 - **Breaking changes:** Removing any existing field, making an optional field required, narrowing a field's type or regex constraint, or changing how `compatibleRange` / `gitRef` are interpreted requires incrementing the top-level `"version"` field to `2` and introducing a v2 schema.
 
-`[ASSUMPTION: Git-only gallery extensions without an npm package name are keyed in packages by 'git:<host>/<owner>/<repo>' while npm-published extensions are keyed by their canonical npm package name — rationale: packages/coding-agent/src/core/package-manager.ts:1691-1704 uses npm:<name> and git:<host>/<path> as canonical package identities]`
-`[UNRESOLVED: Whether deprecated/abandoned extensions that never worked on 0.85 should be represented with an explicit 'status: incompatible' enum or omitted — suggested: represent via compatibleRange '<0.0.0' with notes explaining the incompatibility so the user gets E_EXT_NO_COMPATIBLE_VERSION plus the note]`
+**Keying scheme (resolved):** Git-only gallery extensions without an npm package name are keyed in `packages` by `git:<host>/<owner>/<repo>` while npm-published extensions are keyed by their canonical npm package name, because `packages/coding-agent/src/core/package-manager.ts:1691-1704` uses `npm:<name>` and `git:<host>/<path>` as canonical package identities (the schema's `propertyNames` pattern encodes exactly this dual scheme).
+
+**Deprecated entries (resolved):** Extensions that were deprecated, abandoned, or never worked on 0.85 are represented with `compatibleRange` `"<0.0.0"` plus `notes` explaining the incompatibility (no `status` enum field), so an install attempt fails hard with `E_EXT_NO_COMPATIBLE_VERSION` (unless `--force` is passed) and surfaces the audit note to the user.
 
 ## Examples
 
