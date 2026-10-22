@@ -818,3 +818,51 @@ export async function discoverAndLoadExtensions(
 
 	return loadExtensions(allPaths, resolvedCwd, eventBus);
 }
+
+/**
+ * Expand extension paths to concrete entry points.
+ *
+ * Directories are resolved via `package.json → pi.extensions` (preferred), then
+ * `index.ts`/`index.js`, then discovery of direct `*.ts` / `*.js` children.
+ * Files pass through unchanged. Deduplicates by resolved path so callers can
+ * safely merge package-manager output with default directory paths.
+ *
+ * Callers should pass the result to `loadExtensionsCached`; `loadExtension`
+ * still resolves `index.ts`/`index.js` and normalizes unicode spaces.
+ */
+export function resolveExtensionPaths(paths: string[], cwd: string): string[] {
+	const resolvedCwd = resolvePath(cwd);
+	const result: string[] = [];
+	const seen = new Set<string>();
+
+	const add = (p: string) => {
+		const key = path.resolve(p);
+		if (seen.has(key)) return;
+		seen.add(key);
+		result.push(p);
+	};
+
+	for (const p of paths) {
+		const resolvedPath = resolvePath(p, resolvedCwd, { normalizeUnicodeSpaces: true });
+		try {
+			const stats = fs.statSync(resolvedPath);
+			if (stats.isDirectory()) {
+				const entries = resolveExtensionEntries(resolvedPath);
+				if (entries) {
+					for (const entry of entries) add(entry);
+					continue;
+				}
+				const discovered = discoverExtensionsInDir(resolvedPath);
+				if (discovered.length > 0) {
+					for (const d of discovered) add(d);
+					continue;
+				}
+			}
+		} catch {
+			// Not a directory or stat failed — use the path as-is.
+		}
+		add(resolvedPath);
+	}
+
+	return result;
+}
