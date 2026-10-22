@@ -551,6 +551,12 @@ export class InteractiveMode {
 	private loadedResourcesContainer: Container;
 	private chatContainer: Container;
 	private mountInteractiveTui(tui: TuiMainScreen | TuiAltScreen, components: readonly Component[]): void {
+		// One component tree, two mount points, but exactly one renders per
+		// renderer: TuiMainScreen renders `children` (the containers passed
+		// here, including documentContainer), while TuiAltScreen renders only
+		// the layout root once setLayoutRoot was called — and that root embeds
+		// documentContainer inside transcriptScrollView. So documentContainer
+		// is never rendered twice (see TuiAltScreen.render/getMountedRoots).
 		for (const component of components) tui.addChild(component);
 		if (isViewportTUI(tui)) {
 			if (!this.fullscreenLayoutRoot) throw new Error("Fullscreen layout is not initialized");
@@ -3421,6 +3427,10 @@ export class InteractiveMode {
 					this.streamingMessage = event.message;
 					this.streamingComponent.updateContent(this.streamingMessage, true);
 
+					// Re-walks every content block on each streaming chunk, but
+					// pendingTools dedupes by ID so each component is constructed
+					// exactly once. Blocks per message are small and chunks are
+					// throttled by the model, so the per-chunk walk stays cheap.
 					for (const content of this.streamingMessage.content) {
 						if (content.type === "toolCall") {
 							if (!this.pendingTools.has(content.id)) {
@@ -3779,6 +3789,12 @@ export class InteractiveMode {
 	 *
 	 * If multiple status messages are emitted back-to-back (without anything else being added to the chat),
 	 * we update the previous status line instead of appending new ones to avoid log spam.
+	 *
+	 * showError/showWarning deliberately leave lastStatusSpacer/lastStatusText
+	 * untouched: after an error, the identity check below no longer matches
+	 * (the chat's last children are the error's), so the next showStatus
+	 * appends a fresh pair instead of overwriting the error. Only
+	 * showManagedToolStatus resets the pointers.
 	 */
 	private showStatus(message: string): void {
 		const children = this.chatContainer.children;
