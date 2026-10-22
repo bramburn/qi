@@ -311,3 +311,19 @@ describe("readClipboardPdf", () => {
 		expect(readClipboardPdf({ platform: "win32", env: {} })).toBeNull();
 	});
 });
+
+describe("extensionForVideoMimeType", () => {
+	test("maps known subtypes to usable file extensions", async () => {
+		const { extensionForVideoMimeType } = await import("../src/utils/clipboard-image.ts");
+		expect(extensionForVideoMimeType("video/quicktime")).toBe("mov");
+		expect(extensionForVideoMimeType("video/x-matroska")).toBe("mkv");
+		expect(extensionForVideoMimeType("video/x-msvideo")).toBe("avi");
+		expect(extensionForVideoMimeType("video/mp4; codecs=avc1")).toBe("mp4");
+	});
+
+	test("falls back to the raw subtype for unknown types", async () => {
+		const { extensionForVideoMimeType } = await import("../src/utils/clipboard-image.ts");
+		expect(extensionForVideoMimeType("video/whatever")).toBe("whatever");
+		expect(extensionForVideoMimeType("application/octet-stream")).toBe("octet-stream");
+	});
+});
