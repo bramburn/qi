@@ -372,9 +372,11 @@ export async function readClipboardImage(options?: {
 			image = readClipboardImageViaPowerShell();
 		}
 
-		// Linux fallback: if Wayland/wl-paste/xclip found nothing, try
-		// the native addon last. The "unavailable" sentinel from the
-		// native path means the read itself failed (e.g. X server hung);
+		// X11 fallback: try the native addon last. The bundled arboard
+		// crate is X11-only, so on a Wayland session the addon cannot see
+		// the clipboard at all and is skipped (consistent with the crate's
+		// known limitation) instead of being probed for a guaranteed miss.
+		// The "unavailable" sentinel from the native path means the read itself failed (e.g. X server hung);
 		// we don't fall back to xclip again because xclip would hit the
 		// same broken state, but we still try once in case it differs.
 		if (!image && !wayland) {
