@@ -324,7 +324,9 @@ async function readClipboardImageViaNativeClipboard(): Promise<ClipboardImage | 
 		return null;
 	}
 
-	let imageData: Array<number> | null;
+	// Fork addon returns a Buffer (Uint8Array); older prebuilds and the
+	// upstream addon return Array<number>. Both are handled below.
+	let imageData: Uint8Array | Array<number> | null;
 	try {
 		imageData = await clipboard.getImageBinary();
 	} catch {

@@ -6,7 +6,10 @@ export type ClipboardModule = {
 	getText: () => Promise<string>;
 	setText: (text: string) => Promise<void>;
 	hasImage: () => Promise<boolean>;
-	getImageBinary: () => Promise<Array<number>>;
+	// The fork addon returns a napi Buffer (a Uint8Array subclass); the
+	// upstream @mariozechner/clipboard addon returned Array<number>.
+	// Callers accept both shapes so either prebuild keeps working.
+	getImageBinary: () => Promise<Uint8Array | Array<number>>;
 };
 
 type ClipboardRequire = (id: string) => unknown;
