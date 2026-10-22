@@ -43,14 +43,17 @@ export class CustomEditor extends Editor {
 			return;
 		}
 
-		// Check for clipboard paste keybindings (pasteImage wins over pasteText so a
-		// user who binds both to the same key still gets image-or-text behavior).
-		if (this.keybindings.matches(data, "app.clipboard.pasteImage")) {
-			this.onPasteImage?.();
+		// Clipboard paste keybindings. When both are bound to the same key,
+		// the image handler wins — but only when it is wired: onPasteImage
+		// really means "paste anything" (image → video → pdf → text), and a
+		// custom editor that only wired onPasteText must still get its
+		// handler called instead of a no-op early return.
+		if (this.keybindings.matches(data, "app.clipboard.pasteImage") && this.onPasteImage) {
+			this.onPasteImage();
 			return;
 		}
-		if (this.keybindings.matches(data, "app.clipboard.pasteText")) {
-			this.onPasteText?.();
+		if (this.keybindings.matches(data, "app.clipboard.pasteText") && this.onPasteText) {
+			this.onPasteText();
 			return;
 		}
 
