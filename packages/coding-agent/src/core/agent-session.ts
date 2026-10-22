@@ -774,7 +774,14 @@ export class AgentSession {
 		}
 
 		const model = this.model;
-		const settings = this.settingsManager.getCompactionSettings();
+		// Use the effective settings: legacy `reserveTokens`/`keepRecentTokens`
+		// folded with the DeepSeek Harness ratio policy. Otherwise a session
+		// configured via `deepseekHarness.thresholdRatio` would fail this gate
+		// (legacy trigger still uses `contextWindow - reserveTokens`) while
+		// `_startThresholdBackgroundCompaction` below would independently judge
+		// the same session to be over threshold — a gate/launcher disagreement
+		// that silently suppresses every turn-boundary compaction.
+		const settings = this._getEffectiveCompactionSettings();
 
 		if (
 			!model ||
@@ -2446,12 +2453,34 @@ export class AgentSession {
 	}
 
 	/**
+	 * Whether a completed background compaction is waiting for a safe boundary
+	 * (turn boundary, idle, or prompt preflight) to be hot-swapped in.
+	 *
+	 * Distinct from {@link isBackgroundCompacting}: summarisation has finished
+	 * — the `compactInBackground()` promise has not resolved yet — but the
+	 * result has not been applied because the agent is mid-run. The TUI can use
+	 * this to render "waiting to apply" instead of "summarizing", and external
+	 * code that wants to know whether *any* background work is outstanding
+	 * should test `isBackgroundCompacting || hasPendingBackgroundCompaction`.
+	 */
+	get hasPendingBackgroundCompaction(): boolean {
+		return this._pendingBackgroundCompaction !== undefined;
+	}
+
+	/**
 	 * Start a threshold-triggered background compaction, unless one is already
-	 * running or a blocking compaction is active. Never throws.
+	 * running, a completed result is waiting for its hot-swap, or a blocking
+	 * compaction is active. Never throws.
 	 */
 	private _startThresholdBackgroundCompaction(): void {
 		if (
 			this._backgroundCompaction !== undefined ||
+			// A completed-but-not-yet-applied result is still in flight. Launching
+			// another compaction here would overwrite `_pendingBackgroundCompaction`
+			// and orphan the first `compactInBackground()` promise (its `settle` is
+			// never invoked, so the extension's onComplete never fires and the
+			// first summary is silently dropped).
+			this._pendingBackgroundCompaction !== undefined ||
 			this._compactionAbortController !== undefined ||
 			this._autoCompactionAbortController !== undefined
 		) {
@@ -2762,7 +2791,12 @@ export class AgentSession {
 	 * @param skipAbortedCheck If false, include aborted messages (for pre-prompt check). Default: true
 	 */
 	private async _checkCompaction(assistantMessage: AssistantMessage, skipAbortedCheck = true): Promise<boolean> {
-		const settings = this.settingsManager.getCompactionSettings();
+		// Effective settings (legacy + DeepSeek Harness ratio policy). Reading the
+		// legacy settings here would ignore `thresholdRatio`, so a session
+		// configured with a ratio would never pass the `shouldCompact` check at
+		// the end of this method even when the harness launcher agrees with the
+		// cut-point/summariser that it should.
+		const settings = this._getEffectiveCompactionSettings();
 		if (!settings.enabled) return false;
 
 		// Skip if message was aborted (user cancelled) - unless skipAbortedCheck is false
@@ -2877,7 +2911,12 @@ export class AgentSession {
 	 * Internal: Run auto-compaction with events.
 	 */
 	private async _runAutoCompaction(reason: "overflow" | "threshold", willRetry: boolean): Promise<boolean> {
-		const settings = this.settingsManager.getCompactionSettings();
+		// Effective settings: overflow recovery's cut point should respect
+		// `retainRatio` exactly like the threshold and manual paths do. Using
+		// legacy settings here keeps a different amount of tail than the
+		// threshold path would for the same session when the harness ratio
+		// policy is active.
+		const settings = this._getEffectiveCompactionSettings();
 		let started = false;
 		let fromExtension = false;
 

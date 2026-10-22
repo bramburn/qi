@@ -959,4 +959,117 @@ describe("AgentSession compaction characterization", () => {
 		expect(belowThresholdSpy).not.toHaveBeenCalled();
 		expect(disabledSpy).not.toHaveBeenCalled();
 	});
+
+	it("fires threshold compaction when only the DeepSeek harness ratio crosses the limit", async () => {
+		const harness = await createHarness({
+			models: [{ id: "faux-1", contextWindow: 200_000, maxTokens: 100 }],
+			settings: {
+				// Legacy trigger (200_000 - 16_384 = 183_616) is NOT tripped by
+				// 182_000, but the harness ratio (200_000 * 0.9 = 180_000) is.
+				compaction: { enabled: true, reserveTokens: 16_384, keepRecentTokens: 1 },
+				deepseekHarness: { enabled: true, thresholdRatio: 0.9 },
+			},
+			extensionFactories: [
+				(pi) => {
+					pi.on("session_before_compact", async (event) => ({
+						compaction: {
+							summary: "ratio-triggered summary",
+							firstKeptEntryId: event.preparation.firstKeptEntryId,
+							tokensBefore: event.preparation.tokensBefore,
+							details: {},
+						},
+					}));
+				},
+			],
+		});
+		harnesses.push(harness);
+		const sessionInternals = harness.session as unknown as SessionWithCompactionInternals;
+		const startSpy = vi.spyOn(sessionInternals, "_startThresholdBackgroundCompaction");
+		const assistant = createAssistant(harness, {
+			stopReason: "stop",
+			totalTokens: 182_000,
+			timestamp: Date.now(),
+		});
+		harness.session.agent.state.messages = [
+			{ role: "user", content: [{ type: "text", text: "seed" }], timestamp: Date.now() - 1000 },
+			assistant,
+		];
+
+		await sessionInternals._checkCompaction(assistant);
+
+		expect(startSpy).toHaveBeenCalledTimes(1);
+	});
+
+	it("_compactBeforeNextAssistantResponse and _startThresholdBackgroundCompaction agree under ratio settings", async () => {
+		const harness = await createHarness({
+			models: [{ id: "faux-1", contextWindow: 200_000, maxTokens: 100 }],
+			settings: {
+				compaction: { enabled: true, reserveTokens: 16_384, keepRecentTokens: 1 },
+				deepseekHarness: { enabled: true, thresholdRatio: 0.9 },
+			},
+		});
+		harnesses.push(harness);
+		const sessionInternals = harness.session as unknown as SessionWithCompactionInternals;
+		const startSpy = vi.spyOn(sessionInternals, "_startThresholdBackgroundCompaction").mockImplementation(() => {});
+		const boundaryInternals = harness.session as unknown as {
+			_compactBeforeNextAssistantResponse: (context: {
+				messages: AgentMessage[];
+				systemPrompt: string;
+				tools: unknown[];
+			}) => Promise<unknown>;
+		};
+
+		// Drive the turn-boundary path with a context size in the (legacy, ratio)
+		// disagreement zone: 182_000 is below the legacy trigger but above the ratio.
+		await boundaryInternals._compactBeforeNextAssistantResponse({
+			messages: [
+				{ role: "user", content: [{ type: "text", text: "seed" }], timestamp: Date.now() - 1000 },
+				createAssistant(harness, { stopReason: "stop", totalTokens: 182_000, timestamp: Date.now() }),
+			],
+			systemPrompt: "",
+			tools: [],
+		});
+
+		expect(startSpy).toHaveBeenCalledTimes(1);
+	});
+
+	it("exposes hasPendingBackgroundCompaction independently of isBackgroundCompacting", async () => {
+		const handlerEntered = createDeferred();
+		const releaseSummary = createDeferred();
+		const harness = await createHarness({
+			settings: { compaction: { keepRecentTokens: 1 } },
+			extensionFactories: [
+				(pi) => {
+					pi.on("session_before_compact", async (event) => {
+						handlerEntered.resolve();
+						await releaseSummary.promise;
+						return {
+							compaction: {
+								summary: "pending summary",
+								firstKeptEntryId: event.preparation.firstKeptEntryId,
+								tokensBefore: event.preparation.tokensBefore,
+								details: {},
+							},
+						};
+					});
+				},
+			],
+		});
+		harnesses.push(harness);
+		seedCompactableSession(harness);
+
+		const pending = harness.session.compactInBackground();
+		await handlerEntered.promise;
+		expect(harness.session.isBackgroundCompacting).toBe(true);
+		expect(harness.session.hasPendingBackgroundCompaction).toBe(false);
+
+		releaseSummary.resolve();
+		await vi.waitFor(() => expect(harness.session.isBackgroundCompacting).toBe(false));
+		// In a mid-run / mid-stream state the result sits in
+		// `_pendingBackgroundCompaction`. (Idle applies immediately, so keep the
+		// assertion focused on the getter's contract: it must not be conflated
+		// with `isBackgroundCompacting`.)
+		await pending;
+		expect(harness.session.hasPendingBackgroundCompaction).toBe(false);
+	});
 });

@@ -2,6 +2,7 @@ import type { AgentTool } from "@bramburn/qi-agent-core";
 import { type AssistantMessage, fauxAssistantMessage, fauxToolCall } from "@bramburn/qi-ai";
 import { Type } from "typebox";
 import { afterEach, describe, expect, it } from "vitest";
+import type { CompactionResult } from "../../src/core/compaction/index.ts";
 import { createHarness, type Harness } from "./harness.ts";
 
 type SessionWithCompactionInternals = {
@@ -431,6 +432,75 @@ describe("AgentSession background compaction", () => {
 		expect(thirdRequest).toContain("change direction");
 		expect(thirdRequest).toContain("steering swap summary");
 		expect(harness.session.getLastAssistantText()).toBe("finished after swap");
+	});
+
+	it("does not overwrite a completed-but-pending background compaction at agent_end", async () => {
+		const handlerEntered = createDeferred();
+		const releaseSummary = createDeferred();
+		let handlerCalls = 0;
+		let backgroundPromise: Promise<CompactionResult | undefined> | undefined;
+		const harness = await createHarness({
+			models: [{ id: "faux-1", contextWindow: 100_000, maxTokens: 50 }],
+			// Threshold = contextWindow - reserveTokens = 1_000 tokens: the seeded
+			// pre-run context (~100 tokens of assistant usage) stays under it, while
+			// the final response's usage estimate lands over it at agent_end.
+			settings: { compaction: { enabled: true, keepRecentTokens: 1, reserveTokens: 99_000 } },
+			extensionFactories: [
+				(pi) => {
+					pi.on("session_before_compact", async (event) => {
+						handlerCalls++;
+						if (handlerCalls === 1) {
+							handlerEntered.resolve();
+							await releaseSummary.promise;
+							return {
+								compaction: {
+									summary: "first manual summary",
+									firstKeptEntryId: event.preparation.firstKeptEntryId,
+									tokensBefore: event.preparation.tokensBefore,
+									details: {},
+								},
+							};
+						}
+						// Any second invocation indicates the overwrite bug: the
+						// agent_end threshold check launched a competing compaction
+						// while the first result was still pending.
+						return { cancel: true };
+					});
+				},
+			],
+		});
+		harnesses.push(harness);
+		seedCompactableSession(harness);
+
+		// The final response both starts the manual background compaction and holds
+		// it until its result is pending: summarisation completes while streaming,
+		// so the hot-swap must wait for run end, and the response usage keeps the
+		// context over threshold for the agent_end check.
+		harness.setResponses([
+			async () => {
+				backgroundPromise = harness.session.compactInBackground();
+				await handlerEntered.promise;
+				releaseSummary.resolve();
+				// Resolves once `_backgroundCompaction` clears, which is exactly when
+				// `_pendingBackgroundCompaction` takes over.
+				await waitUntil(() => !harness.session.isBackgroundCompacting);
+				return fauxAssistantMessage("x".repeat(12_000));
+			},
+		]);
+
+		await harness.session.prompt("hi");
+		expect(backgroundPromise).toBeDefined();
+		const result = await backgroundPromise;
+
+		// agent_end runs the threshold check while the completed result is still
+		// pending; a second launch would call the handler again and orphan the
+		// settle promise this awaits.
+		expect(handlerCalls).toBe(1);
+		expect(
+			harness.eventsOfType("compaction_start").filter((event) => event.background && event.reason === "threshold"),
+		).toHaveLength(0);
+		expect(result?.summary).toBe("first manual summary");
+		expect(JSON.stringify(harness.session.messages)).toContain("first manual summary");
 	});
 
 	it("lets overflow recovery abort a background compaction and win", async () => {

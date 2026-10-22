@@ -248,6 +248,15 @@ export function estimateContextTokens(messages: AgentMessage[]): ContextUsageEst
  */
 export function shouldCompact(contextTokens: number, contextWindow: number, settings: CompactionSettings): boolean {
 	if (!settings.enabled) return false;
+	// `thresholdRatio` (when set) takes precedence over the legacy
+	// `reserveTokens` subtraction. Both express the same intent — a budget
+	// reserved for the response — but the ratio is portable across models
+	// while the subtraction is absolute tokens. Mirrors the agent-harness
+	// implementation in `packages/agent/src/harness/compaction/compaction.ts`
+	// so the two packages agree.
+	if (settings.thresholdRatio !== undefined && settings.thresholdRatio > 0 && contextWindow > 0) {
+		return contextTokens > contextWindow * settings.thresholdRatio;
+	}
 	return contextTokens > contextWindow - settings.reserveTokens;
 }
 
