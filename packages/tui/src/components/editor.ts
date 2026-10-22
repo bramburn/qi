@@ -384,6 +384,18 @@ export class Editor implements Component, Focusable {
 	// Undo support
 	private undoStack = new UndoStack<EditorSnapshot>();
 
+	/**
+	 * Monotonic counter for the visual-line-map cache. `state.lines` and
+	 * the paste registry are mutated in place, so reference equality
+	 * cannot detect content changes — every method that mutates either
+	 * MUST bump this counter (see buildVisualLineMap). A new mutation
+	 * path that forgets the bump will serve stale layouts.
+	 */
+	private contentVersion = 0;
+	private visualLineCache:
+		| { version: number; width: number; map: Array<{ logicalLine: number; startCol: number; length: number }> }
+		| undefined;
+
 	public onSubmit?: (payload: { text: string; attachments: PasteAttachment[] }) => void;
 	public onChange?: (text: string) => void;
 	public disableSubmit: boolean = false;
@@ -496,6 +508,7 @@ export class Editor implements Component, Focusable {
 	}
 
 	private navigateHistory(direction: 1 | -1): void {
+		this.contentVersion++;
 		this.lastAction = null;
 		if (this.history.length === 0) return;
 
@@ -534,6 +547,7 @@ export class Editor implements Component, Focusable {
 
 	/** Internal setText that doesn't reset history state - used by navigateHistory */
 	private setTextInternal(text: string, cursorPlacement: "start" | "end" = "end"): void {
+		this.contentVersion++;
 		const lines = text.split("\n");
 		this.state.lines = lines.length === 0 ? [""] : lines;
 		this.state.cursorLine = cursorPlacement === "start" ? 0 : this.state.lines.length - 1;
@@ -547,7 +561,9 @@ export class Editor implements Component, Focusable {
 	}
 
 	invalidate(): void {
-		// No cached state to invalidate currently
+		// The visual-line cache is keyed on content version and width only,
+		// but a full invalidation is a cheap excuse to drop it as well.
+		this.visualLineCache = undefined;
 	}
 
 	protected renderTopBorder(width: number, hiddenLineCount: number): string {
@@ -820,6 +836,7 @@ export class Editor implements Component, Focusable {
 						selected,
 						this.autocompletePrefix,
 					);
+					this.contentVersion++;
 					this.state.lines = result.lines;
 					this.state.cursorLine = result.cursorLine;
 					this.setCursorCol(result.cursorCol);
@@ -841,6 +858,7 @@ export class Editor implements Component, Focusable {
 						selected,
 						this.autocompletePrefix,
 					);
+					this.contentVersion++;
 					this.state.lines = result.lines;
 					this.state.cursorLine = result.cursorLine;
 					this.setCursorCol(result.cursorCol);
@@ -1134,13 +1152,13 @@ export class Editor implements Component, Focusable {
 	}
 
 	private expandPasteMarkers(text: string): string {
-		let result = text;
-		for (const [pasteId, attachment] of this.pastes) {
-			if (attachment.kind !== "text") continue; // image attachments are handled in PR-C
-			const markerRegex = new RegExp(`\\[paste #${pasteId}( [^\\]]+)?\\]`, "g");
-			result = result.replace(markerRegex, () => attachment.content);
-		}
-		return result;
+		// Single pass over the text: O(text length) regardless of how many
+		// pastes are registered (the old loop rescanned the whole document
+		// once per text paste and allocated a RegExp per paste).
+		return text.replace(PASTE_MARKER_REGEX, (match, idGroup: string) => {
+			const attachment = this.pastes.get(Number.parseInt(idGroup, 10));
+			return attachment?.kind === "text" ? attachment.content : match;
+		});
 	}
 
 	/**
@@ -1213,6 +1231,7 @@ export class Editor implements Component, Focusable {
 	 */
 	private insertTextAtCursorInternal(text: string): void {
 		if (!text) return;
+		this.contentVersion++;
 
 		// Guard: if cursorCol was somehow left inside a paste marker, snap to a boundary
 		// before splicing so we never mutate marker text atomically.
@@ -1264,6 +1283,7 @@ export class Editor implements Component, Focusable {
 
 	// All the editor methods from before...
 	private insertCharacter(char: string, skipUndoCoalescing?: boolean): void {
+		this.contentVersion++;
 		this.exitHistoryBrowsing();
 
 		// Undo coalescing (fish-style):
@@ -1466,6 +1486,7 @@ export class Editor implements Component, Focusable {
 	}
 
 	private addNewLine(): void {
+		this.contentVersion++;
 		this.cancelAutocomplete();
 		this.exitHistoryBrowsing();
 		this.lastAction = null;
@@ -1502,6 +1523,7 @@ export class Editor implements Component, Focusable {
 	}
 
 	private submitValue(): void {
+		this.contentVersion++;
 		this.cancelAutocomplete();
 		// Snapshot text + attachments before resetting state, since getAttachments
 		// reads from this.pastes which we clear immediately after.
@@ -1521,6 +1543,7 @@ export class Editor implements Component, Focusable {
 	}
 
 	private handleBackspace(): void {
+		this.contentVersion++;
 		this.exitHistoryBrowsing();
 		this.lastAction = null;
 
@@ -1770,6 +1793,7 @@ export class Editor implements Component, Focusable {
 	}
 
 	private deleteToStartOfLine(): void {
+		this.contentVersion++;
 		this.exitHistoryBrowsing();
 
 		const currentLine = this.state.lines[this.state.cursorLine] || "";
@@ -1805,6 +1829,7 @@ export class Editor implements Component, Focusable {
 	}
 
 	private deleteToEndOfLine(): void {
+		this.contentVersion++;
 		this.exitHistoryBrowsing();
 
 		const currentLine = this.state.lines[this.state.cursorLine] || "";
@@ -1837,6 +1862,7 @@ export class Editor implements Component, Focusable {
 	}
 
 	private deleteWordBackwards(): void {
+		this.contentVersion++;
 		this.exitHistoryBrowsing();
 
 		const currentLine = this.state.lines[this.state.cursorLine] || "";
@@ -1882,6 +1908,7 @@ export class Editor implements Component, Focusable {
 	}
 
 	private deleteWordForward(): void {
+		this.contentVersion++;
 		this.exitHistoryBrowsing();
 
 		const currentLine = this.state.lines[this.state.cursorLine] || "";
@@ -1924,6 +1951,7 @@ export class Editor implements Component, Focusable {
 	}
 
 	private handleForwardDelete(): void {
+		this.contentVersion++;
 		this.exitHistoryBrowsing();
 		this.lastAction = null;
 
@@ -2008,7 +2036,28 @@ export class Editor implements Component, Focusable {
 	 * - startCol: starting column in the logical line
 	 * - length: length of this visual line segment
 	 */
+	/**
+	 * Build (or reuse) the mapping from visual lines to logical positions.
+	 *
+	 * Recomputing this map re-segments and re-wraps every logical line,
+	 * which is O(document size) — far too expensive to repeat on every
+	 * cursor move. The result is cached on (content version, width);
+	 * cursor position does not affect the map, so moves reuse it.
+	 * Returns a shared array — callers must treat it as read-only.
+	 */
 	private buildVisualLineMap(width: number): Array<{ logicalLine: number; startCol: number; length: number }> {
+		const cached = this.visualLineCache;
+		if (cached && cached.version === this.contentVersion && cached.width === width) {
+			return cached.map;
+		}
+
+		const map = this.computeVisualLineMap(width);
+		this.visualLineCache = { version: this.contentVersion, width, map };
+		return map;
+	}
+
+	/** Uncached worker for {@link buildVisualLineMap}. */
+	private computeVisualLineMap(width: number): Array<{ logicalLine: number; startCol: number; length: number }> {
 		const visualLines: Array<{ logicalLine: number; startCol: number; length: number }> = [];
 
 		for (let i = 0; i < this.state.lines.length; i++) {
@@ -2208,6 +2257,7 @@ export class Editor implements Component, Focusable {
 	 * Insert text at cursor position (used by yank operations).
 	 */
 	private insertYankedText(text: string): void {
+		this.contentVersion++;
 		this.exitHistoryBrowsing();
 		const lines = text.split("\n");
 
@@ -2253,6 +2303,7 @@ export class Editor implements Component, Focusable {
 	private deleteYankedText(): void {
 		const yankedText = this.killRing.peek();
 		if (!yankedText) return;
+		this.contentVersion++;
 
 		const yankLines = yankedText.split("\n");
 
@@ -2312,6 +2363,7 @@ export class Editor implements Component, Focusable {
 	}
 
 	private undo(): void {
+		this.contentVersion++;
 		this.exitHistoryBrowsing();
 		const snapshot = this.undoStack.pop();
 		if (!snapshot) return;
@@ -2444,6 +2496,7 @@ export class Editor implements Component, Focusable {
 				selected,
 				this.autocompletePrefix,
 			);
+			this.contentVersion++;
 			this.state.lines = result.lines;
 			this.state.cursorLine = result.cursorLine;
 			this.setCursorCol(result.cursorCol);
@@ -2595,6 +2648,7 @@ export class Editor implements Component, Focusable {
 				item,
 				suggestions.prefix,
 			);
+			this.contentVersion++;
 			this.state.lines = result.lines;
 			this.state.cursorLine = result.cursorLine;
 			this.setCursorCol(result.cursorCol);
