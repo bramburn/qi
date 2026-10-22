@@ -2259,8 +2259,27 @@ export class Editor implements Component, Focusable {
 		}
 	}
 
+	/**
+	 * Snapshot the current state for undo.
+	 *
+	 * The snapshot is detached by hand instead of relying on
+	 * `UndoStack.push`'s deep clone: `state.lines` strings are
+	 * immutable, and `PasteAttachment` payloads are never mutated after
+	 * insertion, so a copy of the lines array plus a Map copy is
+	 * already isolated from later in-place edits. Detaching here keeps
+	 * that invariant local and testable, and avoids deep-cloning large
+	 * pasted payloads once per word-boundary snapshot.
+	 */
 	private pushUndoSnapshot(): void {
-		this.undoStack.push({ state: this.state, pastes: this.pastes, pasteCounter: this.pasteCounter });
+		this.undoStack.pushDetached({
+			state: {
+				lines: [...this.state.lines],
+				cursorLine: this.state.cursorLine,
+				cursorCol: this.state.cursorCol,
+			},
+			pastes: new Map(this.pastes),
+			pasteCounter: this.pasteCounter,
+		});
 	}
 
 	private undo(): void {
