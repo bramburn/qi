@@ -2994,6 +2994,26 @@ export class InteractiveMode {
 		};
 	}
 
+	/**
+	 * Report a clipboard paste failure.
+	 *
+	 * Empty or missing clipboard payloads come back as `null` from the
+	 * readers and stay silent on purpose — pressing paste on an empty
+	 * clipboard must not spam the chat. A thrown error is different: the
+	 * tool crashed, is missing, or lacks permission, and the paste did
+	 * nothing visible. Log the detail to the debug log and surface a
+	 * short status line so the failure is observable.
+	 */
+	private reportClipboardError(context: string, error: unknown): void {
+		const detail = error instanceof Error ? error.message : String(error);
+		try {
+			fs.appendFileSync(getDebugLogPath(), `[${new Date().toISOString()}] clipboard ${context} failed: ${detail}\n`);
+		} catch {
+			// Best-effort: the debug log may not be writable.
+		}
+		this.showStatus(`Clipboard paste failed: ${detail}`);
+	}
+
 	private async handleRightClickPaste(): Promise<void> {
 		const target = this.renderer.getFocusedComponent();
 		const handleInput = target?.handleInput;
@@ -3003,8 +3023,8 @@ export class InteractiveMode {
 			if (!text || this.renderer.getFocusedComponent() !== target) return;
 			handleInput.call(target, `\x1b[200~${text}\x1b[201~`);
 			this.ui.requestRender();
-		} catch {
-			// Silently ignore clipboard errors (may not have permission, etc.)
+		} catch (error) {
+			this.reportClipboardError("right-click paste", error);
 		}
 	}
 
@@ -3048,8 +3068,8 @@ export class InteractiveMode {
 				this.editor.pasteText(text);
 				this.ui.requestRender();
 			}
-		} catch {
-			// Silently ignore clipboard errors (may not have permission, etc.)
+		} catch (error) {
+			this.reportClipboardError("image/text paste", error);
 		}
 	}
 
@@ -3060,8 +3080,8 @@ export class InteractiveMode {
 				this.editor.pasteText(text, { forceMarker: true });
 				this.ui.requestRender();
 			}
-		} catch {
-			// Silently ignore clipboard errors (may not have permission, etc.)
+		} catch (error) {
+			this.reportClipboardError("marker text paste", error);
 		}
 	}
 
