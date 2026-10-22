@@ -1385,8 +1385,8 @@ export class Editor implements Component, Focusable {
 
 	/**
 	 * Programmatically paste an image. Stores the bytes behind a paste marker
-	 * and inserts `[paste #N image: fileName]`. The undo stack is cleared
-	 * afterwards so undo cannot resurrect the (potentially large) image payload.
+	 * and inserts `[paste #N image: fileName]`. Undo history is retained:
+	 * snapshots share the attachment object instead of copying its bytes.
 	 */
 	public pasteImage(bytes: Uint8Array, mimeType: string, fileName: string): void {
 		this.pasteBinaryAttachment("image", bytes, mimeType, fileName);
@@ -1427,8 +1427,9 @@ export class Editor implements Component, Focusable {
 		const marker = `[paste #${pasteId} ${kind}: ${label}]`;
 		this.insertTextAtCursorInternal(marker);
 
-		// Don't retain potentially-large media payloads in the undo history.
-		this.undoStack.clear();
+		// Undo history is deliberately kept: pushUndoSnapshot copies the pastes
+		// Map but shares the attachment objects, so snapshots taken after this
+		// paste reference the same bytes instead of deep-cloning them per push.
 
 		if (this.onChange) {
 			this.onChange(this.getText());
