@@ -104,6 +104,30 @@ function segmentWithMarkers(
 }
 
 /**
+ * Mouse event as delivered to {@link Editor.handleMouse}.
+ * The TUI currently has no component-level mouse dispatch (screen
+ * selection and scrollbars are handled in tui-alt-screen); this type
+ * documents the shape the editor consumes so a future dispatcher has
+ * a concrete contract to target.
+ */
+export interface EditorMouseEvent {
+	/** Event kind; the editor only acts on `"click"`. */
+	type: "click" | "press" | "drag" | "release" | "move";
+	/** Button that produced the event (`"left"`, `"right"`, `"middle"`, ...). */
+	button?: string;
+	x: number;
+	y: number;
+	width: number;
+	height: number;
+}
+
+/** Result of handling a mouse event: consumed or not, and whether focus moves. */
+export interface EditorMouseResult {
+	handled?: boolean;
+	focus?: boolean;
+}
+
+/**
  * Represents a chunk of text for word-wrap layout.
  * Tracks both the text content and its position in the original line.
  */
@@ -648,7 +672,7 @@ export class Editor implements Component, Focusable {
 		return result;
 	}
 
-	handleMouse(event: any): any {
+	handleMouse(event: EditorMouseEvent): EditorMouseResult | undefined {
 		const autocompleteStartRow = this.renderedVisibleLineCount + 2;
 		if (
 			this.autocompleteState &&
@@ -908,11 +932,15 @@ export class Editor implements Component, Focusable {
 		// New line
 		if (
 			kb.matches(data, "tui.input.newLine") ||
+			// Coalesced chunk beginning with LF (shift+enter followed by more
+			// bytes in the same read): treat the chunk as one newline.
 			(data.charCodeAt(0) === 10 && data.length > 1) ||
+			data === "\n" ||
+			// Legacy shift+enter encodings that matchesKey does not cover
+			// (ESC CR from kitty's custom mapping in non-kitty state; the
+			// \x1b[13;2~ variant from a few terminals).
 			data === "\x1b\r" ||
-			data === "\x1b[13;2~" ||
-			(data.length > 1 && data.includes("\x1b") && data.includes("\r")) ||
-			(data === "\n" && data.length === 1)
+			data === "\x1b[13;2~"
 		) {
 			if (this.shouldSubmitOnBackslashEnter(data, kb)) {
 				this.handleBackspace();
