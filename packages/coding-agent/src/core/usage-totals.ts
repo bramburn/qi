@@ -27,6 +27,28 @@ export function addUsageToTotals(totals: UsageTotals, usage: Usage): void {
 	totals.cost += usage.cost.total;
 }
 
+/**
+ * Total prompt tokens for a single response.
+ *
+ * `usage.input` is *non-cached* input by convention (see `calculateCost` in
+ * `packages/ai/src/models.ts`, which charges `input`, `cacheRead` and
+ * `cacheWrite` separately). The full prompt the provider billed for is the
+ * sum of all three — this is what providers report as `prompt_tokens`.
+ */
+export function promptTokensOf(usage: Usage): number {
+	return usage.input + usage.cacheRead + usage.cacheWrite;
+}
+
+/**
+ * Total prompt tokens across the session.
+ *
+ * Same definition as {@link promptTokensOf}, applied to the cumulative
+ * buckets. Use this when comparing against a provider's `prompt_tokens`.
+ */
+export function totalPromptTokens(totals: UsageTotals): number {
+	return totals.input + totals.cacheRead + totals.cacheWrite;
+}
+
 export interface UsageCostBreakdownEntry {
 	key: string;
 	cost: number;

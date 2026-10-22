@@ -6,7 +6,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { AgentMessage } from "@bramburn/qi-agent-core";
+import type { AgentMessage, ThinkingLevel } from "@bramburn/qi-agent-core";
 import type { AuthEvent, AuthPrompt } from "@bramburn/qi-ai";
 import {
 	type Api,
@@ -182,6 +182,7 @@ import {
 	type StatusIndicator,
 	WorkingStatusIndicator,
 } from "./components/status-indicator.ts";
+import { ThinkingSelectorComponent } from "./components/thinking-selector.ts";
 import { ToolExecutionComponent } from "./components/tool-execution.ts";
 import { TreeSelectorComponent } from "./components/tree-selector.ts";
 import { TrustSelectorComponent } from "./components/trust-selector.ts";
@@ -3139,6 +3140,12 @@ export class InteractiveMode {
 				await this.handleModelCommand(searchTerm);
 				return;
 			}
+			if (text === "/thinking" || text.startsWith("/thinking ")) {
+				const levelArg = text.startsWith("/thinking ") ? text.slice("/thinking ".length).trim() : undefined;
+				this.editor.setText("");
+				this.handleThinkingCommand(levelArg);
+				return;
+			}
 			if (text === "/export" || text.startsWith("/export ")) {
 				await this.handleExportCommand(text);
 				this.editor.setText("");
@@ -4439,6 +4446,56 @@ export class InteractiveMode {
 			this.updateEditorBorderColor();
 			this.showStatus(`Thinking level: ${newLevel}`);
 		}
+	}
+
+	private handleThinkingCommand(levelArg?: string): void {
+		if (!levelArg) {
+			this.showThinkingSelector();
+			return;
+		}
+
+		const available = this.session.getAvailableThinkingLevels();
+		const level = levelArg.toLowerCase() as ThinkingLevel;
+		if (!available.includes(level)) {
+			this.showWarning(`Unknown thinking level "${levelArg}". Available levels: ${available.join(", ")}`);
+			return;
+		}
+		this.setThinkingLevel(level);
+	}
+
+	private setThinkingLevel(level: ThinkingLevel): void {
+		try {
+			this.session.setThinkingLevel(level);
+			this.footer.invalidate();
+			this.updateEditorBorderColor();
+			this.showStatus(`Thinking level: ${level}`);
+		} catch (error) {
+			this.showError(error instanceof Error ? error.message : String(error));
+		}
+	}
+
+	private showThinkingSelector(): void {
+		this.showSelector((done) => {
+			const selector = new ThinkingSelectorComponent(
+				this.session.thinkingLevel,
+				this.session.getAvailableThinkingLevels(),
+				(level) => {
+					done();
+					this.setThinkingLevel(level);
+				},
+				() => {
+					done();
+					this.ui.requestRender();
+				},
+				(level) => {
+					// Ctrl+S in the picker saves the startup default (per docs/usage.md).
+					this.settingsManager.setDefaultThinkingLevel(level);
+					this.showStatus(`Default thinking level: ${level}`);
+				},
+				this.settingsManager.getDefaultThinkingLevel(),
+			);
+			return { component: selector, focus: selector };
+		});
 	}
 
 	private async cycleModel(direction: "forward" | "backward"): Promise<void> {
