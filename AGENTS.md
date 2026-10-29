@@ -97,6 +97,7 @@ See `src/core/subagent/shell.ts` for the split contract.
 ## Commands
 
 - After code changes (not docs): `bun run check` (full output, no tail). Fix all errors, warnings, and infos before committing. Does not run tests. `npm run check` still works (calls the same scripts); use `bun run` so the run is consistent with CI.
+- `bun run check` is not a formatting gate when you run it from a worktree under `.worktrees/`. The root `biome.json` excludes `**/.worktrees/**/*`, so in such a checkout biome prints `Checked 0 files` and skips lint and format entirely (`tsgo --noEmit` and the other steps still run). CI does not catch the drift either: `biome check --write` rewrites the checkout and exits 0 rather than diffing. Match the formatter (tabs, 120 columns) or copy the changed files to a directory tree outside `.worktrees/` and run `node_modules/.bin/biome check --write` there.
 - Never run `bun run build` or `bun test` directly unless requested by the user; CI and `./test.sh` orchestrate the full build → check → test sequence.
 - Never run the full vitest suite directly: it includes e2e tests that activate when endpoint/auth env vars are present. For all non-e2e tests, run `./test.sh` from the repo root. Otherwise run specific tests from the package root:
   - Vitest: `node "$(git rev-parse --show-toplevel)/node_modules/vitest/dist/cli.js" --run test/specific.test.ts"`
@@ -185,6 +186,23 @@ If rebase conflicts occur:
 - Resolve conflicts only in files you modified.
 - If a conflict is in a file you did not modify, abort and ask the user.
 - Never force push.
+
+### Worktrees
+
+- Never create a worktree of repo X inside repo Y's workspace. A checkout that
+  belongs to another repository is invisible to `git worktree list` in this repo
+  (its record lives in the other repo's `<common dir>/worktrees/`) but every
+  recursive grep, build and editor scan reads it as a second source tree.
+- Subagent and ad-hoc worktrees go under `.worktrees/` in the repo root, which is
+  what `subagent.worktreeBase` defaults to (`DEFAULT_SUBAGENT_SETTINGS` in
+  `packages/coding-agent/src/core/defaults.ts`). Anything else is outside the
+  contract that creates and discards them, so nothing will ever clean it up.
+- Copying a `.git` directory copies `<common dir>/worktrees/` with it, i.e. the
+  worktree registry. `git worktree prune` cannot undo that: it validates a record
+  only by checking that its `gitdir` pointer names an existing git file, which it
+  does - in the other repository. `listWorktrees()`/`pruneWorktrees()` in
+  `packages/coding-agent/src/core/subagent/worktree.ts` filter and drop those
+  records; deleting them by hand is never the right first move.
 
 ## Fork vs Upstream Remotes
 
