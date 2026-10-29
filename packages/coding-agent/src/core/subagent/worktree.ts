@@ -18,10 +18,22 @@
  * Worktrees live under `<repo>/<worktreeBase>/<slug>` where `worktreeBase`
  * comes from `subagent.worktreeBase` (default ".worktrees"). The registry and
  * per-experiment logs stay in `.pi-experiments/` (see experiment-registry.ts).
+ *
+ * Not every record in `<common dir>/worktrees/` belongs to this repository: a
+ * `.git` directory copied wholesale carries the source repo's registry with it
+ * and neither `git worktree list` nor `git worktree prune` notices (see
+ * {@link classifyRecord}). `listWorktrees()` hides those records and
+ * `pruneWorktrees()` deletes them.
+ *
+ * File IO here is `node:fs`, not `Bun.file`: this module's integration suites
+ * run under the Node-based vitest runner where `globalThis.Bun` is absent (only
+ * the `Bun.$` surface is faked, via runtime.ts), and the substrate needs to be
+ * the code under test rather than a Bun-hosted variant of it. Same reasoning as
+ * worktree-lock.ts.
  */
 
-import { existsSync } from "node:fs";
-import { basename, resolve as resolvePath } from "node:path";
+import { existsSync, readdirSync, readFileSync, realpathSync, rmSync, statSync } from "node:fs";
+import { basename, dirname, join, resolve as resolvePath } from "node:path";
 import { DEFAULT_SUBAGENT_SETTINGS } from "../defaults.ts";
 import { runShell } from "./shell.ts";
 import { withWorktreeLock } from "./worktree-lock.ts";
@@ -271,17 +283,232 @@ export async function discardWorktree(
 }
 
 /**
- * Drop admin data for worktrees whose directories are gone. Runs under the
- * repo worktree lock: an unlocked prune could delete the admin directory of a
- * worktree a concurrent `createWorktree` is mid-flight on (throws
- * `WorktreeLockError` on contention timeout).
+ * Resolve `<common dir>/worktrees` for `repoRoot`, or `undefined` when the
+ * common dir cannot be derived. The registry is `<common dir>/worktrees/<name>`,
+ * so a copied `.git` reproduces the source repo's record names verbatim.
  */
-export async function pruneWorktrees(repoRoot: string): Promise<GitResult> {
-	return withWorktreeLock(repoRoot, () => git(["worktree", "prune"], repoRoot));
+async function worktreesRegistryDir(repoRoot: string): Promise<string | undefined> {
+	const res = await git(["rev-parse", "--git-common-dir"], repoRoot);
+	if (res.exitCode !== 0 || res.complete === false) return undefined;
+	const out = res.stdout.trim();
+	if (out === "") return undefined;
+	// The output may be relative to the process cwd, so resolve against repoRoot
+	// first (same as resolveWorktreeLockPath), then canonicalise.
+	return join(canonicalPath(resolvePath(repoRoot, out)), "worktrees");
 }
 
+/** `realpathSync` where the path exists, plain resolution where it does not. */
+function canonicalPath(path: string): string {
+	try {
+		return realpathSync(path);
+	} catch {
+		return resolvePath(path);
+	}
+}
+
+/**
+ * Comparable form of a path: canonicalised, forward-slash separated, and
+ * case-folded on Windows. The pointers being compared come from two different
+ * writers (git wrote the gitfile, the filesystem resolves it), so neither the
+ * separator style nor the drive-letter case is guaranteed to match.
+ */
+function pathKey(path: string): string {
+	const normalised = canonicalPath(path).replace(/\\/g, "/");
+	return process.platform === "win32" ? normalised.toLowerCase() : normalised;
+}
+
+function isInside(key: string, dirKey: string): boolean {
+	return key === dirKey || key.startsWith(`${dirKey}/`);
+}
+
+/** First non-empty line of a file, or `undefined` when it is missing/not a file. */
+function readPointerFile(path: string): string | undefined {
+	try {
+		if (!statSync(path).isFile()) return undefined;
+		for (const line of readFileSync(path, "utf8").split("\n")) {
+			const trimmed = line.trim();
+			if (trimmed !== "") return trimmed;
+		}
+		return undefined;
+	} catch {
+		return undefined;
+	}
+}
+
+/**
+ * Where a worktree's `.git` gitfile says its admin record lives, i.e. the
+ * reverse pointer (`gitdir: <common dir>/worktrees/<name>`). `worktreeDir`
+ * resolves a relative pointer; git writes absolute paths in practice.
+ */
+function reversePointerOf(worktreeDir: string): string | undefined {
+	const line = readPointerFile(join(worktreeDir, ".git"));
+	if (line === undefined) return undefined;
+	const target = /^gitdir:[ \t]*(.+)$/.exec(line)?.[1]?.trim();
+	if (!target) return undefined;
+	return resolvePath(worktreeDir, target);
+}
+
+/**
+ * A worktree record is only trustworthy when the pointer *back* from the
+ * worktree resolves into this repository's registry directory:
+ *
+ *   <common dir>/worktrees/<name>/gitdir  ->  <worktree>/.git                (forward)
+ *   <worktree>/.git      ->  gitdir: <common dir>/worktrees/<name>           (reverse)
+ *
+ * `git worktree list` reads only the forward pointer and `git worktree prune`
+ * validates it by checking that the file it names exists — which it does, in
+ * the *other* repository. So a record copied along with `.git` survives prune
+ * forever and shows up in this repo's inventory. `foreign` is the reverse
+ * pointer landing outside our registry; `unknown` means a pointer could not be
+ * read (a deleted worktree, which is git's own prune case) or resolved into our
+ * registry under a different name, and is never hidden or deleted.
+ */
+type RecordOwnership = "own" | "foreign" | "unknown";
+
+function ownershipFromReversePointer(
+	reverse: string | undefined,
+	registryKey: string,
+	adminPath: string | undefined,
+): RecordOwnership {
+	if (reverse === undefined) return "unknown";
+	if (!isInside(pathKey(reverse), registryKey)) return "foreign";
+	// The list side has no record name to compare against: any pointer inside
+	// our registry is ours.
+	if (adminPath === undefined) return "own";
+	// Inside our registry but not the record we started from: only reachable via
+	// a hand-edited pointer. Leave it to a human.
+	return pathKey(reverse) === pathKey(adminPath) ? "own" : "unknown";
+}
+
+/** Ownership of a worktree directory as listed by `git worktree list`. */
+function ownershipOfWorktreeDir(worktreeDir: string, registryKey: string): RecordOwnership {
+	// The main checkout has a `.git` directory, not a gitfile: not a record.
+	return ownershipFromReversePointer(reversePointerOf(worktreeDir), registryKey, undefined);
+}
+
+/** Ownership of one `<common dir>/worktrees/<name>` admin directory. */
+function ownershipOfAdminRecord(adminPath: string, registryKey: string): RecordOwnership {
+	const forward = readPointerFile(join(adminPath, "gitdir"));
+	if (forward === undefined) return "unknown";
+	// The admin `gitdir` file is a bare path (no `gitdir:` prefix) naming the
+	// worktree's `.git` file, so the worktree directory is its parent.
+	return ownershipFromReversePointer(reversePointerOf(dirname(forward)), registryKey, adminPath);
+}
+
+/**
+ * Drop admin records whose worktree points back into a different repository.
+ * Returns the record names removed. Runs inside the caller's
+ * `withWorktreeLock` acquisition, so it cannot race a create.
+ */
+async function dropForeignRecords(repoRoot: string): Promise<string[]> {
+	const registry = await worktreesRegistryDir(repoRoot);
+	if (registry === undefined) return [];
+	const registryKey = pathKey(registry);
+	let names: string[];
+	try {
+		names = readdirSync(registry);
+	} catch {
+		return []; // no registry directory: nothing owned by anyone else
+	}
+	const dropped: string[] = [];
+	for (const name of names) {
+		const adminPath = join(registry, name);
+		if (ownershipOfAdminRecord(adminPath, registryKey) !== "foreign") continue;
+		try {
+			rmSync(adminPath, { recursive: true, force: true });
+		} catch (err) {
+			const message = err instanceof Error ? err.message : String(err);
+			console.warn(`[subagent-worktree] prune: could not remove record ${name} (${adminPath}): ${message}`);
+			continue;
+		}
+		console.warn(
+			`[subagent-worktree] prune: removed worktree record ${name} (gitdir points into another repository)`,
+		);
+		dropped.push(name);
+	}
+	return dropped;
+}
+
+/**
+ * Drop admin data for worktrees whose directories are gone (git's own prune),
+ * then drop records that belong to a *different* repository, which git cannot
+ * see (see {@link RecordOwnership}). Runs under the repo worktree lock: an
+ * unlocked prune could delete the admin directory of a worktree a concurrent
+ * `createWorktree` is mid-flight on (throws `WorktreeLockError` on contention
+ * timeout).
+ */
+export async function pruneWorktrees(repoRoot: string): Promise<GitResult> {
+	return withWorktreeLock(repoRoot, async () => {
+		const res = await git(["worktree", "prune"], repoRoot);
+		const dropped = await dropForeignRecords(repoRoot);
+		if (dropped.length === 0) return res;
+		// git writes prune's own removals to stdout with `-v`; the foreign records
+		// are not git's removals, so they go to the diagnostic channel instead.
+		const note = dropped.map((name) => `prune: removed foreign worktree record ${name}`).join("\n");
+		const stderr = res.stderr.trim() === "" ? `${note}\n` : `${res.stderr.trimEnd()}\n${note}\n`;
+		return { ...res, stderr };
+	});
+}
+
+/** One `git worktree list --porcelain` record: its lines plus the `worktree` path. */
+interface WorktreeRecord {
+	worktreePath: string | undefined;
+	lines: string[];
+}
+
+function parsePorcelainList(text: string): WorktreeRecord[] {
+	const records: WorktreeRecord[] = [];
+	let current: string[] = [];
+	const flush = (): void => {
+		if (current.length === 0) return;
+		const head = current[0] ?? "";
+		records.push({
+			worktreePath: head.startsWith("worktree ") ? head.slice("worktree ".length) : undefined,
+			lines: current,
+		});
+		current = [];
+	};
+	for (const rawLine of text.split("\n")) {
+		const line = rawLine.endsWith("\r") ? rawLine.slice(0, -1) : rawLine;
+		if (line === "") flush();
+		else current.push(line);
+	}
+	flush();
+	return records;
+}
+
+function serializePorcelainList(records: WorktreeRecord[]): string {
+	let out = "";
+	for (const record of records) out += `${record.lines.join("\n")}\n\n`;
+	return out;
+}
+
+/**
+ * `git worktree list --porcelain`, minus the records that belong to another
+ * repository (see {@link RecordOwnership}). A record whose reverse pointer
+ * cannot be read stays, so a deleted worktree is still reported for git's own
+ * prune to handle. When nothing is hidden the git output is returned verbatim.
+ */
 export async function listWorktrees(repoRoot: string): Promise<GitResult> {
-	return git(["worktree", "list", "--porcelain"], repoRoot);
+	const res = await git(["worktree", "list", "--porcelain"], repoRoot);
+	if (res.exitCode !== 0 || res.complete === false) return res;
+	const registry = await worktreesRegistryDir(repoRoot);
+	if (registry === undefined) return res;
+	const registryKey = pathKey(registry);
+	const kept: WorktreeRecord[] = [];
+	let hidden = 0;
+	for (const record of parsePorcelainList(res.stdout)) {
+		if (record.worktreePath !== undefined && ownershipOfWorktreeDir(record.worktreePath, registryKey) === "foreign") {
+			hidden += 1;
+			console.warn(
+				`[subagent-worktree] list: hid worktree record ${record.worktreePath} (gitdir points into another repository)`,
+			);
+			continue;
+		}
+		kept.push(record);
+	}
+	if (hidden === 0) return res;
+	return { ...res, stdout: serializePorcelainList(kept) };
 }
 
 /**

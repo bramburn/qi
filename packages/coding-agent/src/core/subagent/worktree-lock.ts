@@ -125,6 +125,15 @@ interface LockRecord {
  * data lives — locking there serialises mutations from every worktree of the
  * repo. The output may be relative to the process cwd, so it is resolved
  * against `repoRoot` (the cwd the git ran in).
+ *
+ * The common dir is the right key for a second, less obvious reason: it is also
+ * where `<common dir>/worktrees/` — the worktree registry — lives, whereas
+ * `--git-dir` would point at the per-worktree administrative directory. So a
+ * repository created by copying another one's `.git` arrives with the source's
+ * registry verbatim, while its lock path stays its own (`B/.git`, not `A/.git`):
+ * the lock serialises this repo's mutations but does nothing about the records
+ * that name the *other* repo's checkouts. worktree.ts's foreign-record handling
+ * is what deals with those.
  */
 export async function resolveWorktreeLockPath(repoRoot: string): Promise<string> {
 	const res = await runShell("git", ["rev-parse", "--git-common-dir"], { cwd: repoRoot });
