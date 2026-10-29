@@ -84,9 +84,7 @@ describe("xAI Responses provider", () => {
 		expect(grok4.length).toBeGreaterThan(0);
 		for (const model of grok4) {
 			expect(model.api, model.id).toBe("openai-responses");
-			expect(getSupportedThinkingLevels(model), model.id).toEqual(
-				expect.arrayContaining(["low", "medium", "high"]),
-			);
+			expect(getSupportedThinkingLevels(model), model.id).toEqual(expect.arrayContaining(["low", "medium", "high"]));
 		}
 		// At least one current Grok can still switch thinking off.
 		expect(grok4.filter((model) => getSupportedThinkingLevels(model).includes("off")).length).toBeGreaterThan(0);
