@@ -64,6 +64,17 @@ const VIRTUAL_MODULES: Record<string, unknown> = {
 	"@bramburn/qi-ai/oauth": _bundledPiAiOauth,
 	"@bramburn/qi-ai/providers/all": _bundledPiAiProviders,
 	"@bramburn/qi-coding-agent": _bundledPiCodingAgent,
+	// Legacy published scope: extensions installed from npm import
+	// @earendil-works/* (the scope docs/extensions.md documents). Without these
+	// keys jiti falls back to node_modules resolution, which fails when the
+	// host package is not installed next to the extension.
+	"@earendil-works/pi-agent-core": _bundledPiAgentCore,
+	"@earendil-works/pi-tui": _bundledPiTui,
+	"@earendil-works/pi-ai": _bundledPiAiCompat,
+	"@earendil-works/pi-ai/compat": _bundledPiAiCompat,
+	"@earendil-works/pi-ai/oauth": _bundledPiAiOauth,
+	"@earendil-works/pi-ai/providers/all": _bundledPiAiProviders,
+	"@earendil-works/pi-coding-agent": _bundledPiCodingAgent,
 	"@mariozechner/pi-agent-core": _bundledPiAgentCore,
 	"@mariozechner/pi-tui": _bundledPiTui,
 	"@mariozechner/pi-ai": _bundledPiAiCompat,
@@ -88,7 +99,7 @@ const isTypeScriptSourceRuntime = !isBunBinary && path.extname(fileURLToPath(imp
  */
 let _aliases: Record<string, string> | null = null;
 
-function getAliases(): Record<string, string> {
+export function getAliases(): Record<string, string> {
 	if (_aliases) return _aliases;
 
 	const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -125,6 +136,14 @@ function getAliases(): Record<string, string> {
 		"@bramburn/qi-ai/compat": piAiCompatEntry,
 		"@bramburn/qi-ai/oauth": piAiOauthEntry,
 		"@bramburn/qi-ai": piAiCompatEntry,
+		// Legacy published scope, see VIRTUAL_MODULES above.
+		"@earendil-works/pi-coding-agent": piCodingAgentEntry,
+		"@earendil-works/pi-agent-core": piAgentCoreEntry,
+		"@earendil-works/pi-tui": piTuiEntry,
+		"@earendil-works/pi-ai/providers/all": piAiProvidersEntry,
+		"@earendil-works/pi-ai/compat": piAiCompatEntry,
+		"@earendil-works/pi-ai/oauth": piAiOauthEntry,
+		"@earendil-works/pi-ai": piAiCompatEntry,
 		"@mariozechner/pi-coding-agent": piCodingAgentEntry,
 		"@mariozechner/pi-agent-core": piAgentCoreEntry,
 		"@mariozechner/pi-tui": piTuiEntry,
