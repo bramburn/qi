@@ -29,6 +29,27 @@ function stopAfterPayload<TPayload>(capture: (payload: TPayload) => void): (payl
 	};
 }
 
+// Cases are read out of the catalog instead of naming model ids. MODELS is
+// regenerated from the live upstream catalog by `bun run build`
+// (packages/ai/src/providers/data/ is gitignored), so a literal id both fails
+// `tsgo --noEmit` and evaluates to undefined once upstream renames it
+// (https://github.com/bramburn/qi/issues/1). What the case asserts is the
+// request payload of an openai-completions model behind an opencode-family
+// proxy, so any such model is a valid subject.
+function opencodeCompletionsModels(limit: number): Model<"openai-completions">[] {
+	const providers = new Set(["opencode", "opencode-go"]);
+	const found: Model<"openai-completions">[] = [];
+	for (const [provider, catalog] of Object.entries(MODELS)) {
+		if (!providers.has(provider)) continue;
+		for (const model of Object.values(catalog)) {
+			if (model.api === "openai-completions") found.push(model as Model<"openai-completions">);
+		}
+	}
+	return found.slice(0, limit);
+}
+
+const longCacheRetentionCases = opencodeCompletionsModels(6);
+
 describe("Cache Retention (QI_CACHE_RETENTION)", () => {
 	const originalEnv = process.env.QI_CACHE_RETENTION;
 
@@ -495,14 +516,13 @@ describe("Cache Retention (QI_CACHE_RETENTION)", () => {
 			expect(capturedPayload.prompt_cache_retention).toBeUndefined();
 		});
 
-		it.each([
-			MODELS.opencode["deepseek-v4-flash"],
-			MODELS.opencode["deepseek-v4-pro"],
-			MODELS.opencode["kimi-k2.5"],
-			MODELS.opencode["kimi-k2.6"],
-			MODELS.opencode["minimax-m2.7"],
-			MODELS["opencode-go"]["kimi-k3"],
-		] as const)("should omit long cache retention for $provider/$id", async (metadata) => {
+		// A non-empty case list is required or `it.each` below would register zero
+		// tests and still report success.
+		it("has opencode-family openai-completions models to drive the retention cases", () => {
+			expect(longCacheRetentionCases.length).toBeGreaterThan(0);
+		});
+
+		it.each(longCacheRetentionCases)("should omit long cache retention for $provider/$id", async (metadata) => {
 			const model = metadata as Model<"openai-completions">;
 			const localModel: Model<"openai-completions"> = {
 				...model,
