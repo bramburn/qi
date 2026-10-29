@@ -296,6 +296,32 @@ Attribution:
 
 5. **If CI publish or announcement fails**: inspect the failed job. The publish helper is idempotent and skips package versions already present on npm; the announcement job rechecks availability before updating the R2 marker. Rerun the failed job or workflow after fixing CI or transient npm issues. Do not rerun `npm run release:patch` or `npm run release:minor` for the same version.
 
+## Adding a new workspace package
+
+When you create a new package under `packages/*` or `packages/session-backends/*` that should ship to npm, the workspace layout, the release pre-flight, and the publish workflow all need to learn about it. Skipping any of these steps is the single most common reason a fresh release fails with `The following public workspace packages are not registered on npm`, which `scripts/release.mjs` throws before it bumps a version. Follow this checklist:
+
+1. **Pick the published name up front.** There is exactly one pattern: the `name` in the package's `package.json` is the published name, under the `@bramburn/qi-*` scope (e.g. `@bramburn/qi-ai`, `@bramburn/qi-clipboard-rs`). There is no publish-time rename shim — `scripts/fork-publish-rename.mjs` was removed on 2026-10-20 when the workspace packages were renamed in-tree (ADR-0001, `specs/adr/0001-qi-hard-cut-rebrand.md`). Naming a new package `@earendil-works/...` is not an option by policy (ADR-0001), even though nothing blocks it mechanically: the brand guard is `scripts/check-no-earendil.mjs`, run as `bun run check:qi-brand`, and it is **not** part of `check` or of CI. It also still carries a large backlog (1599 findings across `.github/`, `docs/` and the workflows on 2026-10-29), so a run flags pre-existing references alongside yours. Treat an `@earendil-works/` published name as a review defect rather than a build failure.
+
+2. **Check the workspace entry.** The root `package.json` `workspaces` array already globs `packages/*` and `packages/session-backends/*`, so a package under those directories needs no edit. Add an entry only for something outside them (the `examples/extensions/*` packages are listed individually). Without a workspace entry `findPackageDirectories()` in `scripts/package-workspaces.mjs` and the npm CLI will not see the package, so the release script and the publish workflow both skip it.
+
+3. **Add a publish step** in `.github/workflows/publish.yml`:
+
+   ```yaml
+   - name: Publish @bramburn/qi-<x>
+     run: |
+       node scripts/publish-with-skip.mjs packages/<dir> npm publish --access public --tag fork
+   ```
+
+   `scripts/publish-with-skip.mjs` is what makes the step idempotent: a version already on npm is logged as `version already on npm, treating as success (idempotent)` and the step exits 0, so re-running the publish workflow does not fail on packages that already landed.
+
+4. **Create the npm trusted publisher entry once per package.** `.github/workflows/publish.yml` publishes through GitHub Actions OIDC with the `npm-publish` environment, and a trusted publisher is per package — it is not inherited from the scope. A missing entry produces `ENEEDAUTH`, which `scripts/publish-with-skip.mjs` reports as a hard step failure. See the `npm trusted publisher setup` subsection under `## Forking` for the repository / workflow / environment values. If the package name does not exist on npm at all yet, bootstrap it once (`npm login`, then `cd packages/<dir> && npm publish --access public --tag fork` from a local checkout) before adding the entry. For a package with prebuilt native binaries, run `.github/workflows/clipboard-rs-build.yml` first to populate `prebuilds/`.
+
+5. **Decide on `private`.** If the package is internal-only and should never ship to npm (e.g. a test harness, a build-time tool), set `"private": true` in its `package.json`. `scripts/release-packages.mjs` filters on `pkg.private !== true`, which takes the package out of the release pre-flight and the publish loop. Do not mix `private: true` with `@bramburn/qi-` naming — the name implies a public release artifact.
+
+6. **Regenerate the release artifacts if the new package is reachable from `@bramburn/qi-coding-agent`.** Run `node scripts/generate-coding-agent-shrinkwrap.mjs` and `node scripts/generate-coding-agent-install-lock.mjs`; `check:shrinkwrap` and `check:install-lock:coding-agent` are part of `npm run check`.
+
+7. **Add a regression test that pulls the package by name** (e.g. `import { ... } from "@bramburn/qi-<x>"` in a vitest spec). This catches two failures fast: a typo in the name during dev, and the missing bootstrap above.
+
 ## Code Review Bundles
 
 External LLM code reviews run via the `repomix-code-review` skill. That skill writes four artefacts to `dist/repomix-review/` (gitignored by the top-level `dist/` rule in `.gitignore`, so the bundles stay out of tracked files but persist across sessions for the user to send to the reviewer):
