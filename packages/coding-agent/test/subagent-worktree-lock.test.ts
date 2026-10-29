@@ -11,6 +11,10 @@
  * lives in the git COMMON dir, so a mutation from a linked worktree contends
  * with the main checkout), and removeWorktree/pruneWorktrees serialisation.
  *
+ * The final suite covers the foreign-record handling that reuses this fixture
+ * machinery: worktree records that came along with a copied `.git` directory
+ * and so belong to a different repository (issue #2).
+ *
  * Like subagent-worktree.test.ts, this suite runs under the Node-based vitest
  * runner where `globalThis.Bun` is absent; the mock below supplies a test
  * double for the one Bun surface the substrate and the lock use (the `Bun.$`
@@ -20,13 +24,13 @@
  */
 
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve as resolvePath } from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { BunApi, BunShell, BunShellCommand } from "../src/core/subagent/runtime.ts";
-import { createWorktree, pruneWorktrees, removeWorktree } from "../src/core/subagent/worktree.ts";
+import { createWorktree, listWorktrees, pruneWorktrees, removeWorktree } from "../src/core/subagent/worktree.ts";
 import { resolveWorktreeLockPath, WorktreeLockError, withWorktreeLock } from "../src/core/subagent/worktree-lock.ts";
 
 type SyncSpawn = typeof spawnSync;
@@ -422,5 +426,122 @@ describe.skipIf(!gitAvailable)("worktree lock diagnostics (REQ-I04.3, REQ-I04.4)
 			unlinkSpy.mockRestore();
 			syncBuiltinESMExports();
 		}
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Issue #2 — worktree records that arrived with a copied `.git` belong to the
+// source repository, and neither `git worktree list` nor `git worktree prune`
+// can tell. Real `git` against two temp repos here, because the whole point is
+// that the git-level checks pass for a foreign record.
+// ---------------------------------------------------------------------------
+
+/** git prints worktree paths with forward slashes, even on Windows. */
+function toGitPathFormat(path: string): string {
+	return path.replace(/\\/g, "/");
+}
+
+function listedWorktreePaths(stdout: string): string[] {
+	return stdout
+		.split("\n")
+		.filter((line) => line.startsWith("worktree "))
+		.map((line) => line.slice("worktree ".length));
+}
+
+function commonDir(repoRoot: string): string {
+	return resolvePath(repoRoot, mustGit(repoRoot, "rev-parse", "--git-common-dir").trim());
+}
+
+interface CopiedGitFixture {
+	/** The repository the worktree was really created in. */
+	sourceRepo: string;
+	/** The repository made by copying `sourceRepo`'s `.git` directory. */
+	copyRepo: string;
+	/** The linked worktree, which lives under `sourceRepo`. */
+	worktreePath: string;
+	/** Registry record name copied into `copyRepo`: `<common dir>/worktrees/<name>`. */
+	recordName: string;
+}
+
+function makeCopiedGitRepo(): CopiedGitFixture {
+	const source = makeFixtureRepo();
+	const worktreePath = join(source.repoRoot, ".worktrees", "copied");
+	mustGit(source.repoRoot, "worktree", "add", "-b", "exp/copied", worktreePath, source.seedCommit);
+
+	const copyRoot = mkdtempSync(join(tmpdir(), "pi-subagent-worktree-copy-"));
+	tempDirs.push(copyRoot);
+	const copyRepo = join(copyRoot, "repo");
+	mkdirSync(copyRepo);
+	cpSync(join(source.repoRoot, ".git"), join(copyRepo, ".git"), { recursive: true });
+	return { sourceRepo: source.repoRoot, copyRepo, worktreePath, recordName: "copied" };
+}
+
+describe.skipIf(!gitAvailable)("foreign worktree records (issue #2)", () => {
+	it("git itself lists a copied record and refuses to prune it", () => {
+		// The premise the handling exists for. If git ever starts validating the
+		// reverse pointer, this test says so instead of the handling silently
+		// becoming dead code.
+		const fixture = makeCopiedGitRepo();
+		const raw = mustGit(fixture.copyRepo, "worktree", "list", "--porcelain");
+		expect(listedWorktreePaths(raw)).toContain(toGitPathFormat(fixture.worktreePath));
+		const pruned = git(fixture.copyRepo, "worktree", "prune", "-n", "--verbose");
+		expect(pruned.exitCode).toBe(0);
+		expect(pruned.stdout.trim()).toBe("");
+		expect(existsSync(join(commonDir(fixture.copyRepo), "worktrees", fixture.recordName))).toBe(true);
+	});
+
+	it("listWorktrees() hides a record whose worktree points into another repository", async () => {
+		const fixture = makeCopiedGitRepo();
+		const listed = await listWorktrees(fixture.copyRepo);
+		expect(listed.exitCode).toBe(0);
+		expect(listed.stdout).not.toContain(toGitPathFormat(fixture.worktreePath));
+		// Only the copy's own main checkout remains.
+		expect(listedWorktreePaths(listed.stdout)).toEqual([toGitPathFormat(fixture.copyRepo)]);
+	});
+
+	it("pruneWorktrees() drops the foreign record and leaves the source repository intact", async () => {
+		const fixture = makeCopiedGitRepo();
+		const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+		try {
+			const pruned = await pruneWorktrees(fixture.copyRepo);
+			expect(pruned.exitCode).toBe(0);
+			expect(pruned.stderr).toContain(fixture.recordName);
+			expect(warn.mock.calls.flat().join(" ")).toContain(fixture.recordName);
+		} finally {
+			warn.mockRestore();
+		}
+		expect(existsSync(join(commonDir(fixture.copyRepo), "worktrees", fixture.recordName))).toBe(false);
+		const listed = await listWorktrees(fixture.copyRepo);
+		expect(listedWorktreePaths(listed.stdout)).toEqual([toGitPathFormat(fixture.copyRepo)]);
+
+		// The source repository still owns the worktree: same record, same
+		// checkout, still clean. Deleting the copy's record must not reach across.
+		const sourceList = mustGit(fixture.sourceRepo, "worktree", "list", "--porcelain");
+		expect(listedWorktreePaths(sourceList)).toContain(toGitPathFormat(fixture.worktreePath));
+		expect(existsSync(join(commonDir(fixture.sourceRepo), "worktrees", fixture.recordName))).toBe(true);
+		expect(mustGit(fixture.worktreePath, "status", "--porcelain").trim()).toBe("");
+		expect(toGitPathFormat(mustGit(fixture.worktreePath, "rev-parse", "--show-toplevel").trim())).toBe(
+			toGitPathFormat(fixture.worktreePath),
+		);
+	});
+
+	it("keeps a linked worktree the copy created itself", async () => {
+		const fixture = makeCopiedGitRepo();
+		const own = await createWorktree(
+			fixture.copyRepo,
+			"Own",
+			mustGit(fixture.copyRepo, "rev-parse", "HEAD").trim(),
+			".worktrees",
+		);
+		expect(own.exitCode).toBe(0);
+		expect(own.error).toBeUndefined();
+
+		const listed = await listWorktrees(fixture.copyRepo);
+		expect(listedWorktreePaths(listed.stdout)).toContain(toGitPathFormat(own.worktreePath));
+
+		await pruneWorktrees(fixture.copyRepo);
+		expect(existsSync(join(commonDir(fixture.copyRepo), "worktrees", "own"))).toBe(true);
+		expect(existsSync(own.worktreePath)).toBe(true);
+		expect(existsSync(join(commonDir(fixture.copyRepo), "worktrees", fixture.recordName))).toBe(false);
 	});
 });
