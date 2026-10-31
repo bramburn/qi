@@ -117,7 +117,7 @@ describe("Sentry Node SDK wiring (end-to-end)", () => {
 		expect(itemHeader.type).toBe("event");
 		const event = JSON.parse(lines[2]!);
 		expect(event.exception?.values?.[0]?.value).toBe("end-to-end test");
-		expect(event.release).toContain("pi-coding-agent@");
+		expect(event.release).toContain("qi-coding-agent@");
 		expect(event.environment).toBe("test");
 	});
 
