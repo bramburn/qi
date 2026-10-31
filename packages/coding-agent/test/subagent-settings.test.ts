@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { join } from "path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { CONFIG_DIR_NAME } from "../src/config.ts";
 import { DEFAULT_SUBAGENT_SETTINGS } from "../src/core/defaults.ts";
 import { SettingsManager } from "../src/core/settings-manager.ts";
 
@@ -12,7 +13,7 @@ describe("subagent.* settings", () => {
 	beforeEach(() => {
 		if (existsSync(testDir)) rmSync(testDir, { recursive: true });
 		mkdirSync(agentDir, { recursive: true });
-		mkdirSync(join(projectDir, ".pi"), { recursive: true });
+		mkdirSync(join(projectDir, CONFIG_DIR_NAME), { recursive: true });
 	});
 
 	afterEach(() => {
