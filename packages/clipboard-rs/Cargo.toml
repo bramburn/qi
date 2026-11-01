@@ -7,7 +7,7 @@ name        = "pi-clipboard-rs"
 # Crate version. This MUST match the `version` field in package.json;
 # build.rs fails the build when the two disagree. Automatic sync via the
 # release script is a pending, separate change.
-version = "0.85.0-b1"
+version = "0.85.2"
 edition     = "2021"
 rust-version = "1.77"
 description = "Fork-local cross-platform clipboard native addon for pi-coding-agent. Replaces @mariozechner/clipboard."

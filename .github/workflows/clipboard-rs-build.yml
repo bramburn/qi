@@ -1,4 +1,4 @@
-name: Build @bramburn/clipboard-rs native prebuilds
+name: Build @bramburn/qi-clipboard-rs native prebuilds
 
 on:
   # Build on pushes to main and on the experiment branch so the matrix

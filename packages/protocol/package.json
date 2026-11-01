@@ -1,6 +1,6 @@
 {
 	"name": "@bramburn/qi-protocol",
-	"version": "0.85.1",
+	"version": "0.85.2",
 	"description": "Transport-neutral CBOR protocol for remote qi sessions",
 	"type": "module",
 	"main": "./dist/index.js",

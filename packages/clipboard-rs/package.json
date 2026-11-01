@@ -1,6 +1,6 @@
 {
 	"name": "@bramburn/qi-clipboard-rs",
-	"version": "0.85.1",
+	"version": "0.85.2",
 	"description": "Fork-local cross-platform clipboard native addon (Rust + napi-rs) for qi-coding-agent. Replaces @mariozechner/clipboard. Built on five guaranteed target platforms (win32-arm64 is best-effort) by .github/workflows/clipboard-rs-build.yml.",
 	"type": "module",
 	"main": "./index.js",
@@ -8,7 +8,9 @@
 	"exports": {
 		".": {
 			"types": "./index.d.ts",
-			"import": "./index.js"
+			"import": "./index.js",
+			"require": "./index.js",
+			"default": "./index.js"
 		}
 	},
 	"files": [

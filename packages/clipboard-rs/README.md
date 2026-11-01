@@ -1,4 +1,4 @@
-# @bramburn/clipboard-rs
+# @bramburn/qi-clipboard-rs
 
 Fork-local cross-platform clipboard native addon for `pi-coding-agent`. Replaces
 `@mariozechner/clipboard` so the fork no longer depends on a single-maintainer

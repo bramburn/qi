@@ -1,4 +1,4 @@
-// @bramburn/clipboard-rs — runtime loader.
+// @bramburn/qi-clipboard-rs — runtime loader.
 //
 // The CI build (`.github/workflows/clipboard-rs-build.yml`) produces a
 // per-platform `.node` file in `prebuilds/<platform>-<arch>/`. This
@@ -75,13 +75,13 @@ function loadAddon() {
 	if (loadError) throw loadError;
 	if (!binaryPath) {
 		loadError = new Error(
-			`@bramburn/clipboard-rs: no prebuild path for ${process.platform}-${process.arch}`,
+			`@bramburn/qi-clipboard-rs: no prebuild path for ${process.platform}-${process.arch}`,
 		);
 		throw loadError;
 	}
 	if (!existsSync(binaryPath)) {
 		loadError = new Error(
-			`@bramburn/clipboard-rs: prebuild not found at ${binaryPath}. ` +
+			`@bramburn/qi-clipboard-rs: prebuild not found at ${binaryPath}. ` +
 				`Run the matrix build in .github/workflows/clipboard-rs-build.yml ` +
 				`or copy a prebuild into prebuilds/${process.platform}-${process.arch}/`,
 		);
@@ -119,6 +119,6 @@ export function addonMarker() {
 	try {
 		return loadAddon().addonMarker();
 	} catch {
-		return `@bramburn/clipboard-rs: no prebuild for ${process.platform}-${process.arch}`;
+		return `@bramburn/qi-clipboard-rs: no prebuild for ${process.platform}-${process.arch}`;
 	}
 }

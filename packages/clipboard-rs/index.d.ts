@@ -1,4 +1,4 @@
-// Type definitions for @bramburn/clipboard-rs.
+// Type definitions for @bramburn/qi-clipboard-rs.
 //
 // Mirrors the four-method contract of @mariozechner/clipboard so the
 // loader at packages/coding-agent/src/utils/clipboard-native.ts can
