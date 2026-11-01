@@ -47,12 +47,14 @@ jobs:
           # is the arm64 host.
           - { os: linux-x64-gnu,    runs-on: ubuntu-latest,    rust: x86_64-unknown-linux-gnu,    cross: false }
           - { os: linux-arm64-gnu,  runs-on: ubuntu-24.04-arm, rust: aarch64-unknown-linux-gnu,  cross: false }
-          # macOS — the standard GitHub Actions runners cover x64
-          # (macos-13) and arm64 (macos-latest, M1).
-          - { os: darwin-x64,       runs-on: macos-13,         rust: x86_64-apple-darwin,         cross: false }
+          # macOS — macos-15-intel is the current GitHub-hosted Intel
+          # host; macos-latest covers arm64 (M1).
+          - { os: darwin-x64,       runs-on: macos-15-intel,         rust: x86_64-apple-darwin,         cross: false }
           - { os: darwin-arm64,     runs-on: macos-latest,     rust: aarch64-apple-darwin,       cross: false }
-          # Windows — windows-latest is x86_64; windows-11-arm is
-          # the arm64 host. Both have MSVC build tools preinstalled.
+          # Windows — windows-latest is x86_64. windows-11-arm is the
+          # arm64 host; it is a best-effort preview runner, not part of
+          # the guaranteed five-platform matrix.
+          # preview runner
           - { os: win32-x64-msvc,   runs-on: windows-latest,   rust: x86_64-pc-windows-msvc,     cross: false }
           - { os: win32-arm64-msvc, runs-on: windows-11-arm,   rust: aarch64-pc-windows-msvc,   cross: false }
 

@@ -4,16 +4,20 @@ Fork-local cross-platform clipboard native addon for `pi-coding-agent`. Replaces
 `@mariozechner/clipboard` so the fork no longer depends on a single-maintainer
 npm package for the topmost layer of its clipboard stack.
 
-Built on all six target platforms by `.github/workflows/clipboard-rs-build.yml`:
+Built on five guaranteed target platforms, plus a best-effort `win32-arm64-msvc` target, by `.github/workflows/clipboard-rs-build.yml`:
 
 | Target              | GitHub runner        | Rust target triple           |
 | ------------------- | -------------------- | ---------------------------- |
 | `linux-x64-gnu`     | `ubuntu-latest`      | `x86_64-unknown-linux-gnu`   |
 | `linux-arm64-gnu`   | `ubuntu-24.04-arm`   | `aarch64-unknown-linux-gnu`  |
-| `darwin-x64`        | `macos-13`           | `x86_64-apple-darwin`        |
+| `darwin-x64` | `macos-15-intel` | `x86_64-apple-darwin`        |
 | `darwin-arm64`      | `macos-latest`       | `aarch64-apple-darwin`       |
 | `win32-x64-msvc`    | `windows-latest`     | `x86_64-pc-windows-msvc`     |
-| `win32-arm64-msvc`  | `windows-11-arm`     | `aarch64-pc-windows-msvc`    |
+| `win32-arm64-msvc` | `windows-11-arm` (preview)[^win-arm] | `aarch64-pc-windows-msvc`    |
+
+[^win-arm]: `windows-11-arm` is a preview GitHub-hosted runner. The
+`win32-arm64-msvc` prebuild is best-effort and is not one of the five
+guaranteed targets.
 
 ## API
 
@@ -60,7 +64,8 @@ node --test test/round-trip.test.mjs
 ```
 
 Skipped automatically when no prebuild is present for the host platform. The
-CI matrix runs the test on all six targets.
+CI matrix runs the test on every target that built (five guaranteed targets plus the
+best-effort Windows ARM64 leg).
 
 ## Why a fork-local Rust crate
 
@@ -71,4 +76,4 @@ to `bun install` in `ci.yml` + `publish.yml` to work around that.
 
 This crate uses a single Cargo crate, a single npm package, and a single
 `prebuilds/` directory checked in next to the JS. The install is one tarball
-with six binaries. No `optionalDependencies` dance, no platform-dep refusal.
+with one binary per matrix target that built. No `optionalDependencies` dance, no platform-dep refusal.
