@@ -1,0 +1,7 @@
+{
+	"schemaVersion": 1,
+	"forkBaseline": "0.85.0-b1",
+	"upstreamCeiling": "0.85.1",
+	"cutoffDate": "2026-09-05T23:59:59.999Z",
+	"packages": {}
+}

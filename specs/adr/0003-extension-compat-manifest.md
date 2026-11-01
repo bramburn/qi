@@ -2,6 +2,7 @@
 
 **Status:** accepted
 **Date:** 2026-10-20
+**Revised:** 2026-11-01
 **Domain:** extensions
 
 ## Context
@@ -16,6 +17,8 @@ We will check in a static v1 compatibility manifest (`packages/coding-agent/src/
 
 A manifest-listed package with no published version matching `compatibleRange` fails hard with `E_EXT_NO_COMPATIBLE_VERSION` rather than falling back to `latest` with a warning (`R-EXT-007`): D3's warn-and-latest rule covers unlisted packages only, and a fallback would install exactly the incompatible release the manifest exists to block; `--force` is the explicit escape hatch.
 
+**Revision 2026-11-01:** unlisted packages are gated by the manifest `cutoffDate` (the end of the UTC day upstream `0.85.1` was published) instead of falling back to registry `latest`. Update resolution takes the highest version published on or before `cutoffDate`; install resolution prefers it and only falls back to the newest published release when the package has no pre-cutoff release at all, with a warning. Updates never fall back to `latest`: when no pre-cutoff release exists the package is blocked and pinned to its installed version. A successful install or update persists the exact resolved version (`npm:<name>@<version>`), so later updates skip the package as pinned.
+
 ## Consequences
 
 **Positive:**
@@ -27,7 +30,9 @@ A manifest-listed package with no published version matching `compatibleRange` f
 
 **Negative:**
 - Maintaining the checked-in manifest requires periodic curation commits when new 0.85-compatible patch releases are published by extension authors.
-- Unpinned `qi install` requires an `npm view <name> versions --json` metadata lookup before `npm install` to determine the exact version to persist.
+- Unpinned `qi install` requires an `npm view <name> versions --json` metadata lookup before `npm install` to determine the exact version to persist, plus an `npm view <name> time --json` lookup for unlisted packages.
+- Unlisted packages whose only releases postdate `cutoffDate` are blocked from update and pinned at their installed version until a maintainer adds a manifest entry; the block is visible only as a progress error during `qi update --extensions`.
+- Listed packages with no release inside their manifest range still fail hard with `E_EXT_NO_COMPATIBLE_VERSION`, so a stale manifest range stops updates for that package entirely.
 
 **Neutral:**
 - Explicitly versioned installs (`qi install npm:foo@2.0.0`) continue to install the requested version (with an advisory warning if outside the manifest range).
@@ -45,12 +50,15 @@ A manifest-listed package with no published version matching `compatibleRange` f
 ## Compliance checklist
 
 - [ ] `packages/coding-agent/src/core/extension-compat-manifest.json` exists and validates against `specs/contracts/json-schema/extension-compat-manifest.schema.json`.
-- [ ] `DefaultPackageManager.installAndPersist("npm:<listed>", ...)` queries `npm view <listed> versions --json`, resolves a version satisfying `compatibleRange`, and writes `"npm:<listed>@<exactVersion>"` to `settings.json`.
-- [ ] `DefaultPackageManager.installAndPersist("npm:<listed-with-no-match>", ...)` throws `E_EXT_NO_COMPATIBLE_VERSION` without modifying `settings.json` unless `--force` is passed.
+- [x] `DefaultPackageManager.installAndPersist("npm:<listed>", ...)` queries `npm view <listed> versions --json`, resolves a version satisfying `compatibleRange`, and writes `"npm:<listed>@<exactVersion>"` to `settings.json`.
+- [x] `DefaultPackageManager.installAndPersist("npm:<listed-with-no-match>", ...)` throws `E_EXT_NO_COMPATIBLE_VERSION` without modifying `settings.json` unless `--force` is passed. (No extension `--force` escape hatch exists in this pass; the failure is unconditional.)
 - [ ] `DefaultPackageManager.installAndPersist("npm:<unlisted>", ...)` emits a warning, resolves `latest`, and writes `"npm:<unlisted>@<exactVersion>"` to `settings.json`.
-- [ ] `DefaultPackageManager.update()` skips packages persisted with exact versions (`pinned === true`).
+- [x] `DefaultPackageManager.update()` skips packages persisted with exact versions (`pinned === true`).
+- [x] `DefaultPackageManager.update()` resolves unlisted npm packages against `cutoffDate` and never uses `@latest`.
+- [x] `DefaultPackageManager.update()` pins blocked unlisted packages to the installed version.
+- [x] `DefaultPackageManager.installAndPersist()` persists the exact resolved npm version.
 - [ ] `packages/coding-agent/src/core/extensions/loader.ts` maps both `@bramburn/qi-*` and the temporary `@earendil-works/pi-*` shim to the bundled host runtime.
-- [ ] No code under `packages/` queries `pi.dev/packages` during package resolution, install, or update.
+- [x] No code under `packages/` queries `pi.dev/packages` during package resolution, install, or update.
 
 ## Traceability
 

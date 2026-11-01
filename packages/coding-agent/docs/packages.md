@@ -113,6 +113,37 @@ pi install git:git@github.com:user/repo@v1.0.0
 
 Local paths point to files or directories on disk and are added to settings without copying. Relative paths are resolved against the settings file they appear in. If the path is a file, it loads as a single extension. If it is a directory, pi loads resources using package rules.
 
+## Fork compatibility (qi)
+
+qi is a hard fork of pi pinned to the pi 0.85 API surface. Extension packages published for later pi versions may not load, so qi gates npm extension resolution in two ways.
+
+### Checked-in compatibility manifest
+
+`packages/coding-agent/src/core/extension-compat-manifest.json` maps known packages to the semver range that has been tested against qi. A listed package is resolved with `maxSatisfying(versions, range)`. If no published version matches, install and update fail with `E_EXT_NO_COMPATIBLE_VERSION`.
+
+Add an entry only after testing the package against the fork:
+
+```json
+{
+ "packages": {
+  "pi-subagents": { "range": ">=0.5.0 <0.6.0" }
+ }
+}
+```
+
+### Unlisted packages
+
+An unlisted package is capped at the last version published on or before the manifest's `cutoffDate` (the upstream 0.85.1 release date). This prevents a post-0.85 release from being installed automatically without requiring a curated entry for every package.
+
+- `qi update --extensions` will not install a post-cutoff version. If no pre-cutoff version exists, the package is blocked and its currently installed version is pinned.
+- `qi install npm:<pkg>` prefers a pre-cutoff version. If the package has no pre-cutoff release, the explicit install falls back to the newest version with a warning and persists the exact version.
+
+Successful installs and updates persist `npm:<name>@<exact-version>` in `settings.json`. The exact version is pinned, so `qi update --extensions` will not move it again.
+
+### Git packages
+
+Git packages are pinned by tag or commit via `@ref` and are not subject to the npm publish-date cutoff. Use a pinned ref for reproducibility.
+
 ## Creating a Pi Package
 
 Add a `pi` manifest to `package.json` or use conventional directories. Include the `pi-package` keyword for discoverability.

@@ -42,6 +42,12 @@ import { spawnProcess, spawnProcessSync } from "../utils/child-process.ts";
 import { type GitSource, parseGitUrl } from "../utils/git.ts";
 import { canonicalizePath, isLocalPath, markPathIgnoredByCloudSync, resolvePath } from "../utils/paths.ts";
 import { stripBom } from "../utils/text.ts";
+import {
+	E_EXT_NO_COMPATIBLE_VERSION,
+	getCompatibleNpmRange,
+	isListedExtension,
+	loadExtensionCompatManifest,
+} from "./extension-compat.ts";
 import { isStdoutTakenOver } from "./output-guard.ts";
 import { type PiManifest, readPiManifest } from "./pi-manifest.ts";
 import type { PackageSource, SettingsManager } from "./settings-manager.ts";
@@ -158,8 +164,12 @@ interface ConfiguredUpdateSource {
 	scope: InstalledSourceScope;
 }
 
-interface NpmUpdateTarget extends ConfiguredUpdateSource {
+interface NpmUpdateCandidate extends ConfiguredUpdateSource {
 	parsed: NpmSource;
+}
+
+interface NpmUpdateTarget extends NpmUpdateCandidate {
+	targetVersion: string;
 }
 
 interface GitUpdateTarget extends ConfiguredUpdateSource {
@@ -1027,8 +1037,26 @@ export class DefaultPackageManager implements PackageManager {
 	}
 
 	async installAndPersist(source: string, options?: { local?: boolean }): Promise<void> {
-		await this.install(source, options);
-		this.addSourceToSettings(source, options);
+		const parsed = this.parseSource(source);
+		const scope: SourceScope = options?.local ? "project" : "user";
+		this.assertProjectTrustedForScope(scope);
+
+		if (parsed.type !== "npm") {
+			await this.install(source, options);
+			this.addSourceToSettings(source, options);
+			return;
+		}
+
+		await this.withProgress("install", source, `Installing ${source}...`, async () => {
+			const target = await this.resolveCompatibleNpmVersion(parsed, "install");
+			const spec = target ? `${parsed.name}@${target.version}` : parsed.spec;
+			await this.installNpmSpec(spec, scope, false);
+		});
+
+		const installedPath = this.getManagedNpmInstallPath(parsed, scope);
+		const installedVersion = this.getInstalledNpmVersion(installedPath);
+		const pinnedSource = installedVersion ? `npm:${parsed.name}@${installedVersion}` : source;
+		this.addSourceToSettings(pinnedSource, options);
 	}
 
 	async remove(source: string, options?: { local?: boolean }): Promise<void> {
@@ -1093,7 +1121,7 @@ export class DefaultPackageManager implements PackageManager {
 			return;
 		}
 
-		const npmCandidates: NpmUpdateTarget[] = [];
+		const npmCandidates: NpmUpdateCandidate[] = [];
 		const gitCandidates: GitUpdateTarget[] = [];
 
 		for (const entry of sources) {
@@ -1109,21 +1137,62 @@ export class DefaultPackageManager implements PackageManager {
 			}
 		}
 
-		const npmCheckTasks = npmCandidates.map((entry) => async () => ({
-			entry,
-			shouldUpdate: await this.shouldUpdateNpmSource(entry.parsed, entry.scope),
-		}));
+		const npmCheckTasks = npmCandidates.map((entry) => async () => {
+			const installedPath = this.getManagedNpmInstallPath(entry.parsed, entry.scope);
+			const installedVersion = existsSync(installedPath) ? this.getInstalledNpmVersion(installedPath) : undefined;
+			let target: { version: string; pinnedSource: string } | undefined;
+			let skipped = false;
+			try {
+				target = await this.resolveCompatibleNpmVersion(entry.parsed, "update");
+			} catch (error) {
+				// A listed package with no compatible release is a hard failure; a transient
+				// registry error must not migrate the package or fail the whole update run.
+				if (error instanceof Error && error.message.includes(E_EXT_NO_COMPATIBLE_VERSION)) {
+					throw error;
+				}
+				this.emitProgress({
+					type: "error",
+					action: "update",
+					source: entry.source,
+					message: `Skipping ${entry.parsed.name}: ${error instanceof Error ? error.message : String(error)}`,
+				});
+				skipped = true;
+			}
+			return { entry, installedVersion, target, skipped };
+		});
 		const npmCheckResults = await this.runWithConcurrency(npmCheckTasks, UPDATE_CHECK_CONCURRENCY);
 		const userNpmUpdates: NpmUpdateTarget[] = [];
 		const projectNpmUpdates: NpmUpdateTarget[] = [];
 		for (const result of npmCheckResults) {
-			if (!result.shouldUpdate) {
+			const { entry, installedVersion, target, skipped } = result;
+			if (skipped) {
 				continue;
 			}
-			if (result.entry.scope === "user") {
-				userNpmUpdates.push(result.entry);
+			if (!target) {
+				// Blocked: unlisted package with no pre-cutoff release.
+				if (installedVersion) {
+					this.addSourceToSettings(`npm:${entry.parsed.name}@${installedVersion}`, {
+						local: entry.scope === "project",
+					});
+				}
+				this.emitProgress({
+					type: "error",
+					action: "update",
+					source: entry.source,
+					message: isListedExtension(entry.parsed.name)
+						? `${entry.parsed.name} is not compatible with the qi ${loadExtensionCompatManifest().upstreamCeiling} baseline; pinned at ${installedVersion ?? "unknown"}`
+						: `${entry.parsed.name} has no release published on or before the qi ${loadExtensionCompatManifest().upstreamCeiling} cutoff; pinned at ${installedVersion ?? "unknown"}`,
+				});
+				continue;
+			}
+			if (installedVersion && !gt(target.version, installedVersion)) {
+				continue;
+			}
+			const update: NpmUpdateTarget = { ...entry, targetVersion: target.version };
+			if (entry.scope === "user") {
+				userNpmUpdates.push(update);
 			} else {
-				projectNpmUpdates.push(result.entry);
+				projectNpmUpdates.push(update);
 			}
 		}
 
@@ -1147,22 +1216,6 @@ export class DefaultPackageManager implements PackageManager {
 		await Promise.all(tasks);
 	}
 
-	private async shouldUpdateNpmSource(source: NpmSource, scope: InstalledSourceScope): Promise<boolean> {
-		const installedPath = this.getManagedNpmInstallPath(source, scope);
-		const installedVersion = existsSync(installedPath) ? this.getInstalledNpmVersion(installedPath) : undefined;
-		if (!installedVersion) {
-			return true;
-		}
-
-		try {
-			const targetVersion = await this.getLatestNpmVersion(source.version ? source.spec : source.name, source.range);
-			return gt(targetVersion, installedVersion);
-		} catch {
-			// Preserve existing update behavior when version lookup fails.
-			return true;
-		}
-	}
-
 	private async updateNpmBatch(sources: NpmUpdateTarget[], scope: InstalledSourceScope): Promise<void> {
 		if (sources.length === 0) {
 			return;
@@ -1170,11 +1223,17 @@ export class DefaultPackageManager implements PackageManager {
 
 		const sourceLabel = sources.length === 1 ? sources[0].source : `${scope} npm packages`;
 		const message = sources.length === 1 ? `Updating ${sources[0].source}...` : `Updating ${scope} npm packages...`;
-		const specs = sources.map((entry) => (entry.parsed.version ? entry.parsed.spec : `${entry.parsed.name}@latest`));
+		const specs = sources.map((entry) => `${entry.parsed.name}@${entry.targetVersion}`);
 
 		await this.withProgress("update", sourceLabel, message, async () => {
 			await this.installNpmBatch(specs, scope);
 		});
+
+		for (const entry of sources) {
+			this.addSourceToSettings(`npm:${entry.parsed.name}@${entry.targetVersion}`, {
+				local: scope === "project",
+			});
+		}
 	}
 
 	private async installNpmBatch(specs: string[], scope: InstalledSourceScope): Promise<void> {
@@ -1489,11 +1548,123 @@ export class DefaultPackageManager implements PackageManager {
 		}
 
 		try {
-			const targetVersion = await this.getLatestNpmVersion(source.version ? source.spec : source.name, source.range);
-			return gt(targetVersion, installedVersion);
+			const target = await this.resolveCompatibleNpmVersion(source, "update");
+			if (!target) {
+				return false;
+			}
+			return gt(target.version, installedVersion);
 		} catch {
+			// A listed package with no compatible release must not crash the background
+			// update check. The explicit `update` command reports it.
 			return false;
 		}
+	}
+
+	private async getNpmVersions(packageName: string): Promise<string[]> {
+		const npmCommand = this.getNpmCommand();
+		const stdout = await this.runCommandCapture(
+			npmCommand.command,
+			[...npmCommand.args, "view", packageName, "versions", "--json"],
+			{ cwd: this.cwd, timeoutMs: NETWORK_TIMEOUT_MS },
+		);
+		const raw = stdout.trim();
+		if (!raw) return [];
+		const parsed = JSON.parse(raw) as unknown;
+		if (typeof parsed === "string") return [parsed];
+		if (Array.isArray(parsed)) {
+			return parsed.filter((value): value is string => typeof value === "string" && value.length > 0);
+		}
+		return [];
+	}
+
+	private async getNpmPublishTimes(packageName: string): Promise<Record<string, string>> {
+		const npmCommand = this.getNpmCommand();
+		const stdout = await this.runCommandCapture(
+			npmCommand.command,
+			[...npmCommand.args, "view", packageName, "time", "--json"],
+			{ cwd: this.cwd, timeoutMs: NETWORK_TIMEOUT_MS },
+		);
+		const raw = stdout.trim();
+		if (!raw) return {};
+		const parsed = JSON.parse(raw) as unknown;
+		if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+		const times: Record<string, string> = {};
+		for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
+			if (typeof value === "string") {
+				times[key] = value;
+			}
+		}
+		return times;
+	}
+
+	private async resolveCompatibleNpmVersion(
+		source: NpmSource,
+		action: "install" | "update",
+	): Promise<{ version: string; pinnedSource: string } | undefined> {
+		if (source.version && isExactNpmVersion(source.version)) {
+			return { version: source.version, pinnedSource: `npm:${source.name}@${source.version}` };
+		}
+
+		const versions = await this.getNpmVersions(source.name);
+		if (versions.length === 0) return undefined;
+
+		const manifest = loadExtensionCompatManifest();
+		const manifestRange = getCompatibleNpmRange(source.name);
+		if (manifestRange) {
+			const candidate = maxSatisfying(versions, manifestRange);
+			if (!candidate) {
+				throw new Error(
+					`${E_EXT_NO_COMPATIBLE_VERSION}: ${source.name} has no release satisfying ${manifestRange} for qi ${manifest.upstreamCeiling}`,
+				);
+			}
+			if (source.range && !satisfies(candidate, source.range)) {
+				throw new Error(
+					`${E_EXT_NO_COMPATIBLE_VERSION}: ${source.name}@${candidate} is compatible with qi ${manifest.upstreamCeiling} but does not satisfy configured range ${source.range}`,
+				);
+			}
+			return { version: candidate, pinnedSource: `npm:${source.name}@${candidate}` };
+		}
+
+		// Unlisted package: use the publish-date ceiling so a post-0.85 release is
+		// never installed automatically.
+		const cutoff = new Date(manifest.cutoffDate).getTime();
+		let times: Record<string, string>;
+		try {
+			times = await this.getNpmPublishTimes(source.name);
+		} catch {
+			// Without publish times the cutoff cannot be applied, so refuse to move.
+			return undefined;
+		}
+
+		const beforeCutoff = versions.filter((version) => {
+			const published = times[version];
+			return published !== undefined && new Date(published).getTime() <= cutoff;
+		});
+		const candidate = maxSatisfying(beforeCutoff, source.range ?? "*");
+		if (candidate) {
+			return { version: candidate, pinnedSource: `npm:${source.name}@${candidate}` };
+		}
+
+		if (action === "update") {
+			// Unlisted package with no pre-cutoff release: block and let the caller pin.
+			return undefined;
+		}
+
+		// Explicit install of an unlisted package with no pre-cutoff release: fall back
+		// to the newest published release and pin whatever was installed.
+		const fallback = source.range ? maxSatisfying(versions, source.range) : [...versions].sort(rcompare)[0];
+		if (!fallback) {
+			throw new Error(
+				`${E_EXT_NO_COMPATIBLE_VERSION}: ${source.name} has no release satisfying ${source.range ?? "*"}`,
+			);
+		}
+		this.emitProgress({
+			type: "progress",
+			action: "install",
+			source: `npm:${source.name}`,
+			message: `${source.name}@${fallback} was published after the qi ${manifest.upstreamCeiling} cutoff; installing it anyway because it was requested explicitly`,
+		});
+		return { version: fallback, pinnedSource: `npm:${source.name}@${fallback}` };
 	}
 
 	private getInstalledNpmVersion(installedPath: string): string | undefined {
@@ -1506,27 +1677,6 @@ export class DefaultPackageManager implements PackageManager {
 		} catch {
 			return undefined;
 		}
-	}
-
-	private async getLatestNpmVersion(packageSpec: string, range?: string): Promise<string> {
-		const npmCommand = this.getNpmCommand();
-		const stdout = await this.runCommandCapture(
-			npmCommand.command,
-			[...npmCommand.args, "view", packageSpec, "version", "--json"],
-			{ cwd: this.cwd, timeoutMs: NETWORK_TIMEOUT_MS },
-		);
-		const raw = stdout.trim();
-		if (!raw) throw new Error("Empty response from npm view");
-		const parsed = JSON.parse(raw) as unknown;
-		if (typeof parsed === "string") {
-			return parsed;
-		}
-		if (Array.isArray(parsed)) {
-			const versions = parsed.filter((value): value is string => typeof value === "string" && value.length > 0);
-			const latest = range ? maxSatisfying(versions, range) : [...versions].sort(rcompare)[0];
-			if (latest) return latest;
-		}
-		throw new Error("Unexpected response from npm view");
 	}
 
 	private async gitHasAvailableUpdate(installedPath: string): Promise<boolean> {
@@ -1805,10 +1955,16 @@ export class DefaultPackageManager implements PackageManager {
 		return ["install", ...specs, "--prefix", installRoot, "--legacy-peer-deps"];
 	}
 
-	private async installNpm(source: NpmSource, scope: SourceScope, temporary: boolean): Promise<void> {
+	private async installNpmSpec(spec: string, scope: SourceScope, temporary: boolean): Promise<void> {
 		const installRoot = this.getNpmInstallRoot(scope, temporary);
 		this.ensureNpmProject(installRoot);
-		await this.runNpmCommand(this.getNpmInstallArgs([source.spec], installRoot));
+		await this.runNpmCommand(this.getNpmInstallArgs([spec], installRoot));
+	}
+
+	private async installNpm(source: NpmSource, scope: SourceScope, temporary: boolean): Promise<void> {
+		const target = await this.resolveCompatibleNpmVersion(source, "install");
+		const spec = target ? `${source.name}@${target.version}` : source.spec;
+		await this.installNpmSpec(spec, scope, temporary);
 	}
 
 	private async uninstallNpm(source: NpmSource, scope: SourceScope): Promise<void> {
