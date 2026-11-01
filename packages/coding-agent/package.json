@@ -103,7 +103,7 @@
 	"license": "MIT",
 	"repository": {
 		"type": "git",
-		"url": "git+https://github.com/bramburn/pi.git",
+		"url": "git+https://github.com/bramburn/qi.git",
 		"directory": "packages/coding-agent"
 	},
 	"engines": {

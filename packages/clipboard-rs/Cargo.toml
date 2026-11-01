@@ -9,7 +9,7 @@ edition     = "2021"
 rust-version = "1.77"
 description = "Fork-local cross-platform clipboard native addon for pi-coding-agent. Replaces @mariozechner/clipboard."
 license     = "MIT"
-repository  = "https://github.com/bramburn/pi"
+repository  = "https://github.com/bramburn/qi"
 publish     = false
 
 [lib]
