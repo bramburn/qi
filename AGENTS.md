@@ -209,12 +209,12 @@ If rebase conflicts occur:
 This checkout is a fork of `earendil-works/pi` (the original upstream). Two remotes are configured:
 
 - `origin` = `https://github.com/earendil-works/pi.git` (the upstream; read-only from this account)
-- `fork` = `https://github.com/bramburn/pi.git` (the maintainer's fork; writable)
+- `fork` = `https://github.com/bramburn/qi.git` (the maintainer's fork; writable)
 
 Rules:
 
 - **Never push to `origin`.** This includes `origin/main`, `origin/<any-branch>`, and any tag pointing to an `origin` ref. All pushes — branches, tags, force-with-lease — go to `fork` only. Treat `origin` as read-only.
-- **Never create a PR against `origin`**, including `origin/main` (`earendil-works/pi`). Every PR Claude opens targets `fork` (`bramburn/pi`), with `fork/main` as the base. The standard workflow is: push the branch to `fork`, then Claude opens the PR against `fork/main`. The user (not Claude) opens any PR against upstream from the GitHub UI.
+- **Never create a PR against `origin`**, including `origin/main` (`earendil-works/pi`). Every PR Claude opens targets `fork` (`bramburn/qi`), with `fork/main` as the base. The standard workflow is: push the branch to `fork`, then Claude opens the PR against `fork/main`. The user (not Claude) opens any PR against upstream from the GitHub UI.
 - **Never auto-merge into `fork/main`.** A "Merge into fork/main" step in a test plan, follow-up list, or automation is a step Claude does **not** perform. PRs Claude opens are left for the user to review and merge. Do not include "Merge into fork/main" as an action item in PR descriptions, follow-up checklists, or any agent-issued task list.
 - Before any push, double-check the remote name in the command. `git push origin <branch>` is the wrong command; `git push fork <branch>` is right.
 - If a `gh` command targets `earendil-works/pi` and the API returns `user is blocked` / `HTTP 422: user is blocked`, surface the block to the user and stop. Do not retry against upstream via a different endpoint or token.
@@ -232,7 +232,7 @@ When reviewing PRs:
 When creating issues:
 
 - Add `pkg:*` labels for affected packages (`pkg:agent`, `pkg:ai`, `pkg:coding-agent`, `pkg:tui`); use all that apply.
-- **This repo is a fork of `earendil-works/pi`.** The `earendil-works/pi` repo blocks write access for external contributors — `gh issue create` silently fails with HTTP 403. Always create issues on the fork (`bramburn/pi`) unless the user explicitly confirms the upstream repo is writable.
+- **This repo is a fork of `earendil-works/pi`.** The `earendil-works/pi` repo blocks write access for external contributors — `gh issue create` silently fails with HTTP 403. Always create issues on the fork (`bramburn/qi`) unless the user explicitly confirms the upstream repo is writable.
 
 When posting issue/PR comments:
 
@@ -354,7 +354,7 @@ External LLM code reviews run via the `repomix-code-review` skill. That skill wr
 
 ## Forking
 
-When this repo is forked (e.g. `bramburn/pi` from `earendil-works/pi`), the fork needs build-time markers so users can tell at a glance that they are running the fork rather than upstream:
+When this repo is forked (e.g. `bramburn/qi` from `earendil-works/pi`), the fork needs build-time markers so users can tell at a glance that they are running the fork rather than upstream:
 
 - `packages/coding-agent/src/config.ts` exports `FORK_NAME` (string) and uses it in the `pi --version` output. Format: `pi <version> [<FORK_NAME>]`.
 - `packages/coding-agent/src/main.ts` references `FORK_NAME` in the `parsed.version` branch and prints `${FORK_NAME}` next to the version line.
@@ -367,7 +367,7 @@ When this repo is forked (e.g. `bramburn/pi` from `earendil-works/pi`), the fork
 When upstream `earendil-works/pi` ships a new release and the fork needs to follow:
 
 1. **Open a sync branch** off fork `main` (`git checkout -b sync/upstream-<version> fork/main`). Do not commit fork-local work to a long-lived branch.
-2. **Merge `origin/main` into the sync branch**: `git merge --no-ff origin/main -m "Merge upstream <version> into bramburn/pi"`. Resolve conflicts with the table in `.pi/plans/sync-upstream-<version>.md`.
+2. **Merge `origin/main` into the sync branch**: `git merge --no-ff origin/main -m "Merge upstream <version> into bramburn/qi"`. Resolve conflicts with the table in `.pi/plans/sync-upstream-<version>.md`.
 3. **Bump all workspace package versions to `<version>-b<patch>`** (e.g. `0.84.2-b1`). The fork suffix signals "fork build on the upstream baseline" without colliding with upstream tags.
 4. **Regenerate `packages/coding-agent/npm-shrinkwrap.json`** via `node scripts/generate-coding-agent-shrinkwrap.mjs`.
 5. **Regenerate `packages/coding-agent/install-lock/package.json` and `package-lock.json`** via `node scripts/generate-coding-agent-install-lock.mjs` so the CI `check:install-lock:coding-agent` step passes.
@@ -388,20 +388,20 @@ below).
 Configure once per package:
 
 1. Open https://www.npmjs.com/package/<name>/edit (e.g.
-   `/package/@bramburn%2fpi-coding-agent/edit`) and sign in as the fork
+   `/package/@bramburn%2fqi-coding-agent/edit`) and sign in as the fork
    maintainer. If the package does not exist on npm yet (e.g.
-   `@bramburn/pi-clipboard-rs`), publish it first via local `npm login` +
+   `@bramburn/qi-clipboard-rs`), publish it first via local `npm login` +
    `cd packages/<pkg> && npm publish --access public --tag fork`, then come
    back to this step.
 2. Under **Trusted Publishers** → **Add GitHub Actions**, set:
-   - **Repository**: `bramburn/pi`
+   - **Repository**: `bramburn/qi`
    - **Workflow filename**: `publish.yml`
    - **Environment name**: `npm-publish` (must match `environment:` in the
      workflow's `jobs.publish` block)
 3. Save. The next tag push should publish that package without further
-   config. Repeat for every `@bramburn/pi-*` workspace package.
+   config. Repeat for every `@bramburn/qi-*` workspace package.
 
-Verify with `npm view @bramburn/pi-<pkg> versions --json` after each
+Verify with `npm view @bramburn/qi-<pkg> versions --json` after each
 release — the new version should appear under the `fork` dist-tag.
 
 ### Fork publish troubleshooting
@@ -412,9 +412,9 @@ distinguishing log line now comes from `scripts/publish-with-skip.mjs`:
 | log line | meaning | fix |
 | --- | --- | --- |
 | `version already on npm, treating as success (idempotent)` | npm returned HTTP 403 `You cannot publish over the previously published versions`. Expected on re-runs. | nothing |
-| `ENEEDAUTH / registry auth failure. ... Configure it under the package's npmjs.com Settings -> Trusted Publishers` | The npm trusted publisher entry for this package is missing, or its workflow filename / environment / repository doesn't match the running workflow. | Add or fix the entry per `## npm trusted publisher setup` above, then re-run the workflow (`gh workflow run publish.yml --repo bramburn/pi --ref v<version> -f tag=v<version>`). |
+| `ENEEDAUTH / registry auth failure. ... Configure it under the package's npmjs.com Settings -> Trusted Publishers` | The npm trusted publisher entry for this package is missing, or its workflow filename / environment / repository doesn't match the running workflow. | Add or fix the entry per `## npm trusted publisher setup` above, then re-run the workflow (`gh workflow run publish.yml --repo bramburn/qi --ref v<version> -f tag=v<version>`). |
 
-(Publish-time package renaming via `scripts/fork-publish-rename.mjs` was removed on 2026-10-20: workspace packages are renamed in-tree to `@bramburn/qi-*` per ADR-0001, so the `Cannot resolve @bramburn/pi-<x>` failure mode can no longer occur.)
+(Publish-time package renaming via `scripts/fork-publish-rename.mjs` was removed on 2026-10-20: workspace packages are renamed in-tree to `@bramburn/qi-*` per ADR-0001, so the legacy-scope `Cannot resolve @bramburn/<pkg>` failure mode can no longer occur.)
 
 ### Windows prebuild file lock
 
@@ -546,7 +546,7 @@ bun run --cwd packages/coding-agent build:binary
 
 ### Remaining Bun runtime issues
 
-These are tracked as `migration:bun` issues on `bramburn/pi` and do not block
+These are tracked as `migration:bun` issues on `bramburn/qi` and do not block
 the build:
 
 - `#524` — `process.report.getReport()` not implemented (windows-self-update)
@@ -704,7 +704,7 @@ The Docusaurus site lives in `website/`. Docs live under `website/docs/`.
 
 ### Content rules
 
-- **Fork docs only** — `website/docs/` documents the bramburn/pi fork. Upstream documentation lives at [pi.dev/docs/latest](https://pi.dev/docs/latest).
+- **Fork docs only** — `website/docs/` documents the bramburn/qi fork. Upstream documentation lives at [pi.dev/docs/latest](https://pi.dev/docs/latest).
 - **Architecture docs** go in `website/docs/architecture/`
 - **Fork-specific docs** (sync process, fork features) go in `website/docs/fork/`
 - **No placeholders** — every page must have real content. Remove the Docusaurus tutorial/blog boilerplate before committing.
