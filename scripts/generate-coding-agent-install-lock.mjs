@@ -268,9 +268,19 @@ function addExternalPackage(lockPackages, installLockPackages, addedPaths, queue
 		return;
 	}
 
+	// Dependencies npm nested inside a workspace resolve to repo-relative paths
+	// such as `packages/coding-agent/node_modules/better-sqlite3`. The install
+	// lockfile is consumed from the install-lock directory, so the repo prefix
+	// has to be flattened or the installer creates an unrelated nested tree.
+	const outputPath = publishedLockPath(lockPath);
+	if (addedPaths.has(outputPath)) {
+		return;
+	}
+
 	const entry = lockPackages[lockPath];
-	installLockPackages[lockPath] = copyLockEntry(entry);
+	installLockPackages[outputPath] = copyLockEntry(entry);
 	addedPaths.add(lockPath);
+	addedPaths.add(outputPath);
 
 	for (const dependencyName of Object.keys(packageDependencies(entry))) {
 		queue.push({ name: dependencyName, from: lockPath });
@@ -308,6 +318,19 @@ function createRootLockEntry(installerPackageJson) {
 	return sortedPackageEntry(entry);
 }
 
+function publishedLockPath(lockPath) {
+	if (lockPath === "" || lockPath.startsWith("node_modules/")) {
+		return lockPath;
+	}
+
+	const marker = "/node_modules/";
+	const index = lockPath.indexOf(marker);
+	if (index === -1) {
+		throw new Error(`Cannot map lockfile path ${lockPath} into the install lockfile`);
+	}
+	return lockPath.slice(index + 1);
+}
+
 function validateGeneratedFiles(installerPackageJson, installLock, internalNames, rootLockPackages) {
 	const errors = [];
 	const rootEntry = installLock.packages[""];
@@ -333,6 +356,9 @@ function validateGeneratedFiles(installerPackageJson, installLock, internalNames
 		const packageName = packageNameFromLockPath(lockPath);
 		if (packageName) {
 			includedPackageNames.add(packageName);
+		}
+		if (lockPath !== "" && !lockPath.startsWith("node_modules/")) {
+			errors.push(`${lockPath} is not a package-relative node_modules path`);
 		}
 		if (entry.link) {
 			errors.push(`${lockPath} is a link entry`);
@@ -383,7 +409,14 @@ function validateGeneratedFiles(installerPackageJson, installLock, internalNames
 					errors.push(`${lockPath || "root"} dependency ${dependencyName} is missing`);
 				continue;
 			}
-			const dependencyEntry = installLock.packages[dependencyLockPath];
+			// resolveExternalDependency returns root-lockfile paths, which can point at
+			// a workspace-nested install. Generated keys are flattened, so normalize
+			// before looking the entry up.
+			const dependencyEntry = installLock.packages[publishedLockPath(dependencyLockPath)];
+			if (!dependencyEntry) {
+				errors.push(`${lockPath || "root"} dependency ${dependencyName} is missing from the lockfile`);
+				continue;
+			}
 
 			if (isExactVersionSpec(dependencySpec) && dependencyEntry.version !== dependencySpec) {
 				errors.push(

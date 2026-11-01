@@ -226,6 +226,34 @@ test("regenerates shrinkwrap with published-scope names when no fork rename happ
 	}
 });
 
+// A dependency npm nests under the workspace ("packages/coding-agent/node_modules/x"
+// in the root lockfile) used to ship that repo-relative key verbatim inside the
+// published tarball's shrinkwrap, so npm installed nothing at node_modules/x and
+// the published CLI crashed on import. See @bramburn/qi-coding-agent@0.85.0.
+test("flattens dependencies nested inside the workspace to package-relative paths", async () => {
+	const base = buildRepoTree();
+	const nested = base.rootLock.packages["node_modules/better-sqlite3"];
+	delete base.rootLock.packages["node_modules/better-sqlite3"];
+	base.rootLock.packages["packages/coding-agent/node_modules/better-sqlite3"] = nested;
+
+	const repoRoot = await makeRepo({ rootLock: base.rootLock });
+	try {
+		const result = await runScript({ repoRoot });
+		assert.equal(result.status, 0, `script failed: ${result.stderr}\n${result.stdout}`);
+
+		const shrinkwrap = JSON.parse(
+			await readFile(`${repoRoot}/packages/coding-agent/npm-shrinkwrap.json`, "utf8"),
+		);
+		assert.equal(shrinkwrap.packages["node_modules/better-sqlite3"]?.version, "11.9.1");
+		assert.deepEqual(
+			Object.keys(shrinkwrap.packages).filter((key) => key.startsWith("packages/")),
+			[],
+		);
+	} finally {
+		await rm(repoRoot, { recursive: true, force: true });
+	}
+});
+
 test("--check exits 0 when the on-disk shrinkwrap matches the regenerated one", async () => {
 	const repoRoot = await makeRepo({
 		codingAgentPackage: {

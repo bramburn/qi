@@ -5,7 +5,7 @@
 ### Changed
 
 - `ModelMetadata.input` accepts `video`, `pdf`, and `audio` in addition to `text` and `image`.
-- Published to the public npm registry as `@bramburn/qi-protocol` at `0.85.0`, the first release under the `@bramburn` scope.
+- Published to the public npm registry as `@bramburn/qi-protocol` at `0.85.1`, the first release under the `@bramburn` scope.
 
 ## [0.85.0-b1] - 2026-09-14
 

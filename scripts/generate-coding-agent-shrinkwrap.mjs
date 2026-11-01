@@ -245,13 +245,37 @@ function addExternalPackage(lockPackages, shrinkwrapPackages, addedPaths, queue,
 		return;
 	}
 
+	// A dependency npm nested inside a workspace (for example
+	// `packages/coding-agent/node_modules/better-sqlite3`) must be flattened to
+	// `node_modules/<name>`. Shipping the repo-relative path makes npm read it as
+	// a nested directory inside the tarball and install nothing at the location
+	// the published code imports from.
+	const outputPath = publishedLockPath(lockPath);
+	if (addedPaths.has(outputPath)) {
+		return;
+	}
+
 	const entry = lockPackages[lockPath];
-	shrinkwrapPackages[lockPath] = copyLockEntry(entry);
+	shrinkwrapPackages[outputPath] = copyLockEntry(entry);
 	addedPaths.add(lockPath);
+	addedPaths.add(outputPath);
 
 	for (const dependencyName of Object.keys(packageDependencies(entry))) {
 		queue.push({ name: dependencyName, from: lockPath });
 	}
+}
+
+function publishedLockPath(lockPath) {
+	if (lockPath === "" || lockPath.startsWith("node_modules/")) {
+		return lockPath;
+	}
+
+	const marker = "/node_modules/";
+	const index = lockPath.indexOf(marker);
+	if (index === -1) {
+		throw new Error(`Cannot map lockfile path ${lockPath} into the published package`);
+	}
+	return lockPath.slice(index + 1);
 }
 
 function validateShrinkwrap(shrinkwrap, internalNames) {
@@ -264,6 +288,9 @@ function validateShrinkwrap(shrinkwrap, internalNames) {
 		const packageName = packageNameFromLockPath(lockPath);
 		if (packageName) {
 			includedPackageNames.add(packageName);
+		}
+		if (lockPath !== "" && !lockPath.startsWith("node_modules/")) {
+			errors.push(`${lockPath} is not a package-relative node_modules path`);
 		}
 		if (entry.link) {
 			errors.push(`${lockPath} is a link entry`);
