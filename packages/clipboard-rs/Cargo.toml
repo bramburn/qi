@@ -1,6 +1,6 @@
 [package]
 # Cargo's package name rules forbid `@` and `/`. The npm-distribution
-# name (`@bramburn/pi-clipboard-rs`) lives in `package.json`; the napi-rs
+# name (`@bramburn/qi-clipboard-rs`) lives in `package.json`; the napi-rs
 # CLI reads that field for the .node filename, not this one. Keep this
 # bare crate name.
 name        = "pi-clipboard-rs"

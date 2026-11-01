@@ -16,7 +16,7 @@ Shared input for the qi spec/review batch (mimo-v2.6-pro). Read fully before sta
 
 ## 2. Environment facts
 
-- Repo: fork of `github.com/earendil-works/pi` (remote `origin`), fork remote `github.com/bramburn/pi`. Version `0.85.0-b1`.
+- Repo: fork of `github.com/earendil-works/pi` (remote `origin`), fork remote `github.com/bramburn/qi`. Version `0.85.0-b1`.
 - The tree has UNRELATED uncommitted changes (summariser env → settings-driven `compactionModel`). They are intentional and NOT part of any batch finding. Do not flag them as defects; do not propose reverting them.
 - The compaction hot-swap errors in the user's screenshot originate in an extension OUTSIDE the repo: `c:/dev/ai-compact-hot-swap/index.ts` (964 lines) — its source is inlined in the fix-compaction task prompt.
 
@@ -28,7 +28,7 @@ Shared input for the qi spec/review batch (mimo-v2.6-pro). Read fully before sta
 - `~/.pi/agent/` holds settings.json, auth.json, models.json, sessions/, themes/, tools/, bin/, extensions/, subagent-specs/. Project `.pi/` holds settings + trust; `.pi/agents/*.md`, `.pi/skills/`.
 - Env vars: 18 documented in `packages/coding-agent/docs/environment-variables.md` (`PI_MODEL, PI_PROVIDER, PI_CODING_AGENT_DIR, PI_SESSION_FILE, PI_SESSION_ID, PI_REASONING_LEVEL, PI_TELEMETRY, PI_OFFLINE, PI_SKIP_VERSION_CHECK, PI_CACHE_RETENTION, PI_HARDWARE_CURSOR, PI_HYPERLINKS, PI_IMAGE_PROTOCOL, PI_PACKAGE_DIR, PI_SHARE_VIEWER_URL, PI_TRUE_COLOR, PI_TUI_ESC_TIMEOUT, ...`); more hardcoded (`PI_AI_DEBUG, PI_SUBAGENT_*, PI_BUNDLED_NODE, PI_CLEAR_ON_SHRINK, PI_INSTALLER_API_BASE, PI_STARTUP_BENCHMARK, PI_TIMING, PI_ENVIRONMENT`). ~40 distinct. Note env var names do NOT follow `APP_NAME` — they are literal.
 - Counts: ~4604 `earendil` / ~2953 word-boundary `pi` occurrences (incl. package.json + .github).
-- Key rename files: `packages/coding-agent/package.json`, `src/config.ts`, `src/cli/args.ts` (help text, usage), `src/main.ts:832` (`pi ${VERSION} [bramburn]`), `src/cli/startup-ui.ts:33-34` (`OFFICIAL_PACKAGE_NAME`, `OFFICIAL_APP_NAME`), `src/core/settings-manager.ts`, `src/core/session-manager.ts:501`, `src/modes/interactive/interactive-mode.ts:1360` (report-install), `scripts/fork-publish-rename.mjs` (+ test), `.github/workflows/publish.yml`, `website/docusaurus.config.ts:93`, `website/src/pages/index.tsx:116` (`npm install -g @bramburn/pi-codes`).
+- Key rename files: `packages/coding-agent/package.json`, `src/config.ts`, `src/cli/args.ts` (help text, usage), `src/main.ts:832` (`pi ${VERSION} [bramburn]`), `src/cli/startup-ui.ts:33-34` (`OFFICIAL_PACKAGE_NAME`, `OFFICIAL_APP_NAME`), `src/core/settings-manager.ts`, `src/core/session-manager.ts:501`, `src/modes/interactive/interactive-mode.ts:1360` (report-install), `scripts/fork-publish-rename.mjs` (+ test), `.github/workflows/publish.yml`, `website/docusaurus.config.ts:93`, `website/src/pages/index.tsx:116` (`npm install -g @bramburn/qi-codes`).
 - Share event type `pi.share` at `src/core/session-share.ts:29`; share viewer `pi.dev/session/` at `config.ts:528`; changelog `pi.dev/changelog` at `interactive-mode.ts:4643`; version check `src/utils/version-check.ts:5`; installer releases `src/package-manager-cli.ts:50`.
 - Upstream sync tooling: `scripts/sync-versions.js`, `scripts/README-sync-upstream.md`; fork-tracking policy `README.md:12-16`.
 

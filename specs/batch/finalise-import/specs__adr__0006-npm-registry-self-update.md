@@ -20,7 +20,7 @@ We will resolve the latest `@bramburn/qi-coding-agent` version for `checkLatestV
 - Preserves offline hermeticity (`QI_OFFLINE` / `QI_SKIP_VERSION_CHECK`) and keeps the staged managed-binary installer path safely gated unless an operator explicitly sets `QI_INSTALLER_API_BASE`.
 
 **Negative:**
-- Standalone managed-binary installs cannot self-update over the network by default until a replacement installer release feed is deployed (`D6`); users receive the manual GitHub releases instruction (`https://github.com/bramburn/pi/releases/latest`, `R-REBRAND-006`).
+- Standalone managed-binary installs cannot self-update over the network by default until a replacement installer release feed is deployed (`D6`); users receive the manual GitHub releases instruction (`https://github.com/bramburn/qi/releases/latest`, `R-REBRAND-006`).
 - Direct packument fetches download the package metadata JSON from `registry.npmjs.org` (bounded by a 10s abort timeout).
 
 **Neutral:**
@@ -29,7 +29,7 @@ We will resolve the latest `@bramburn/qi-coding-agent` version for `checkLatestV
 ## Alternatives considered
 
 - **Keep `pi.dev/api/latest-version` and `pi.dev/api/installer/releases`:** Rejected because `ADR-0002` and `D4` permanently sever all earendil-controlled endpoints and upstream `pi` versions do not track `@bramburn/qi-coding-agent`.
-- **Query GitHub Releases API (`api.github.com/repos/bramburn/pi/releases/latest`) as the version feed:** Rejected because GitHub releases do not provide the npm packument shape or `sha256` tarball manifest required by the staged managed-installer flow, and the manual binary fallback in `packages/coding-agent/src/config.ts:346` already directs binary users to `https://github.com/bramburn/pi/releases/latest`.
+- **Query GitHub Releases API (`api.github.com/repos/bramburn/qi/releases/latest`) as the version feed:** Rejected because GitHub releases do not provide the npm packument shape or `sha256` tarball manifest required by the staged managed-installer flow, and the manual binary fallback in `packages/coding-agent/src/config.ts:346` already directs binary users to `https://github.com/bramburn/qi/releases/latest`.
 - **Spawn an `npm view` subprocess via `getLatestNpmVersion()`:** Rejected because `packages/coding-agent/src/utils/version-check.ts` is a lightweight, settings-free `fetch`-based utility used during early startup, whereas `getLatestNpmVersion()` (`packages/coding-agent/src/core/package-manager.ts:1491`) is bound to a `DefaultPackageManager` instance that is not instantiated at the `version-check.ts` or `package-manager-cli.ts` self-update call sites.
 
 ## Compliance checklist

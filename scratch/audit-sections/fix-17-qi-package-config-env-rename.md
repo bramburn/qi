@@ -58,7 +58,7 @@ Rationale: Rename root monorepo package from `pi-monorepo` to `qi-monorepo` per 
 ```
 Verify: `node -e "const p = require('./package.json'); if (p.name !== 'qi-monorepo') process.exit(1);"`
 
-Rationale: Rename `@earendil-works/pi-agent-core` to `@bramburn/qi-agent-core`, update internal workspace deps to `@bramburn/qi-*`, and point `repository.url` to `bramburn/pi.git` (`packages/agent/package.json:2,32-33,47`).
+Rationale: Rename `@earendil-works/pi-agent-core` to `@bramburn/qi-agent-core`, update internal workspace deps to `@bramburn/qi-*`, and point `repository.url` to `bramburn/qi.git` (`packages/agent/package.json:2,32-33,47`).
 ```diff
 --- a/packages/agent/package.json
 +++ b/packages/agent/package.json
@@ -85,14 +85,14 @@ Rationale: Rename `@earendil-works/pi-agent-core` to `@bramburn/qi-agent-core`, 
  	"repository": {
  		"type": "git",
 -		"url": "git+https://github.com/earendil-works/pi.git",
-+		"url": "git+https://github.com/bramburn/pi.git",
++		"url": "git+https://github.com/bramburn/qi.git",
  		"directory": "packages/agent"
  	},
  	"engines": {
 ```
 Verify: `bun run check`
 
-Rationale: Rename `@earendil-works/pi-ai` to `@bramburn/qi-ai`, rename bin `pi-ai` to `qi-ai`, update `@bramburn/qi-telemetry` dep, and point `repository.url` to `bramburn/pi.git` (`packages/ai/package.json:2,41,62,81`).
+Rationale: Rename `@earendil-works/pi-ai` to `@bramburn/qi-ai`, rename bin `pi-ai` to `qi-ai`, update `@bramburn/qi-telemetry` dep, and point `repository.url` to `bramburn/qi.git` (`packages/ai/package.json:2,41,62,81`).
 ```diff
 --- a/packages/ai/package.json
 +++ b/packages/ai/package.json
@@ -126,14 +126,14 @@ Rationale: Rename `@earendil-works/pi-ai` to `@bramburn/qi-ai`, rename bin `pi-a
  	"repository": {
  		"type": "git",
 -		"url": "git+https://github.com/earendil-works/pi.git",
-+		"url": "git+https://github.com/bramburn/pi.git",
++		"url": "git+https://github.com/bramburn/qi.git",
  		"directory": "packages/ai"
  	},
  	"engines": {
 ```
 Verify: `bun run check`
 
-Rationale: Rename `@earendil-works/pi-client` to `@bramburn/qi-client`, update `@bramburn/qi-protocol` dep, and point `repository.url` to `bramburn/pi.git` (`packages/client/package.json:2,32,39,47`).
+Rationale: Rename `@earendil-works/pi-client` to `@bramburn/qi-client`, update `@bramburn/qi-protocol` dep, and point `repository.url` to `bramburn/qi.git` (`packages/client/package.json:2,32,39,47`).
 ```diff
 --- a/packages/client/package.json
 +++ b/packages/client/package.json
@@ -163,7 +163,7 @@ Rationale: Rename `@earendil-works/pi-client` to `@bramburn/qi-client`, update `
  	"repository": {
  		"type": "git",
 -		"url": "git+https://github.com/earendil-works/pi.git",
-+		"url": "git+https://github.com/bramburn/pi.git",
++		"url": "git+https://github.com/bramburn/qi.git",
  		"directory": "packages/client"
  	},
  	"engines": {
@@ -178,13 +178,13 @@ Rationale: Rename `@earendil-works/pi-client` to `@bramburn/qi-client`, update `
 ```
 Verify: `bun run check`
 
-Rationale: Rename `@bramburn/pi-clipboard-rs` to `@bramburn/qi-clipboard-rs` (`packages/clipboard-rs/package.json:2,4,46`).
+Rationale: Rename `@bramburn/qi-clipboard-rs` to `@bramburn/qi-clipboard-rs` (`packages/clipboard-rs/package.json:2,4,46`).
 ```diff
 --- a/packages/clipboard-rs/package.json
 +++ b/packages/clipboard-rs/package.json
 @@ -1,7 +1,7 @@
  {
--	"name": "@bramburn/pi-clipboard-rs",
+-	"name": "@bramburn/qi-clipboard-rs",
 +	"name": "@bramburn/qi-clipboard-rs",
  	"version": "0.85.0-b1",
 -	"description": "Fork-local cross-platform clipboard native addon (Rust + napi-rs) for pi-coding-agent. Replaces @mariozechner/clipboard. Built on all 6 target platforms by .github/workflows/clipboard-rs-build.yml.",
@@ -204,7 +204,7 @@ Rationale: Rename `@bramburn/pi-clipboard-rs` to `@bramburn/qi-clipboard-rs` (`p
 ```
 Verify: `bun run check`
 
-Rationale: Rename `@earendil-works/pi-coding-agent` to `@bramburn/qi-coding-agent`, set `piConfig` to `name: "qi"` and `configDir: ".qi"`, rename bin to `qi` and binary outfile to `dist/qi`, update `@bramburn/qi-*` dependencies, and point `repository.url` to `bramburn/pi.git` (`packages/coding-agent/package.json:2,5-12,42,58-63,99`).
+Rationale: Rename `@earendil-works/pi-coding-agent` to `@bramburn/qi-coding-agent`, set `piConfig` to `name: "qi"` and `configDir: ".qi"`, rename bin to `qi` and binary outfile to `dist/qi`, update `@bramburn/qi-*` dependencies, and point `repository.url` to `bramburn/qi.git` (`packages/coding-agent/package.json:2,5-12,42,58-63,99`).
 ```diff
 --- a/packages/coding-agent/package.json
 +++ b/packages/coding-agent/package.json
@@ -259,7 +259,7 @@ Rationale: Rename `@earendil-works/pi-coding-agent` to `@bramburn/qi-coding-agen
  	"repository": {
  		"type": "git",
 -		"url": "git+https://github.com/earendil-works/pi.git",
-+		"url": "git+https://github.com/bramburn/pi.git",
++		"url": "git+https://github.com/bramburn/qi.git",
  		"directory": "packages/coding-agent"
  	},
  	"engines": {
@@ -291,7 +291,7 @@ Rationale: Rename `@earendil-works/pi-evals` to `@bramburn/qi-evals` and update 
 ```
 Verify: `bun run check`
 
-Rationale: Rename `@earendil-works/pi-protocol` to `@bramburn/qi-protocol` and point `repository.url` to `bramburn/pi.git` (`packages/protocol/package.json:2,27,35`).
+Rationale: Rename `@earendil-works/pi-protocol` to `@bramburn/qi-protocol` and point `repository.url` to `bramburn/qi.git` (`packages/protocol/package.json:2,27,35`).
 ```diff
 --- a/packages/protocol/package.json
 +++ b/packages/protocol/package.json
@@ -319,14 +319,14 @@ Rationale: Rename `@earendil-works/pi-protocol` to `@bramburn/qi-protocol` and p
  	"repository": {
  		"type": "git",
 -		"url": "git+https://github.com/earendil-works/pi.git",
-+		"url": "git+https://github.com/bramburn/pi.git",
++		"url": "git+https://github.com/bramburn/qi.git",
  		"directory": "packages/protocol"
  	},
  	"engines": {
 ```
 Verify: `bun run check`
 
-Rationale: Rename `@earendil-works/pi-server` to `@bramburn/qi-server`, update `@bramburn/qi-*` dependencies, and point `repository.url` to `bramburn/pi.git` (`packages/server/package.json:2,32,39,47-48`).
+Rationale: Rename `@earendil-works/pi-server` to `@bramburn/qi-server`, update `@bramburn/qi-*` dependencies, and point `repository.url` to `bramburn/qi.git` (`packages/server/package.json:2,32,39,47-48`).
 ```diff
 --- a/packages/server/package.json
 +++ b/packages/server/package.json
@@ -353,7 +353,7 @@ Rationale: Rename `@earendil-works/pi-server` to `@bramburn/qi-server`, update `
  	"repository": {
  		"type": "git",
 -		"url": "git+https://github.com/earendil-works/pi.git",
-+		"url": "git+https://github.com/bramburn/pi.git",
++		"url": "git+https://github.com/bramburn/qi.git",
  		"directory": "packages/server"
  	},
  	"engines": {
@@ -370,7 +370,7 @@ Rationale: Rename `@earendil-works/pi-server` to `@bramburn/qi-server`, update `
 ```
 Verify: `bun run check`
 
-Rationale: Rename `@earendil-works/pi-session-backend-sqlite-node` to `@bramburn/qi-session-backend-sqlite-node`, update `@bramburn/qi-*` dependencies, and point `repository.url` to `bramburn/pi.git` (`packages/session-backends/sqlite-node/package.json:2,4,29,37-38`).
+Rationale: Rename `@earendil-works/pi-session-backend-sqlite-node` to `@bramburn/qi-session-backend-sqlite-node`, update `@bramburn/qi-*` dependencies, and point `repository.url` to `bramburn/qi.git` (`packages/session-backends/sqlite-node/package.json:2,4,29,37-38`).
 ```diff
 --- a/packages/session-backends/sqlite-node/package.json
 +++ b/packages/session-backends/sqlite-node/package.json
@@ -389,7 +389,7 @@ Rationale: Rename `@earendil-works/pi-session-backend-sqlite-node` to `@bramburn
  	"repository": {
  		"type": "git",
 -		"url": "git+https://github.com/earendil-works/pi.git",
-+		"url": "git+https://github.com/bramburn/pi.git",
++		"url": "git+https://github.com/bramburn/qi.git",
  		"directory": "packages/session-backends/sqlite-node"
  	},
  	"engines": {
@@ -406,7 +406,7 @@ Rationale: Rename `@earendil-works/pi-session-backend-sqlite-node` to `@bramburn
 ```
 Verify: `bun run check`
 
-Rationale: Rename `@earendil-works/pi-telemetry` to `@bramburn/qi-telemetry` and point `repository.url` to `bramburn/pi.git` (`packages/telemetry/package.json:2,4,35`).
+Rationale: Rename `@earendil-works/pi-telemetry` to `@bramburn/qi-telemetry` and point `repository.url` to `bramburn/qi.git` (`packages/telemetry/package.json:2,4,35`).
 ```diff
 --- a/packages/telemetry/package.json
 +++ b/packages/telemetry/package.json
@@ -425,14 +425,14 @@ Rationale: Rename `@earendil-works/pi-telemetry` to `@bramburn/qi-telemetry` and
  	"repository": {
  		"type": "git",
 -		"url": "git+https://github.com/earendil-works/pi.git",
-+		"url": "git+https://github.com/bramburn/pi.git",
++		"url": "git+https://github.com/bramburn/qi.git",
  		"directory": "packages/telemetry"
  	},
  	"engines": {
 ```
 Verify: `bun run check`
 
-Rationale: Rename `@earendil-works/pi-tui` to `@bramburn/qi-tui` and point `repository.url` to `bramburn/pi.git` (`packages/tui/package.json:2,38`).
+Rationale: Rename `@earendil-works/pi-tui` to `@bramburn/qi-tui` and point `repository.url` to `bramburn/qi.git` (`packages/tui/package.json:2,38`).
 ```diff
 --- a/packages/tui/package.json
 +++ b/packages/tui/package.json
@@ -448,14 +448,14 @@ Rationale: Rename `@earendil-works/pi-tui` to `@bramburn/qi-tui` and point `repo
  	"repository": {
  		"type": "git",
 -		"url": "git+https://github.com/earendil-works/pi.git",
-+		"url": "git+https://github.com/bramburn/pi.git",
++		"url": "git+https://github.com/bramburn/qi.git",
  		"directory": "packages/tui"
  	},
  	"engines": {
 ```
 Verify: `bun run check`
 
-Rationale: Update `packages/coding-agent/src/config.ts` defaults to `qi`/`qi`/`.qi`/`@bramburn/qi-coding-agent`, rename `PI_PACKAGE_DIR` and `PI_SHARE_VIEWER_URL` to `QI_PACKAGE_DIR` and `QI_SHARE_VIEWER_URL` with no legacy fallback, point binary download instructions to `bramburn/pi`, and remove the `https://pi.dev/session/` share viewer default (`packages/coding-agent/src/config.ts:328,354,509-528`).
+Rationale: Update `packages/coding-agent/src/config.ts` defaults to `qi`/`qi`/`.qi`/`@bramburn/qi-coding-agent`, rename `PI_PACKAGE_DIR` and `PI_SHARE_VIEWER_URL` to `QI_PACKAGE_DIR` and `QI_SHARE_VIEWER_URL` with no legacy fallback, point binary download instructions to `bramburn/qi`, and remove the `https://pi.dev/session/` share viewer default (`packages/coding-agent/src/config.ts:328,354,509-528`).
 ```diff
 --- a/packages/coding-agent/src/config.ts
 +++ b/packages/coding-agent/src/config.ts
@@ -464,7 +464,7 @@ Rationale: Update `packages/coding-agent/src/config.ts` defaults to `qi`/`qi`/`.
  	const target = normalizeSelfUpdatePackageTarget(updatePackageTarget);
  	if (method === "bun-binary") {
 -		return `Download from: https://github.com/earendil-works/pi-mono/releases/latest`;
-+		return `Download from: https://github.com/bramburn/pi/releases/latest`;
++		return `Download from: https://github.com/bramburn/qi/releases/latest`;
  	}
  	const command = getSelfUpdateCommandForMethod(method, packageName, target, npmCommand);
  	if (command) {

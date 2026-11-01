@@ -17,8 +17,8 @@
 **Type:** assumption
 **Marker:** `[ASSUMPTION: All 11 workspace package.json manifests and internal workspace imports are renamed in-tree to @bramburn/qi-* rather than rewritten transiently at publish time — rationale: D1 and D2 require cutting all earendil ties and eliminating publish-time shrinkwrap drift noted in AGENTS.md:323]`
 **Claim/Question:** Package identity is renamed in-tree (manifests + internal imports) instead of keeping the publish-time `fork-publish-rename.mjs` rewrite.
-**Evidence:** D1 and D2 require cutting all earendil ties and eliminating the publish-time shrinkwrap drift noted in AGENTS.md:323; `fork-publish-rename.mjs:21-22` currently rewrites to `@bramburn/pi-*` only at publish.
-**Recommendation:** ACCEPT — D2 fixes published identity as `@bramburn/qi-*` and D1 severs earendil; in-tree rename is the only variant that also satisfies R-REBRAND-002's "zero `@bramburn/pi-*` remains" acceptance criterion.
+**Evidence:** D1 and D2 require cutting all earendil ties and eliminating the publish-time shrinkwrap drift noted in AGENTS.md:323; `fork-publish-rename.mjs:21-22` currently rewrites to `@bramburn/qi-*` only at publish.
+**Recommendation:** ACCEPT — D2 fixes published identity as `@bramburn/qi-*` and D1 severs earendil; in-tree rename is the only variant that also satisfies R-REBRAND-002's "zero `@bramburn/qi-*` remains" acceptance criterion.
 **Cost if wrong:** HIGH — wrong or partial rename breaks publishing of all 11 packages and leaves runtime constants/lockfiles coupled to `@earendil-works`, failing D2 and R-REBRAND-002.
 **Blocks:** R-REBRAND-002, ADR-0001, root + all workspace `package.json` manifests.
 
