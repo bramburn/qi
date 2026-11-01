@@ -51,7 +51,7 @@ type UpdateTarget = { type: "all" } | { type: "self" } | { type: "extensions"; s
 // disabled by default (decision 2026-10-20): version resolution comes from the npm
 // registry, and the staged managed flow below only runs when an operator points
 // QI_INSTALLER_API_BASE at a self-hosted installer endpoint. Manual fallback for
-// binary installs points at https://github.com/bramburn/pi/releases/latest
+// binary installs points at https://github.com/bramburn/qi/releases/latest
 // (see getSelfUpdateUnavailableInstruction in config.ts); upstream hosts stay severed.
 const DEFAULT_INSTALLER_API_BASE = "";
 const MANAGED_INSTALL_MARKER = "managed-install.json";

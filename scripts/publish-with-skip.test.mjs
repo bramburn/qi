@@ -53,7 +53,7 @@ test("exits 0 when npm publish fails with 'You cannot publish over the previousl
 			"already-published.cjs",
 			`const msg = [
   "npm error code 403",
-  "npm error 403 403 Forbidden - PUT https://registry.npmjs.org/@bramburn%2fpi-foo - You cannot publish over the previously published versions: 0.1.0.",
+  "npm error 403 403 Forbidden - PUT https://registry.npmjs.org/@bramburn%2fqi-foo - You cannot publish over the previously published versions: 0.1.0.",
   "",
 ].join("\\n");
 process.stderr.write(msg);
