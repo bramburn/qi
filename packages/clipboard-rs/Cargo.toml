@@ -4,7 +4,10 @@
 # CLI reads that field for the .node filename, not this one. Keep this
 # bare crate name.
 name        = "pi-clipboard-rs"
-version     = "0.0.1"
+# Crate version. This MUST match the `version` field in package.json;
+# build.rs fails the build when the two disagree. Automatic sync via the
+# release script is a pending, separate change.
+version = "0.85.0-b1"
 edition     = "2021"
 rust-version = "1.77"
 description = "Fork-local cross-platform clipboard native addon for pi-coding-agent. Replaces @mariozechner/clipboard."
@@ -46,6 +49,12 @@ image = { version = "0.25", default-features = false, features = ["png"] }
 # stable line that pairs with napi 3.x runtime. See
 # https://docs.rs/napi-build for the version matrix.
 napi-build = "2.1"
+
+# build.rs parses package.json to compare its `version` against the
+# Cargo package version. Desktop-only dependency; never linked into the
+# .node binary.
+serde_json = "1"
+
 
 [features]
 # Default build: link the dynamic libstd so the .node is small and uses the
