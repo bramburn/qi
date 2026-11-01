@@ -9,6 +9,7 @@
 ### Changed
 
 - Harness compaction summary output is now clamped to an absolute ceiling of 16384 tokens (`SUMMARY_MAX_TOKENS_CEILING`). Summariser reasoning remains opt-in only.
+- Published to the public npm registry as `@bramburn/qi-agent-core` at `0.85.0`, the first release under the `@bramburn` scope.
 
 ## [0.85.0-b1] - 2026-09-14
 

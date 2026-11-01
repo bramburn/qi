@@ -1,6 +1,6 @@
 {
 	"name": "@bramburn/qi-coding-agent",
-	"version": "0.85.0-b1",
+	"version": "0.85.0",
 	"description": "Coding agent CLI with read, bash, edit, write tools and session management",
 	"type": "module",
 	"piConfig": {
@@ -47,12 +47,12 @@
 		"prepublishOnly": "bun --bun run clean && bun --bun run build && bun --bun run shrinkwrap"
 	},
 	"dependencies": {
-		"@bramburn/qi-agent-core": "^0.85.0-b1",
+		"@bramburn/qi-agent-core": "^0.85.0",
 		"better-sqlite3": "11.9.1",
-		"@bramburn/qi-ai": "^0.85.0-b1",
-		"@bramburn/qi-client": "^0.85.0-b1",
-		"@bramburn/qi-protocol": "^0.85.0-b1",
-		"@bramburn/qi-tui": "^0.85.0-b1",
+		"@bramburn/qi-ai": "^0.85.0",
+		"@bramburn/qi-client": "^0.85.0",
+		"@bramburn/qi-protocol": "^0.85.0",
+		"@bramburn/qi-tui": "^0.85.0",
 		"@sentry/node": "10.72.0",
 		"@silvia-odwyer/photon-node": "0.3.4",
 		"chalk": "5.6.2",
