@@ -33,7 +33,8 @@
 		"build:local": "bun --bun run build:napi",
 		"build:all": "echo 'multi-platform build is run in CI; locally use build:local'",
 		"check": "tsgo --noEmit",
-		"test": "node --test test/*.test.mjs"
+		"test": "node --test test/*.test.mjs",
+		"prepublishOnly": "node scripts/check-prebuilds.mjs"
 	},
 	"devDependencies": {
 		"@napi-rs/cli": "3.5.0",

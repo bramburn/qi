@@ -123,7 +123,9 @@ jobs:
       - name: Publish @bramburn/qi-clipboard-rs
         # Source name is already in the bramburn/ namespace.
         # The prebuilds/* dir is built by .github/workflows/clipboard-rs-build.yml on the
-        # same tag and committed to the repo before this step runs; if it's empty the
-        # published tarball is still valid JS metadata, just without per-platform binaries.
+        # same tag and committed to the repo before this step runs. The
+        # `prepublishOnly` guard (scripts/check-prebuilds.mjs) fails this step when
+        # `prebuilds/` is empty or contains zero-byte `.node` files, so
+        # .github/workflows/clipboard-rs-build.yml must run on the same tag first.
         run: |
           node scripts/publish-with-skip.mjs packages/clipboard-rs npm publish --access public --tag fork
