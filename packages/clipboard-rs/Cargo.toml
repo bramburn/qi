@@ -44,11 +44,12 @@ napi-derive = "3.0"
 image = { version = "0.25", default-features = false, features = ["png"] }
 
 [build-dependencies]
-# napi build script generates the C headers napi-rs needs. The
-# 3.x line only has prereleases (1.1.0-beta.0); 2.x is the
-# stable line that pairs with napi 3.x runtime. See
-# https://docs.rs/napi-build for the version matrix.
-napi-build = "2.1"
+# napi-build generates the C headers napi-rs needs. The pairing here is
+# `napi 3.0` runtime + `napi-build 2.4+` build helper (Cargo.lock resolves
+# 2.6.0), matching the `@napi-rs/cli 3.5.0` devDependency in package.json
+# and the toolchain pinned in .github/workflows/clipboard-rs-build.yml.
+# See https://docs.rs/napi-build for the version matrix.
+napi-build = "2.4"
 
 # build.rs parses package.json to compare its `version` against the
 # Cargo package version. Desktop-only dependency; never linked into the

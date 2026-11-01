@@ -150,6 +150,21 @@ jobs:
              prebuilds/${{ matrix.target.os }}/clipboard-rs.node
           ls -la prebuilds/${{ matrix.target.os }}
 
+      - name: Load native addon
+        shell: bash
+        run: |
+          node -e "
+          const path = require(\"path\");
+          const dir = process.env.PREBUILD_DIR;
+          const m = require(path.join(dir, \"clipboard-rs.node\"));
+          for (const k of [\"getText\", \"setText\", \"hasImage\", \"getImageBinary\"]) {
+            if (typeof m[k] !== \"function\") throw new Error(\"missing export: \" + k);
+          }
+          console.log(m.addonMarker());
+          "
+        env:
+          PREBUILD_DIR: packages/clipboard-rs/prebuilds/${{ matrix.target.os }}
+
       - name: Run round-trip test
         working-directory: packages/clipboard-rs
         shell: bash
