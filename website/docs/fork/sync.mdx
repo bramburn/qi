@@ -6,7 +6,7 @@ sidebar_label: Sync Process
 
 # Syncing from Upstream
 
-This page documents how the fork merges new releases from `earendil-works/pi` into `bramburn/pi`.
+This page documents how the fork merges new releases from `earendil-works/pi` into `bramburn/qi`.
 
 ## When to sync
 
@@ -25,7 +25,7 @@ Do **not** commit fork-local work to a long-lived branch. Sync branches are shor
 ### 2. Merge upstream
 
 ```bash
-git merge --no-ff origin/main -m "Merge upstream 0.85.0 into bramburn/pi"
+git merge --no-ff origin/main -m "Merge upstream 0.85.0 into bramburn/qi"
 ```
 
 Resolve conflicts using the sync plan in `.pi/plans/sync-upstream-<version>.md`.
@@ -72,7 +72,7 @@ In each `packages/*/CHANGELOG.md`, append under `## [Unreleased]`:
 git push origin sync/upstream-0.85.0
 gh pr create --base fork/main --head sync/upstream-0.85.0 \
   --title "sync: merge upstream 0.85.0" \
-  --body "Syncs upstream release 0.85.0 into bramburn/pi."
+  --body "Syncs upstream release 0.85.0 into bramburn/qi."
 ```
 
 CI runs `bun run check`, `bun run build`, and `./test.sh`. Fix any failures before merging.
@@ -82,7 +82,7 @@ CI runs `bun run check`, `bun run build`, and `./test.sh`. Fix any failures befo
 After CI passes, merge the PR. Then push the fork tag:
 
 ```bash
-git tag -a v0.85.0-b1 -m "bramburn/pi fork build on upstream 0.85.0"
+git tag -a v0.85.0-b1 -m "bramburn/qi fork build on upstream 0.85.0"
 git push fork v0.85.0-b1
 ```
 

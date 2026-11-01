@@ -1,14 +1,14 @@
 # Project Workflows
 
 Opinionated architecture and process workflows enforced for this fork
-(`bramburn/pi`). Each entry is a navigable index entry — for the full
+(`bramburn/qi`). Each entry is a navigable index entry — for the full
 spec and rules, follow the `→ AGENTS.md` link to the originating
 section. Workflows are grouped by area; numbered steps are the canonical
 order; "gotchas" highlight the things that bite on first encounter.
 
 Source-of-truth note: this catalog is a *pointer*. When AGENTS.md and
 this file disagree, AGENTS.md wins. When a workflow changes, update
-both. Workflows marked **(fork-only)** apply to `bramburn/pi` but not
+both. Workflows marked **(fork-only)** apply to `bramburn/qi` but not
 upstream `earendil-works/pi`.
 
 ## Contents
@@ -247,7 +247,7 @@ needs to follow:
    `git checkout -b sync/upstream-<version> fork/main`.
    Do not commit fork-local work to a long-lived branch.
 2. **Merge `origin/main`** with `--no-ff`:
-   `git merge --no-ff origin/main -m "Merge upstream <version> into bramburn/pi"`.
+   `git merge --no-ff origin/main -m "Merge upstream <version> into bramburn/qi"`.
    Resolve conflicts using the table in
    `.pi/plans/sync-upstream-<version>.md`.
 3. **Bump all workspace package versions** to `<version>-b<patch>`
@@ -407,7 +407,7 @@ Commit message format:
 
 ### Issues & PRs workflow
 
-**Always create issues on the fork (`bramburn/pi`)**. The upstream
+**Always create issues on the fork (`bramburn/qi`)**. The upstream
 `earendil-works/pi` repo blocks write access for external contributors
 — `gh issue create` silently fails with HTTP 403. Only use upstream if
 the user explicitly confirms it's writable.

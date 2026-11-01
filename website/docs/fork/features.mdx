@@ -6,7 +6,7 @@ sidebar_label: Fork Features
 
 # Fork Features
 
-Differences between `bramburn/pi` (this fork) and `earendil-works/pi` (upstream).
+Differences between `bramburn/qi` (this fork) and `earendil-works/pi` (upstream).
 
 ## Runtime support
 
@@ -29,7 +29,7 @@ The remaining `npm` calls are intentional and required:
 - `npm install --prefix … --include=optional` (cross-platform native clipboard deps) — bun's `--force` does not match npm's cross-platform optional-deps semantics.
 - `spawnSync('npm.cmd', ['view', …])` (in `scripts/release.mjs:61`) — npm-registry introspection.
 
-See [Runtime support in the README](https://github.com/bramburn/pi/blob/main/README.md#runtime-support) for the full picture.
+See [Runtime support in the README](https://github.com/bramburn/qi/blob/main/README.md#runtime-support) for the full picture.
 
 Local development uses bun:
 
@@ -55,7 +55,7 @@ npm run build                                  # legacy (chained through bun; se
 | Binary name | `pi` | `pi-bramburn` |
 | Binary output | `pi.exe` | `pi.exe` (same, renamed via wrapper) |
 | Release pipeline | pi.dev CI | fork GitHub Actions |
-| Shrinkwrap | `@earendil-works/pi-coding-agent` | `@bramburn/pi-coding-agent` |
+| Shrinkwrap | `@earendil-works/pi-coding-agent` | `@bramburn/qi-coding-agent` |
 
 ## Fork identity constant
 

@@ -39,7 +39,7 @@ const config: Config = {
       {
         docs: {
           sidebarPath: './sidebars.ts',
-          editUrl: 'https://github.com/bramburn/pi/edit/main/website/',
+          editUrl: 'https://github.com/bramburn/qi/edit/main/website/',
           showLastUpdateTime: true,
           showLastUpdateAuthor: false,
           breadcrumbs: true,
@@ -116,7 +116,7 @@ const config: Config = {
           label: 'This Fork',
         },
         {
-          href: 'https://github.com/bramburn/pi',
+          href: 'https://github.com/bramburn/qi',
           position: 'right',
           className: 'header-github-link',
           'aria-label': 'GitHub repository',
@@ -146,7 +146,7 @@ const config: Config = {
         {
           title: 'Community',
           items: [
-            {label: 'GitHub', href: 'https://github.com/bramburn/pi'},
+            {label: 'GitHub', href: 'https://github.com/bramburn/qi'},
           ],
         },
       ],
