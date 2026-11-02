@@ -106,12 +106,17 @@ if (dryRun) {
 
 console.log("All packages validated; starting publication.\n");
 
+// npm can only attest provenance inside a supported CI provider (it reads the
+// provider's OIDC token). Local publishes have no provider and npm rejects
+// `--provenance` with EUSAGE, so ask for it only where it can be generated.
+const provenanceArgs = process.env.GITHUB_ACTIONS === "true" || process.env.GITLAB_CI === "true" ? ["--provenance"] : [];
+
 for (const pkg of packageStates) {
 	if (pkg.published) {
 		console.log(`Skipping ${pkg.name}@${pkg.version}: already published\n`);
 		continue;
 	}
 
-	run("npm", ["publish", "--access", "public", "--provenance", "--ignore-scripts"], { cwd: pkg.directory });
+	run("npm", ["publish", "--access", "public", ...provenanceArgs, "--ignore-scripts"], { cwd: pkg.directory });
 	console.log();
 }
