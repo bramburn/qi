@@ -2077,18 +2077,28 @@ export class AgentSession {
 	/**
 	 * Set thinking level.
 	 * Clamps to model capabilities based on available thinking levels.
-	 * Saves to session and (when `persist: true`) updates the persisted default.
+	 * Saves to session and (unless `persist: false`) remembers the level for the
+	 * current model in settings.
 	 *
-	 * Session-only by default: a thinking level change is reflected in the agent
-	 * state and recorded as a `thinking_level_change` session entry, but does NOT
-	 * update `defaultThinkingLevel` in settings. Pass `{ persist: true }` to also
-	 * promote the level to the persisted default.
+	 * The remembered value lives in `modelThinkingLevels` keyed by
+	 * `provider/modelId`, so a new session or a model switch restores what the
+	 * user last chose for that model. Construction and model-activation paths pass
+	 * `{ persist: false }` because applying a level is not the same as the user
+	 * choosing one.
+	 *
+	 * Pass `{ persist: true }` explicitly to additionally promote the level to the
+	 * persisted global `defaultThinkingLevel` (the "save as startup default"
+	 * behaviour).
 	 *
 	 * When persisting and the current model clamps the requested level to a
-	 * different effective level, the requested level is what gets persisted (so
-	 * switching back to a model that supports the original level restores it).
+	 * different effective level, the remembered per-model entry stores the clamped
+	 * level (so an impossible preference is never replayed), while the global
+	 * startup default keeps the requested level (so switching back to a model that
+	 * supports it restores the original choice).
 	 *
-	 * @param options.persist - Also update the default thinking level in settings (default: false)
+	 * @param options.persist - Also update the global default thinking level in
+	 * settings (default: false). Per-model memory is written on every change unless
+	 * this option is explicitly `false`.
 	 */
 	setThinkingLevel(level: ThinkingLevel, options?: { persist?: boolean }): void {
 		const availableLevels = this.getAvailableThinkingLevels();
@@ -2102,6 +2112,12 @@ export class AgentSession {
 
 		if (isChanging) {
 			this.sessionManager.appendThinkingLevelChange(effectiveLevel);
+			// Construction and model-activation pass `persist: false`: applying a
+			// remembered level must not overwrite the memory it came from.
+			const model = this.model;
+			if (options?.persist !== false && model) {
+				this.settingsManager.setModelThinkingLevel(model.provider, model.id, effectiveLevel);
+			}
 			if (options?.persist === true && (this.supportsThinking() || level !== "off")) {
 				// Persist the user-requested level, not the clamped effective level,
 				// so the original preference survives model switches that re-clamp it.

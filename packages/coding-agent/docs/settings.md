@@ -30,7 +30,7 @@ Use `/trust` in interactive mode to save a project trust decision for future ses
 | `defaultProvider` | string | - | Startup provider (e.g., `"anthropic"`, `"openai"`; saved with Ctrl+S in `/model`, or edited manually) |
 | `defaultModel` | string | - | Startup model ID (saved with Ctrl+S in `/model`, or edited manually) |
 | `defaultThinkingLevel` | string | - | Startup thinking level (saved with Ctrl+S in `/thinking`, or edited manually): `"off"`, `"minimal"`, `"low"`, `"medium"`, `"high"`, `"xhigh"`, `"max"` |
-| `modelThinkingLevels` | object | - | Per-model startup thinking levels keyed by `"provider/modelId"`; configure from `/settings` → Default thinking level per model or edit manually |
+| `modelThinkingLevels` | object | - | Remembered thinking level per model, keyed by `"provider/modelId"`; updated automatically when you change the level, or edit manually |
 | `hideThinkingBlock` | boolean | `false` | Hide thinking blocks in output |
 | `showCacheMissNotices` | boolean | `false` | Show transcript notices for significant prompt-cache misses and compaction or branch-summary usage |
 | `thinkingBudgets` | object | - | Custom token budgets per thinking level. Anthropic, Google, and Bedrock use these natively. OpenAI-compatible models use them when `compat.thinkingTokenBudgetField` (or `supportsThinkingTokenBudget`) is set. |
@@ -47,6 +47,31 @@ Use `/trust` in interactive mode to save a project trust decision for future ses
   }
 }
 ```
+
+#### Per-model thinking level
+
+`modelThinkingLevels` remembers the thinking level you last chose for each model. Changing the level with `/thinking`, the thinking picker, Shift+Tab, or the RPC `set_thinking_level` / `cycle_thinking_level` commands writes the effective (clamped) level here, and it is restored when a session starts or the active model changes.
+
+```json
+{
+ "modelThinkingLevels": {
+ "anthropic/claude-opus-4-8": "high",
+ "openrouter/deepseek/deepseek-r1-0528": "medium",
+ "openai/gpt-5.5": "low"
+ }
+}
+```
+
+Keys are built as `${model.provider}/${model.id}` and are never parsed, so model IDs containing `/` are fine. Invalid or unknown stored values are ignored on read.
+
+When a thinking level is resolved for a model, the precedence is:
+
+1. The resumed/forked session's own `thinking_level_change` entry (session history wins).
+2. An explicit per-model level from `--models provider/id:level`.
+3. The remembered `modelThinkingLevels` entry for that model.
+4. The global `defaultThinkingLevel`, then the built-in default (`medium`).
+
+A remembered level the model does not support is clamped to a supported level for that session but is **not** overwritten; it is clamped again the next time the model becomes active. Only an explicit user change writes a new value. `--thinking <level>` and the SDK `thinkingLevel` option win for that session without being written to `modelThinkingLevels`.
 
 ### UI & Display
 

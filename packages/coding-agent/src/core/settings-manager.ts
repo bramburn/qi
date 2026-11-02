@@ -9,7 +9,7 @@ import { CONFIG_DIR_NAME, getAgentDir } from "../config.ts";
 import { normalizePath, resolvePath } from "../utils/paths.ts";
 import { stripBom } from "../utils/text.ts";
 import { MINIMAX_PROFILE } from "./deepseek-harness-profile.ts";
-import { DEFAULT_SUBAGENT_SETTINGS } from "./defaults.ts";
+import { DEFAULT_SUBAGENT_SETTINGS, THINKING_LEVEL_OPTIONS } from "./defaults.ts";
 import { DEFAULT_HTTP_IDLE_TIMEOUT_MS, parseHttpIdleTimeoutMs } from "./http-dispatcher.ts";
 
 export interface CompactionSettings {
@@ -274,6 +274,10 @@ export interface Settings {
 	httpProxy?: string; // Proxy URL applied as HTTP_PROXY and HTTPS_PROXY for Pi-managed HTTP clients
 	httpIdleTimeoutMs?: number; // HTTP header/body idle timeout in milliseconds; 0 disables it
 	websocketConnectTimeoutMs?: number; // WebSocket connect/open handshake timeout in milliseconds; 0 disables it
+}
+
+function isThinkingLevel(value: unknown): value is ThinkingLevel {
+	return typeof value === "string" && (THINKING_LEVEL_OPTIONS as readonly string[]).includes(value);
 }
 
 function isMergeableObject(value: unknown): value is Record<string, unknown> {
@@ -903,12 +907,25 @@ export class SettingsManager {
 		this.save();
 	}
 
+	/**
+	 * Remembered thinking level for a specific model, keyed by
+	 * `"provider/modelId"`. Invalid or unknown stored values are ignored so a
+	 * hand-edited settings file can never inject an unsupported level.
+	 */
 	getModelThinkingLevel(provider: string, modelId: string): ThinkingLevel | undefined {
-		return this.settings.modelThinkingLevels?.[`${provider}/${modelId}`];
+		const stored = this.settings.modelThinkingLevels?.[`${provider}/${modelId}`];
+		return isThinkingLevel(stored) ? stored : undefined;
 	}
 
 	getAllModelThinkingLevels(): Record<string, ThinkingLevel> {
-		return { ...(this.settings.modelThinkingLevels ?? {}) };
+		const stored = this.settings.modelThinkingLevels ?? {};
+		const result: Record<string, ThinkingLevel> = {};
+		for (const [key, value] of Object.entries(stored)) {
+			if (isThinkingLevel(value)) {
+				result[key] = value;
+			}
+		}
+		return result;
 	}
 
 	setModelThinkingLevel(provider: string, modelId: string, level: ThinkingLevel): void {
