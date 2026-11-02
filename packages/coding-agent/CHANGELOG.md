@@ -18,6 +18,7 @@
 
 ### Changed
 
+- Startup onboarding line now reads as Qi and states the `pi.dev 0.85` compatibility baseline.
 - Removed the `PI_SUMMARIZER_*` env-var summariser override (`PI_SUMMARIZER_BASE_URL`, `PI_SUMMARIZER_MODEL`, `PI_SUMMARIZER_API_KEY`, plus the optional `PI_SUMMARIZER_MAX_TOKENS` / `PI_SUMMARIZER_THINKING` tunables). Summariser model selection is now the `compactionModel` setting, configured from `/settings` → Compaction model; the `compaction.summaryMaxTokens` / `compaction.summaryThinking` settings again solely control the summariser budget and reasoning. `ModelRuntime.registerTransientProvider` (only existed for the override) is removed.
 - Published to the public npm registry as `@bramburn/qi-coding-agent` at `0.85.1`, the first release under the `@bramburn` scope.
 
