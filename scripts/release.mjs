@@ -74,7 +74,8 @@ function assertPackagesAreRegisteredWithNpm() {
 		const result = spawnSync(process.platform === "win32" ? "npm.cmd" : "npm", ["view", packageName, "version", "--json"], {
 			encoding: "utf8",
 			stdio: ["ignore", "pipe", "pipe"],
-			shell: false,
+			// Node 20+ refuses to spawn `.cmd` shims without a shell on Windows.
+			shell: process.platform === "win32",
 		});
 
 		if (result.status === 0 && result.stdout.trim()) {

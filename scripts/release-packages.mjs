@@ -9,5 +9,5 @@ export function getPublicWorkspacePackages() {
 			...JSON.parse(readFileSync(join(directory, "package.json"), "utf8")),
 		}))
 		.filter((pkg) => pkg.private !== true)
-		.map(({ directory, name, version }) => ({ directory, name, version }));
+		.map(({ directory, name, version, files }) => ({ directory, name, version, files }));
 }
