@@ -324,9 +324,15 @@ When you create a new package under `packages/*` or `packages/session-backends/*
 
 2. **Check the workspace entry.** The root `package.json` `workspaces` array already globs `packages/*` and `packages/session-backends/*`, so a package under those directories needs no edit. Add an entry only for something outside them (the `examples/extensions/*` packages are listed individually). Without a workspace entry `findPackageDirectories()` in `scripts/package-workspaces.mjs` and the npm CLI will not see the package, so the release script and the publish workflow both skip it.
 
-3. **Add a publish step** in `.github/workflows/publish.yml`:
+3. **Add a publish entry** in `.github/workflows/publish.yml`'s `jobs.publish.strategy.matrix.package` list, and a matching step in `.github/workflows/build-binaries.yml`'s `publish-npm` job (the tag-driven path):
 
    ```yaml
+   # .github/workflows/publish.yml — matrix entry (manual dispatch path)
+   - { name: '@bramburn/qi-<x>', dir: packages/<dir> }
+   ```
+
+   ```yaml
+   # .github/workflows/build-binaries.yml — publish-npm job (tag path)
    - name: Publish @bramburn/qi-<x>
      run: |
        node scripts/publish-with-skip.mjs packages/<dir> npm publish --access public --tag fork
@@ -433,26 +439,62 @@ shows up locally on Windows during branch switches.
 
 ### `.github/workflows/publish.yml` (fork-only)
 
-The fork uses a fork-local publish workflow that runs `npm publish` per
-package on tag push. Two structural rules from the current implementation:
+Two publish paths exist and both must stay:
 
-- `npm ci --ignore-scripts` MUST run at the repo root before per-package
-  builds; running it inside each package subdir skips workspace-root
-  devDependencies (notably `@typescript/native-preview` which provides the
-  `tsgo` binary), and every package's `npm run build` then fails with
-  `sh: 1: tsgo: not found`.
-- A single `npm run build` at the repo root builds every package in
-  dependency order (tui → telemetry → ai → agent → session-backends/sqlite-node
-  → protocol → client → server → coding-agent) and populates every `dist/`.
-  Subsequent `cd packages/<x> && npm publish --access public` steps just
-  publish from the prebuilt dist; do not reinstall or rebuild per package.
-- When upstream renames a package (e.g. `storage/sqlite-node` →
-  `session-backends/sqlite-node` in v0.84.2), update the matching publish
-  step's `cd` path AND the `@bramburn/<x>` package name in `name:`.
-- The current workflow uses `secrets.NPM_TOKEN` which is blocked by npm 2FA
-  OTP (see *Known issues* in README.md). Switch to npm trusted publishing
-  via OIDC (`id-token: write` + `npm-publish` environment) once the npm
-  scope is configured, matching upstream's approach.
+- **Automatic (tag push).** `v*` tag pushes run `build-binaries.yml`, whose
+  `publish-npm` job calls `node scripts/publish.mjs` after the binaries and the
+  GitHub release are staged. This is the normal release path and is ordered
+  with the release announcement.
+- **Manual (workflow dispatch).** `.github/workflows/publish.yml` publishes
+  every public `@bramburn/qi-*` package on demand. Use it for recovery (e.g.
+  after fixing a missing trusted-publisher entry) or to republish a specific
+  tag without rebuilding binaries.
+
+Manual dispatch inputs:
+
+| input | meaning |
+| --- | --- |
+| `tag` | Required. Tag to publish (e.g. `v0.85.0`). Drives the `concurrency` group and the default checkout ref. |
+| `source_ref` | Optional. Ref to build/publish from; defaults to `tag`. Use only for recovery. |
+| `dry_run` | Optional boolean. When `true`, prints `name@version` for every public workspace package and skips all publish steps. |
+
+```bash
+gh workflow run publish.yml --repo bramburn/qi --ref v0.85.0 -f tag=v0.85.0
+gh workflow run publish.yml --repo bramburn/qi --ref v0.85.0 -f tag=v0.85.0 -f dry_run=true
+```
+
+Properties that make re-runs safe:
+
+- **OIDC trusted publishing only.** `permissions.id-token: write` plus the
+  `npm-publish` environment; no `NPM_TOKEN`, no OTP. Requires npm CLI >=
+  11.5.1, so the workflow upgrades npm before publishing.
+- **Idempotent per package.** Each matrix entry runs
+  `node scripts/publish-with-skip.mjs <dir> npm publish --access public --tag fork`.
+  A version already on npm logs `version already on npm, treating as success
+  (idempotent)` and exits 0. A missing trusted-publisher entry surfaces as
+  `ENEEDAUTH` and fails that matrix entry only (`fail-fast: false`), so the
+  other packages still publish.
+- **Parallel matrix.** npm does not require a package's dependencies to exist
+  before it is published, so the ten matrix entries run concurrently. Publish
+  order is not significant.
+- **Never a substitute for the release flow.** `scripts/release.mjs` still bumps
+  versions, updates changelogs, and pushes the tag; the manual workflow only
+  publishes the tree that tag already points at.
+
+Structural rules inherited from the tag-driven path:
+
+- `bun install --ignore-scripts --linker=hoisted` and `bun run build` run once
+  in the publish job; do not reinstall or rebuild per package. Installing at
+  the repo root is required: a per-package install skips workspace-root
+  devDependencies (notably `@typescript/native-preview`, which provides the
+  `tsgo` binary), and every package's build then fails with `sh: 1: tsgo: not
+  found`.
+- When upstream renames a package (e.g. `storage/sqlite-node` ->
+  `session-backends/sqlite-node` in v0.84.2), update the matrix `dir` AND the
+  `name` for that package.
+- New public package: add a matrix entry here **and** a `publish-with-skip`
+  step in `.github/workflows/build-binaries.yml` (tag path). See
+  `## Adding a new workspace package`.
 
 ## Bun Development
 
