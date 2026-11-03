@@ -6,17 +6,18 @@ sidebar_label: Fork Features
 
 # Fork Features
 
-Differences between `bramburn/qi` (this fork) and `earendil-works/pi` (upstream).
+Feature notes for `bramburn/qi`. The project is severed from the upstream `pi` project (see [Why a Fork?](./why-fork)), so this page describes qi on its own terms.
 
 ## Runtime support
 
-| Runtime | Upstream | Fork |
-|---------|----------|------|
-| Bun | Not used | **Primary** (install, build, check, test, scripts, shebangs) |
-| Node.js | Primary | Legacy (`npm publish` for OIDC; `package-lock.json` regeneration; `npm-shrinkwrap.json` for downstream consumers) |
-| Test runner | vitest + `node --test` | vitest runs under bun-launched node via shebang; root `test:scripts` uses `bun test`; `packages/tui` and `packages/clipboard-rs` keep `node --test` (intentional split) |
+| Runtime | Role |
+|---------|------|
+| Bun | **Primary** (install, build, check, test, scripts, shebangs) |
+| Node.js | Legacy (`npm publish` for OIDC; `package-lock.json` regeneration; `npm-shrinkwrap.json` for downstream consumers) |
+| Test runner | vitest runs under bun-launched node via shebang; root `test:scripts` uses `bun test`; `packages/tui` and `packages/clipboard-rs` keep `node --test` (intentional split) |
 
-The fork has completed a Helix-style migration to bun across the source tree:
+The project has completed a Helix-style migration to bun across the source tree:
+
 - All root `package.json` scripts (`build`, `build:offline`, `clean`, `check`, `test`, `eval`, `generate:models`, `prepublishOnly`, `publish`, `release:*`, `version:*`) launch under bun.
 - All workspace `package.json` scripts (`build`, `prepublishOnly`, etc.) launch under bun.
 - All 21 `scripts/*.mjs` shebangs are `#!/usr/bin/env bun`.
@@ -24,6 +25,7 @@ The fork has completed a Helix-style migration to bun across the source tree:
 - `engines.bun: ">=1.3.14"` declared in all 10 `package.json` files.
 
 The remaining `npm` calls are intentional and required:
+
 - `npm publish --provenance` (per-package, in `scripts/publish.mjs`) — OIDC trusted publishing requires npm CLI ≥11.5.1; bun's `bun pm` does not support OIDC.
 - `npm ci --ignore-scripts` (in `scripts/build-binaries.sh`) — regenerates `package-lock.json` (bun writes `bun.lock`).
 - `npm install --prefix … --include=optional` (cross-platform native clipboard deps) — bun's `--force` does not match npm's cross-platform optional-deps semantics.
@@ -34,103 +36,98 @@ See [Runtime support in the README](https://github.com/bramburn/qi/blob/main/REA
 Local development uses bun:
 
 ```bash
-bun install --ignore-scripts --linker=hoisted   # primary
-bun run build                                  # primary
-bun run check                                  # primary
-bash ./test.sh                                 # primary (bun run test:scripts && bun run --filter '*' test)
+bun install --ignore-scripts --linker=hoisted # primary
+bun run build # primary
+bun run check # primary
+bash ./test.sh # primary (bun run test:scripts && bun run --filter '*' test)
 ```
 
 Legacy npm paths still work but are no longer recommended:
 
 ```bash
-npm install --ignore-scripts                   # legacy
-npm run build                                  # legacy (chained through bun; see scripts/)
+npm install --ignore-scripts # legacy
+npm run build # legacy (chained through bun; see scripts/)
 ```
 
 ## Build and release
 
-| Feature | Upstream | Fork |
-|---------|----------|------|
-| npm scope | `@earendil-works/*` | `@bramburn/*` |
-| Binary name | `pi` | `pi-bramburn` |
-| Binary output | `pi.exe` | `pi.exe` (same, renamed via wrapper) |
-| Release pipeline | pi.dev CI | fork GitHub Actions |
-| Shrinkwrap | `@earendil-works/pi-coding-agent` | `@bramburn/qi-coding-agent` |
+| Feature | Value |
+|---------|-------|
+| npm scope | `@bramburn/*` |
+| Command | `qi` |
+| Binary output | `qi` / `qi.exe` |
+| Release archives | `qi-<platform>.zip` / `qi-<platform>.tar.gz` |
+| Release pipeline | GitHub Actions |
+| Shrinkwrap | `@bramburn/qi-coding-agent` |
 
 ## Fork identity constant
 
-`packages/coding-agent/src/config.ts` exports `FORK_NAME = "bramburn"`. This appears in `pi --version` output:
+`packages/coding-agent/src/config.ts` exports `FORK_NAME = "bramburn"`. This appears in `qi --version` output:
 
 ```
-# Fork build
-pi 0.84.2 [bramburn]
-
-# Upstream build
-pi 0.84.2
+qi 0.84.2 [bramburn]
 ```
 
-The fork identity is intentional. It tells users which npm scope's binary they have installed.
+The fork identity is intentional: it identifies the `@bramburn/*` build.
 
 ## `validateLlmMessages` guard
 
-The fork adds an explicit guard in the message loop that validates `user` and `assistant` messages before sending them to the LLM. Invalid messages (e.g., empty content, malformed tool calls) throw rather than being silently sent. This is not in upstream.
+The project adds an explicit guard in the message loop that validates `user` and `assistant` messages before sending them to the LLM. Invalid messages (e.g., empty content, malformed tool calls) throw rather than being silently sent.
 
 ## Build tooling
 
-The fork uses a custom `build-both` orchestrator (`scripts/build-both.mjs`) that:
+The repository uses a custom `build-both` orchestrator (`scripts/build-both.mjs`) that:
 
 - Detects Node.js and Bun on `PATH`
 - Runs each build target independently
 - Reports `BUILT / SKIPPED / FAILED` per target
 - Supports `--node-only`, `--bun-only`, `--clean`, `--quiet` flags
 
-This is not upstream's approach. Upstream uses separate scripts per target.
+The orchestrator replaces per-target scripts with a single entry point.
 
 ## tsgo via Bun
 
-The fork invokes `tsgo` (TypeScript-to-Go compiler) via `bun run` directly:
+The build invokes `tsgo` (TypeScript-to-Go compiler) via `bun run` directly:
 
 ```bash
 bun run node_modules/@typescript/native-preview/bin/tsgo.js -p tsconfig.build.json
 ```
 
-Upstream uses a different invocation pattern in its CI.
+Other TypeScript-to-Go setups invoke the binary directly.
 
-## `pi-bun` wrapper on PATH
+## `qi-bun` wrapper on PATH
 
-On Windows, the fork ships a `pi-bun.cmd` wrapper at `C:\Users\<user>\.pi\agent\bin\` that calls `packages/coding-agent/dist/pi.exe` directly. This lets `pi-bun --version` work from any directory without `cd`-ing into the repo.
+On Windows, the project ships a `qi-bun.cmd` wrapper at `C:\Users\<user>\.qi\agent\bin\` that calls `packages/coding-agent/dist/qi.exe` directly. This lets `qi-bun --version` work from any directory without `cd`-ing into the repo.
 
 ## Windows CI
 
-The fork runs CI on Windows (`windows-latest`) in addition to Linux. The upstream CI is primarily Linux-focused.
+CI runs on Windows (`windows-latest`) in addition to Linux.
 
-## Fork-specific AGENTS.md rules
+## Repository-specific AGENTS.md rules
 
-The fork's `AGENTS.md` includes rules that do not apply to upstream:
+`AGENTS.md` documents rules specific to this repository:
 
 - `FORK_NAME` marker usage and rules
-- Fork sync process (merging upstream releases into the fork)
+- Upstream sync is disabled (ADR-0002)
 - `.github/workflows/publish.yml` rules for the `@bramburn/*` scope
 - Windows prebuild file lock workaround
 - PowerShell BOM trap warning
-- Multi-session git safety (same as upstream, but more prominently documented)
+- Multi-session git safety
 
-## Shipped fork features
+## Notable features
 
-Features currently in the fork that are not in upstream:
-
-- **Background subagent mode** — `subagent({ background: true, ... })` spawns a detached child `pi`, returns a task ID immediately, and injects the result as a `subagent-background-result` custom message on the next turn. Respects `agentScope` and the project-agent trust prompt the same way foreground mode does. File-locked registry at `<agentDir>/subagent-bg/` survives parent restarts. See [Background Subagent Mode](./background-subagent) for the user guide and [Background-Task Architecture](/docs/architecture/background-tasks) for the internals.
+- **Background subagent mode** — `subagent({ background: true, ... })` spawns a detached child `qi`, returns a task ID immediately, and injects the result as a `subagent-background-result` custom message on the next turn. Respects `agentScope` and the project-agent trust prompt the same way foreground mode does. File-locked registry at `<agentDir>/subagent-bg/` survives parent restarts. See [Background Subagent Mode](./background-subagent) for the user guide and [Background-Task Architecture](/docs/architecture/background-tasks) for the internals.
 - **`validateLlmMessages` guard** — explicit validation of `user` and `assistant` messages before sending to the LLM (see above).
 - **`build-both` orchestrator** — `scripts/build-both.mjs` runs the Node and Bun build targets independently and reports per-target status (see above).
-- **`FORK_NAME` constant** — `packages/coding-agent/src/config.ts` exports `FORK_NAME = "bramburn"` so the fork is identifiable in `pi --version` output (see above).
+- **`FORK_NAME` constant** — `packages/coding-agent/src/config.ts` exports `FORK_NAME = "bramburn"` so the build is identifiable in `qi --version` output (see above).
 
-## Planned fork features
+## Planned features
 
-These features are in the fork's roadmap but not yet implemented:
+Features planned but not yet implemented:
 
-- **Per-session default model** — each `.pi-session` file carries its own preferred model, overriding the global default. Planned spec: `docs/per-session-model-plan.md`
-- **Windows `tmux` alternative** — the fork's `pi-test.ps1` uses tmux when available; a native PowerShell loop is planned as a fallback
+- **Per-session default model** — each `.qi-session` file carries its own preferred model, overriding the global default. Planned spec: `docs/per-session-model-plan.md`
+- **Windows `tmux` alternative** — `qi-test.ps1` uses tmux when available; a native PowerShell loop is planned as a fallback
 
-## Syncing from upstream
+## Upstream relationship
 
-The fork merges upstream releases regularly. See [Sync Process](./sync) for the detailed procedure.
+Upstream sync is permanently disabled (ADR-0002). See [Sync Process](./sync) for what that means.

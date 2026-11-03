@@ -19,11 +19,11 @@ const config: Config = {
 
   url: 'https://bramburn.github.io',
   // Set the /<baseUrl>/ pathname under which your site is served
-  baseUrl: '/pi/',
+  baseUrl: '/qi/',
 
   // GitHub pages deployment config.
   organizationName: 'bramburn',
-  projectName: 'pi',
+  projectName: 'qi',
 
   onBrokenLinks: 'throw',
 

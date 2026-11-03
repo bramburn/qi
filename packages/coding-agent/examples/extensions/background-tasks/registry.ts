@@ -2,8 +2,8 @@
  * Background Task Registry
  *
  * File-based registry for background task metadata.
- * Stored at ~/.pi/agent/background-tasks/registry.json
- * Per-task logs at ~/.pi/agent/background-tasks/<id>/log.jsonl
+ * Stored at ~/.qi/agent/background-tasks/registry.json
+ * Per-task logs at ~/.qi/agent/background-tasks/<id>/log.jsonl
  *
  * Uses atomic writes (write to .tmp then rename).
  * Uses advisory file locking for concurrent access.

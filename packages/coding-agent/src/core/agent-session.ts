@@ -3400,7 +3400,7 @@ export class AgentSession {
 			if (collides) {
 				this._subagentToolCollisionWarned = true;
 				console.warn(
-					'A user extension registers a tool named "subagent" while the native subagent tool is enabled. Remove the symlinked extension (e.g. ~/.pi/agent/extensions/subagent/) to use the native one.',
+					'A user extension registers a tool named "subagent" while the native subagent tool is enabled. Remove the symlinked extension (e.g. ~/.qi/agent/extensions/subagent/) to use the native one.',
 				);
 			}
 		}

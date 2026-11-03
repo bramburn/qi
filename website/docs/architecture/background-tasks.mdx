@@ -15,7 +15,7 @@ security guard.
 
 ```
                   ┌─────────────────────────────────────────────┐
-                  │  Parent pi (TUI or -p)                      │
+                  │  Parent qi (TUI or -p)                      │
                   │                                             │
    LLM turn N  ─► │  subagent tool (background: true)           │
                   │   │                                         │
@@ -32,7 +32,7 @@ security guard.
                   │   │           runBackgroundSubagent(        │
                   │   │             spec, taskId)               │
                   │   │             │                           │
-                  │   │             ├─► spawn(pi -p ...)        │
+                  │   │             ├─► spawn(qi -p ...)        │
                   │   │             │   (no detached, no unref) │
                   │   │             │                           │
                   │   │             └─► writes JSONL events to  │
@@ -61,7 +61,7 @@ security guard.
                   │   │     exitCode?, errorMessage?,          │
                   │   │     finishedAt, lastOutput })          │
                   │   │                                         │
-                  │   └─► pi.sendMessage(                      │
+                  │   └─► qi.sendMessage(                      │
                   │         { customType:                      │
                   │             "subagent-background-result",  │
                   │           content, display: true,          │
@@ -77,7 +77,7 @@ security guard.
                               │
                               ▼
                   ┌─────────────────────────────────────────────┐
-                  │  Child pi (subprocess)                      │
+                  │  Child qi (subprocess)                      │
                   │   --mode json -p --no-session               │
                   │   Task: <scriptOrTask>                      │
                   │                                             │
@@ -104,7 +104,7 @@ is the source of truth for "what background tasks exist".
 | `logsDir`       | `getAgentDir() + "/subagent-bg/<taskId>/log.jsonl"` | per-task directory |
 
 `<agentDir>` is whatever `getAgentDir()` returns — on a default install this
-is `~/.pi/agent`. The `subagent-bg` segment is hard-coded as `BG_DIR_NAME`
+is `~/.qi/agent`. The `subagent-bg` segment is hard-coded as `BG_DIR_NAME`
 in `background.ts`.
 
 ### Concurrency: file lockfile
@@ -249,7 +249,7 @@ reaches the user.
 
 ### Result push-back
 
-When a child finishes, the parent calls `pi.sendMessage(...)` with
+When a child finishes, the parent calls `qi.sendMessage(...)` with
 `customType: "subagent-background-result"`. This is **best-effort**: it may
 fail silently if the parent has already exited (the D8 Windows case) or if
 the parent is in the middle of a turn. Failures are logged to the task's
@@ -265,7 +265,7 @@ TUI; `details` carries the structured fields for programmatic consumers.
 The extension registers all three hooks at load time:
 
 ```ts
-pi.on("session_start", async () => {
+qi.on("session_start", async () => {
   const crashedCount = await backgroundRegistry.markAllRunningAsCrashed();
   const pruned = await backgroundRegistry.prune();
   if (crashedCount > 0) {
@@ -280,14 +280,14 @@ pi.on("session_start", async () => {
   }
 });
 
-pi.on("session_shutdown", async () => {
+qi.on("session_shutdown", async () => {
   const runningTasks = backgroundRegistry.listRunning();
   for (const t of runningTasks) {
     await backgroundRegistry.cancel(t.id, "Parent session ended");
   }
 });
 
-pi.on("before_agent_start", async (event, ctx) => {
+qi.on("before_agent_start", async (event, ctx) => {
   const tasks = backgroundRegistry.snapshot().tasks;
   const runningCount = tasks.filter((t) => t.status === "running" || t.status === "pending").length;
   const totalCount = tasks.length;
@@ -363,7 +363,7 @@ includes a "[Esc to close]" footer in TUI mode.
 
 ## Failure recovery
 
-### Interactive TUI (`pi` with no `-p`)
+### Interactive TUI (`qi` with no `-p`)
 
 The parent stays alive between turns. Background tasks keep running.
 When the user exits the TUI (`session_shutdown`), all running tasks are
@@ -371,13 +371,13 @@ marked `cancelled` in the registry. The actual child processes are killed
 by the OS (Windows Job Object; on Linux/macOS, the child inherits the
 parent's process group and is killed via SIGINT propagation).
 
-### `pi -p "..."` foreground mode
+### `qi -p "..."` foreground mode
 
 The parent exits as soon as the LLM's final response is delivered. Any
 background tasks spawned during that turn inherit the parent's Job Object
 on Windows or the parent's process group on Linux/macOS, and are killed
 at the same instant. The next time `session_start` fires (typically the
-next `pi` invocation), `markAllRunningAsCrashed()` flips their status to
+next `qi` invocation), `markAllRunningAsCrashed()` flips their status to
 `crashed`. The on-disk log is preserved for archaeology.
 
 ### Why not "kill -0" orphan recovery?
@@ -416,7 +416,7 @@ is lost. Log lines include:
 
 A naive implementation would let a background subagent spawn its own
 background subagent, leading to unbounded process trees. The
-`background.ts` module-singleton is per-`pi`-process. Cross-process
+`background.ts` module-singleton is per-`qi`-process. Cross-process
 state sharing is limited to the on-disk registry, which the child cannot
 write to (it only writes to its own `<taskId>/log.jsonl`).
 
@@ -424,14 +424,14 @@ The parent enforces the recursion limit by the standard "task
 completion is async, the child cannot request another spawn from the
 parent's in-process state" rule. The child can call the `subagent`
 tool itself (foreground or background), but those calls land in the
-child's own `pi` process, not the parent's. The parent's registry only
+child's own `qi` process, not the parent's. The parent's registry only
 sees one level of children.
 
 This is **not** a hard sandbox — a determined child can still spawn
 arbitrary processes via its bash tool. The fork does not change the
 upstream security model: only user-level agents from
-`~/.pi/agent/agents` are loaded by default; project-local agents from
-`.pi/agents` require `agentScope: "both"` (or `"project"`) and the
+`~/.qi/agent/agents` are loaded by default; project-local agents from
+`.qi/agents` require `agentScope: "both"` (or `"project"`) and the
 project-agent trust prompt. Background mode respects `agentScope` the
 same way foreground mode does.
 
@@ -448,11 +448,11 @@ Both run under `bun test` in the installed extension directory. The
 fork-specific additions are tested in isolation; the original subagent
 tool (single, parallel, chain) is covered by the upstream test suite.
 
-End-to-end verification (full `pi -p "..."` with a background
+End-to-end verification (full `qi -p "..."` with a background
 subagent) was performed in lab session **2026-08-31-bg-e2e**: a
 single-agent background task ran to completion, the registry captured
 `exitCode: 0`, and the 44 KB JSONL log contains the full event stream.
-The `pi.sendMessage` push-back fired `POST_RESULT_FAILED` at the end
+The `qi.sendMessage` push-back fired `POST_RESULT_FAILED` at the end
 because the parent had already exited in `-p` mode (D8 case).
 
 ## Cross-references

@@ -1,7 +1,7 @@
 /**
  * Analytics SQLite store for pi run instrumentation.
  *
- * Logs are written to `~/.pi/analytics/YYYY-MM.db` (monthly rotation).
+ * Logs are written to `~/.qi/analytics/YYYY-MM.db` (monthly rotation).
  * All writes are immediate (no batching); flushed on `agent_settled`.
  *
  * Schema:

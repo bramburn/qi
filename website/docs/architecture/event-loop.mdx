@@ -40,7 +40,7 @@ Extensions can inject messages via the `message_start` / `message_end` hooks.
 
 ## Tool execution
 
-Tools are declared in the system prompt and called by the LLM. pi handles two modes:
+Tools are declared in the system prompt and called by the LLM. qi handles two modes:
 
 - **Parallel** (`toolExecutionMode: 'parallel'`) — all tool calls fire simultaneously. Results are emitted individually as they complete. If one stalls, the batch can be abandoned on user abort.
 - **Serial** (`toolExecutionMode: 'serial'`) — tool calls run one at a time. Each result feeds back into the LLM before the next fires.
@@ -58,4 +58,4 @@ When the user presses `Esc` or `Ctrl+C`:
 
 ## State persistence
 
-Every `user`, `assistant`, and `tool_result` message is appended to the session file (`.pi-session`). On resume, the session manager reads the file and feeds the full history back into `buildMessages()`.
+Every `user`, `assistant`, and `tool_result` message is appended to the session file (`.qi-session`). On resume, the session manager reads the file and feeds the full history back into `buildMessages()`.

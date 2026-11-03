@@ -2,7 +2,7 @@
  * Background Tasks Extension
  *
  * Enables fire-and-forget background task execution with:
- * - Detached pi subprocess spawning
+ * - Detached qi subprocess spawning
  * - File-based task registry with crash recovery
  * - Runtime status injection into the system prompt
  * - Task management tools (status, wait, cancel, list)
@@ -114,7 +114,7 @@ const BackgroundCancelParams = Type.Object({
 // Extension Factory
 // ============================================================================
 
-export default function backgroundTasksExtension(pi: ExtensionAPI): void {
+export default function backgroundTasksExtension(qi: ExtensionAPI): void {
 	const baseDir = getBaseDir();
 
 	// Ensure registry dir exists
@@ -126,7 +126,7 @@ export default function backgroundTasksExtension(pi: ExtensionAPI): void {
 	// -------------------------------------------------------------------------
 	// Lifecycle: session_start (crash recovery)
 	// -------------------------------------------------------------------------
-	pi.on("session_start", async (_event, ctx) => {
+	qi.on("session_start", async (_event, ctx) => {
 		const all = listTasks(baseDir, "all");
 		let changed = false;
 		for (const task of all) {
@@ -155,7 +155,7 @@ export default function backgroundTasksExtension(pi: ExtensionAPI): void {
 	// -------------------------------------------------------------------------
 	// before_agent_start: inject runtime status into system prompt
 	// -------------------------------------------------------------------------
-	pi.on("before_agent_start", async (event, _ctx) => {
+	qi.on("before_agent_start", async (event, _ctx) => {
 		const tasks = listTasks(baseDir, "all").filter(
 			(t) => t.status === "running" || (t.status === "completed" && !t.resultSummary),
 		);
@@ -170,7 +170,7 @@ export default function backgroundTasksExtension(pi: ExtensionAPI): void {
 	// -------------------------------------------------------------------------
 	// Commands
 	// -------------------------------------------------------------------------
-	pi.registerCommand("bg-tasks", {
+	qi.registerCommand("bg-tasks", {
 		description: "List all background tasks (running, completed, failed).",
 		handler: async (_args, ctx) => {
 			const tasks = listTasks(baseDir, "all");
@@ -188,7 +188,7 @@ export default function backgroundTasksExtension(pi: ExtensionAPI): void {
 		},
 	});
 
-	pi.registerCommand("bg-clear", {
+	qi.registerCommand("bg-clear", {
 		description: "Remove completed/failed background tasks from the registry.",
 		handler: async (_args, ctx) => {
 			const tasks = listTasks(baseDir, "all");
@@ -205,12 +205,12 @@ export default function backgroundTasksExtension(pi: ExtensionAPI): void {
 	// -------------------------------------------------------------------------
 	// Tool: background_task (spawn)
 	// -------------------------------------------------------------------------
-	pi.registerTool({
+	qi.registerTool({
 		name: "background_task",
 		label: "Background Task",
 		description:
 			"Spawn a detached background subagent to work independently. Returns immediately with a task ID. " +
-			"The subagent runs in its own pi process and does not block the main session. " +
+			"The subagent runs in its own qi process and does not block the main session. " +
 			"Use background_status to check progress, background_wait to synchronize, and background_cancel to stop.",
 		parameters: BackgroundTaskParams,
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
@@ -250,7 +250,7 @@ export default function backgroundTasksExtension(pi: ExtensionAPI): void {
 	// -------------------------------------------------------------------------
 	// Tool: background_status
 	// -------------------------------------------------------------------------
-	pi.registerTool({
+	qi.registerTool({
 		name: "background_status",
 		label: "Background Status",
 		description:
@@ -280,7 +280,7 @@ export default function backgroundTasksExtension(pi: ExtensionAPI): void {
 	// -------------------------------------------------------------------------
 	// Tool: background_wait
 	// -------------------------------------------------------------------------
-	pi.registerTool({
+	qi.registerTool({
 		name: "background_wait",
 		label: "Background Wait",
 		description:
@@ -354,7 +354,7 @@ export default function backgroundTasksExtension(pi: ExtensionAPI): void {
 	// -------------------------------------------------------------------------
 	// Tool: background_cancel
 	// -------------------------------------------------------------------------
-	pi.registerTool({
+	qi.registerTool({
 		name: "background_cancel",
 		label: "Background Cancel",
 		description:

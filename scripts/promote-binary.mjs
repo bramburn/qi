@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 // Promote the freshly built `dist/qi.exe` from a worktree to the main checkout.
 //
-// Why: the `pi-bun.cmd` wrapper at C:\Users\bramburn\.pi\agent\bin\pi-bun.cmd
+// Why: the `qi-bun.cmd` wrapper at C:\Users\<user>\.qi\agent\bin\qi-bun.cmd
 // points at the main checkout's packages\coding-agent\dist\qi.exe. A
 // `bun run --cwd packages/coding-agent build:binary` invoked inside a worktree
 // only produces that worktree's dist\qi.exe; the user keeps running the stale

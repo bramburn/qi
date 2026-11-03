@@ -1,19 +1,19 @@
 # Compaction & Branch Summarization
 
-LLMs have limited context windows. When conversations grow too long, Pi uses compaction to summarize older content while preserving recent work. This page covers both auto-compaction and branch summarization.
+LLMs have limited context windows. When conversations grow too long, Qi uses compaction to summarize older content while preserving recent work. This page covers both auto-compaction and branch summarization.
 
-**Source files** ([pi-mono](https://github.com/earendil-works/pi-mono)):
-- [`packages/coding-agent/src/core/compaction/compaction.ts`](https://github.com/earendil-works/pi-mono/blob/main/packages/coding-agent/src/core/compaction/compaction.ts) - Auto-compaction logic
-- [`packages/coding-agent/src/core/compaction/branch-summarization.ts`](https://github.com/earendil-works/pi-mono/blob/main/packages/coding-agent/src/core/compaction/branch-summarization.ts) - Branch summarization
-- [`packages/coding-agent/src/core/compaction/utils.ts`](https://github.com/earendil-works/pi-mono/blob/main/packages/coding-agent/src/core/compaction/utils.ts) - Shared utilities (file tracking, serialization)
-- [`packages/coding-agent/src/core/session-manager.ts`](https://github.com/earendil-works/pi-mono/blob/main/packages/coding-agent/src/core/session-manager.ts) - Entry types (`CompactionEntry`, `BranchSummaryEntry`)
-- [`packages/coding-agent/src/core/extensions/types.ts`](https://github.com/earendil-works/pi-mono/blob/main/packages/coding-agent/src/core/extensions/types.ts) - Extension event types
+**Source files** ([qi-monorepo](https://github.com/bramburn/qi)):
+- [`packages/coding-agent/src/core/compaction/compaction.ts`](https://github.com/bramburn/qi/blob/main/packages/coding-agent/src/core/compaction/compaction.ts) - Auto-compaction logic
+- [`packages/coding-agent/src/core/compaction/branch-summarization.ts`](https://github.com/bramburn/qi/blob/main/packages/coding-agent/src/core/compaction/branch-summarization.ts) - Branch summarization
+- [`packages/coding-agent/src/core/compaction/utils.ts`](https://github.com/bramburn/qi/blob/main/packages/coding-agent/src/core/compaction/utils.ts) - Shared utilities (file tracking, serialization)
+- [`packages/coding-agent/src/core/session-manager.ts`](https://github.com/bramburn/qi/blob/main/packages/coding-agent/src/core/session-manager.ts) - Entry types (`CompactionEntry`, `BranchSummaryEntry`)
+- [`packages/coding-agent/src/core/extensions/types.ts`](https://github.com/bramburn/qi/blob/main/packages/coding-agent/src/core/extensions/types.ts) - Extension event types
 
-For TypeScript definitions in your project, inspect `node_modules/@earendil-works/pi-coding-agent/dist/`.
+For TypeScript definitions in your project, inspect `node_modules/@bramburn/qi-coding-agent/dist/`.
 
 ## Overview
 
-Pi has two summarization mechanisms:
+Qi has two summarization mechanisms:
 
 | Mechanism | Trigger | Purpose |
 |-----------|---------|---------|
@@ -32,9 +32,9 @@ Auto-compaction triggers when:
 contextTokens > contextWindow - reserveTokens
 ```
 
-By default, `reserveTokens` is 16384 tokens (configurable in `~/.pi/agent/settings.json` or `<project-dir>/.pi/settings.json`). This leaves room for the LLM's response.
+By default, `reserveTokens` is 16384 tokens (configurable in `~/.qi/agent/settings.json` or `<project-dir>/.qi/settings.json`). This leaves room for the LLM's response.
 
-During a multi-turn agent run, Pi checks this threshold after tools finish and their results are appended, before starting the next assistant response. If the threshold is crossed, Pi starts a **background compaction** (see below) and the run continues with the current context; the summary is swapped in once ready. Pi skips this between-turn check when the completed tool batch terminates the run and no queued message requires another response. Pi also checks the threshold before a new user prompt and after a low-level agent run ends.
+During a multi-turn agent run, Qi checks this threshold after tools finish and their results are appended, before starting the next assistant response. If the threshold is crossed, Qi starts a **background compaction** (see below) and the run continues with the current context; the summary is swapped in once ready. Qi skips this between-turn check when the completed tool batch terminates the run and no queued message requires another response. Qi also checks the threshold before a new user prompt and after a low-level agent run ends.
 
 You can also trigger manually with `/compact [instructions]`, where optional instructions focus the summary. `/compact` also runs in the background — it no longer aborts the in-flight turn or blocks input.
 
@@ -42,9 +42,9 @@ You can also trigger manually with `/compact [instructions]`, where optional ins
 
 Manual `/compact` and threshold-triggered auto-compaction never interrupt the session:
 
-1. **Snapshot**: Pi snapshots the current session branch and computes the cut point from it. Messages that arrive after the snapshot are not part of the summary.
+1. **Snapshot**: Qi snapshots the current session branch and computes the cut point from it. Messages that arrive after the snapshot are not part of the summary.
 2. **Summarize concurrently**: The summarisation request runs while you keep chatting and the agent keeps working.
-3. **Hot-swap**: When the summary is ready, Pi appends the `CompactionEntry` at the current leaf and swaps the live message list at the next safe boundary — between turns, when the run ends, or before your next prompt. Because messages after the snapshot sit after the compaction entry on the branch, they are kept verbatim; nothing is lost.
+3. **Hot-swap**: When the summary is ready, Qi appends the `CompactionEntry` at the current leaf and swaps the live message list at the next safe boundary — between turns, when the run ends, or before your next prompt. Because messages after the snapshot sit after the compaction entry on the branch, they are kept verbatim; nothing is lost.
 
 If the session changed underneath the snapshot (tree navigation, `/new`, or a blocking compaction landing first), the pending summary is discarded instead of applied ("Background compaction discarded" in the TUI).
 
@@ -54,7 +54,7 @@ The blocking abort-first behavior remains available to RPC clients (`compact` co
 
 ### How It Works
 
-1. **Find cut point**: Walk backwards from newest message, accumulating token estimates until `keepRecentTokens` (default 20k, configurable in `~/.pi/agent/settings.json` or `<project-dir>/.pi/settings.json`) is reached
+1. **Find cut point**: Walk backwards from newest message, accumulating token estimates until `keepRecentTokens` (default 20k, configurable in `~/.qi/agent/settings.json` or `<project-dir>/.qi/settings.json`) is reached
 2. **Extract messages**: Collect messages from the previous kept boundary (or session start) up to the cut point
 3. **Generate summary**: Call LLM to summarize with structured format, passing the previous summary as iterative context when present
 4. **Append entry**: Save `CompactionEntry` with summary and `firstKeptEntryId`
@@ -92,11 +92,11 @@ What the LLM sees:
     prompt   from cmp          messages from firstKeptEntryId
 ```
 
-On repeated compactions, the summarized span starts at the previous compaction's kept boundary (`firstKeptEntryId`), not at the compaction entry itself, falling back to the entry after the previous compaction if that kept entry cannot be found in the path. This preserves messages that survived the earlier compaction by including them in the next summarization pass as well. Pi also recalculates `tokensBefore` from the rebuilt session context before writing the new `CompactionEntry`, so the token count reflects the actual pre-compaction context being replaced.
+On repeated compactions, the summarized span starts at the previous compaction's kept boundary (`firstKeptEntryId`), not at the compaction entry itself, falling back to the entry after the previous compaction if that kept entry cannot be found in the path. This preserves messages that survived the earlier compaction by including them in the next summarization pass as well. Qi also recalculates `tokensBefore` from the rebuilt session context before writing the new `CompactionEntry`, so the token count reflects the actual pre-compaction context being replaced.
 
 ### Summary Budget and Thinking
 
-The summariser's output is capped at an absolute ceiling of 16384 tokens by default, configurable via `compaction.summaryMaxTokens` in `~/.pi/agent/settings.json` or `<project-dir>/.pi/settings.json`. The effective token budget also feeds back into the summarisation prompt as a word-budget directive ("Budget: keep the complete summary under N words"), so the model knows how long the summary may be.
+The summariser's output is capped at an absolute ceiling of 16384 tokens by default, configurable via `compaction.summaryMaxTokens` in `~/.qi/agent/settings.json` or `<project-dir>/.qi/settings.json`. The effective token budget also feeds back into the summarisation prompt as a word-budget directive ("Budget: keep the complete summary under N words"), so the model knows how long the summary may be.
 
 Thinking (reasoning) is off by default for summarisation (`compaction.summaryThinking`, default `"off"`). Reasoning tokens are billed but never persisted — the stored summary keeps only text blocks — so passing the session's thinking level through would pay for tokens that are immediately discarded. Set `compaction.summaryThinking` to opt into a level.
 
@@ -132,7 +132,7 @@ Split turn (one huge turn exceeds budget):
   turnPrefixMessages = [usr, ass, tool, ass, tool, tool]
 ```
 
-For split turns, Pi generates two summaries and merges them:
+For split turns, Qi generates two summaries and merges them:
 1. **History summary**: Previous context (if any)
 2. **Turn prefix summary**: The early part of the split turn
 
@@ -148,7 +148,7 @@ Never cut at tool results (they must stay with their tool call).
 
 ### CompactionEntry Structure
 
-Defined in [`session-manager.ts`](https://github.com/earendil-works/pi-mono/blob/main/packages/coding-agent/src/core/session-manager.ts):
+Defined in [`session-manager.ts`](https://github.com/bramburn/qi/blob/main/packages/coding-agent/src/core/session-manager.ts):
 
 ```typescript
 interface CompactionEntry<T = unknown> {
@@ -173,13 +173,13 @@ interface CompactionDetails {
 
 Extensions can store any JSON-serializable data in `details`. The default compaction tracks file operations, but custom extension implementations can use their own structure. Generated and extension-provided summaries store their LLM `usage` when available so session totals include summarization work.
 
-See [`prepareCompaction()`](https://github.com/earendil-works/pi-mono/blob/main/packages/coding-agent/src/core/compaction/compaction.ts) and [`compact()`](https://github.com/earendil-works/pi-mono/blob/main/packages/coding-agent/src/core/compaction/compaction.ts) for the implementation. For direct programmatic summarization, `generateSummary()` returns the summary text and `generateSummaryWithUsage()` returns `{ text, usage }`.
+See [`prepareCompaction()`](https://github.com/bramburn/qi/blob/main/packages/coding-agent/src/core/compaction/compaction.ts) and [`compact()`](https://github.com/bramburn/qi/blob/main/packages/coding-agent/src/core/compaction/compaction.ts) for the implementation. For direct programmatic summarization, `generateSummary()` returns the summary text and `generateSummaryWithUsage()` returns `{ text, usage }`.
 
 ## Branch Summarization
 
 ### When It Triggers
 
-When you use `/tree` to navigate to a different branch, Pi offers to summarize the work you're leaving. This injects context from the left branch into the new branch.
+When you use `/tree` to navigate to a different branch, Qi offers to summarize the work you're leaving. This injects context from the left branch into the new branch.
 
 ### How It Works
 
@@ -208,7 +208,7 @@ After navigation with summary:
 
 ### Cumulative File Tracking
 
-Both compaction and branch summarization track files cumulatively. When generating a summary, pi extracts file operations from:
+Both compaction and branch summarization track files cumulatively. When generating a summary, qi extracts file operations from:
 - Tool calls in the messages being summarized
 - Previous compaction or branch summary `details` (if any)
 
@@ -216,7 +216,7 @@ This means file tracking accumulates across multiple compactions or nested branc
 
 ### BranchSummaryEntry Structure
 
-Defined in [`session-manager.ts`](https://github.com/earendil-works/pi-mono/blob/main/packages/coding-agent/src/core/session-manager.ts):
+Defined in [`session-manager.ts`](https://github.com/bramburn/qi/blob/main/packages/coding-agent/src/core/session-manager.ts):
 
 ```typescript
 interface BranchSummaryEntry<T = unknown> {
@@ -240,7 +240,7 @@ interface BranchSummaryDetails {
 
 Same as compaction, extensions can store custom data in `details`.
 
-See [`collectEntriesForBranchSummary()`](https://github.com/earendil-works/pi-mono/blob/main/packages/coding-agent/src/core/compaction/branch-summarization.ts), [`prepareBranchEntries()`](https://github.com/earendil-works/pi-mono/blob/main/packages/coding-agent/src/core/compaction/branch-summarization.ts), and [`generateBranchSummary()`](https://github.com/earendil-works/pi-mono/blob/main/packages/coding-agent/src/core/compaction/branch-summarization.ts) for the implementation.
+See [`collectEntriesForBranchSummary()`](https://github.com/bramburn/qi/blob/main/packages/coding-agent/src/core/compaction/branch-summarization.ts), [`prepareBranchEntries()`](https://github.com/bramburn/qi/blob/main/packages/coding-agent/src/core/compaction/branch-summarization.ts), and [`generateBranchSummary()`](https://github.com/bramburn/qi/blob/main/packages/coding-agent/src/core/compaction/branch-summarization.ts) for the implementation.
 
 ## Summariser Model
 
@@ -258,7 +258,7 @@ If the configured model is no longer available in the catalog (provider removed,
 
 **Source**
 
-- [`packages/coding-agent/src/core/agent-session.ts` `_getSummarizationRequestAuth`](https://github.com/earendil-works/pi-mono/blob/main/packages/coding-agent/src/core/agent-session.ts) — resolves the configured compaction model from the runtime catalog and falls back to the main model when unset or unavailable.
+- [`packages/coding-agent/src/core/agent-session.ts` `_getSummarizationRequestAuth`](https://github.com/bramburn/qi/blob/main/packages/coding-agent/src/core/agent-session.ts) — resolves the configured compaction model from the runtime catalog and falls back to the main model when unset or unavailable.
 
 ## Summary Format
 
@@ -302,7 +302,7 @@ path/to/changed.ts
 
 ### Message Serialization
 
-Before summarization, messages are serialized to text via [`serializeConversation()`](https://github.com/earendil-works/pi-mono/blob/main/packages/coding-agent/src/core/compaction/utils.ts):
+Before summarization, messages are serialized to text via [`serializeConversation()`](https://github.com/bramburn/qi/blob/main/packages/coding-agent/src/core/compaction/utils.ts):
 
 ```
 [User]: What they said
@@ -318,14 +318,14 @@ Tool results are truncated to 2000 characters during serialization. Content beyo
 
 ## Custom Summarization via Extensions
 
-Extensions can intercept and customize both compaction and branch summarization. See [`extensions/types.ts`](https://github.com/earendil-works/pi-mono/blob/main/packages/coding-agent/src/core/extensions/types.ts) for event type definitions.
+Extensions can intercept and customize both compaction and branch summarization. See [`extensions/types.ts`](https://github.com/bramburn/qi/blob/main/packages/coding-agent/src/core/extensions/types.ts) for event type definitions.
 
 ### session_before_compact
 
 Fired before auto-compaction or `/compact`. Can cancel or provide custom summary. See `SessionBeforeCompactEvent` and `CompactionPreparation` in the types file.
 
 ```typescript
-pi.on("session_before_compact", async (event, ctx) => {
+qi.on("session_before_compact", async (event, ctx) => {
   const { preparation, branchEntries, customInstructions, reason, willRetry, signal } = event;
 
   // preparation.messagesToSummarize - messages to summarize
@@ -362,9 +362,9 @@ pi.on("session_before_compact", async (event, ctx) => {
 To generate a summary with your own model, convert messages to text using `serializeConversation`:
 
 ```typescript
-import { convertToLlm, serializeConversation } from "@earendil-works/pi-coding-agent";
+import { convertToLlm, serializeConversation } from "@bramburn/qi-coding-agent";
 
-pi.on("session_before_compact", async (event, ctx) => {
+qi.on("session_before_compact", async (event, ctx) => {
   const { preparation } = event;
   
   // Convert AgentMessage[] to Message[], then serialize to text
@@ -399,7 +399,7 @@ See [custom-compaction.ts](../examples/extensions/custom-compaction.ts) for a co
 Fired when manual or automatic compaction fails or is aborted. This is useful for telemetry extensions that need to pair `session_before_compact` attempts with terminal outcomes.
 
 ```typescript
-pi.on("session_compact_failed", async (event, ctx) => {
+qi.on("session_compact_failed", async (event, ctx) => {
   const { reason, errorMessage, aborted, willRetry, fromExtension } = event;
   // reason - "manual" (/compact), "threshold", or "overflow"
   // errorMessage - present for non-abort failures
@@ -414,7 +414,7 @@ pi.on("session_compact_failed", async (event, ctx) => {
 Fired before `/tree` navigation. Always fires regardless of whether user chose to summarize. Can cancel navigation or provide custom summary.
 
 ```typescript
-pi.on("session_before_tree", async (event, ctx) => {
+qi.on("session_before_tree", async (event, ctx) => {
   const { preparation, signal } = event;
 
   // preparation.targetId - where we're navigating to
@@ -443,7 +443,7 @@ See `SessionBeforeTreeEvent` and `TreePreparation` in the types file.
 
 ## Settings
 
-Configure compaction in `~/.pi/agent/settings.json` or `<project-dir>/.pi/settings.json`:
+Configure compaction in `~/.qi/agent/settings.json` or `<project-dir>/.qi/settings.json`:
 
 ```json
 {
@@ -471,13 +471,13 @@ Disable auto-compaction with `"enabled": false`. You can still compact manually 
 
 ### Stuck sessions: recurring `400 invalid params (2013)` after compaction
 
-Older pi versions could persist a `CompactionEntry` between an assistant tool-call message and its tool result (auto-compaction fired while a long-running tool such as `update_goal` was still executing). On the next compaction, the old summary was re-projected at its physical position, splitting the tool call from its result in the request. Providers reject that shape with `400 invalid params (2013)` ("tool call result does not follow tool call") on every subsequent turn, so the session appears permanently stuck.
+Older qi versions could persist a `CompactionEntry` between an assistant tool-call message and its tool result (auto-compaction fired while a long-running tool such as `update_goal` was still executing). On the next compaction, the old summary was re-projected at its physical position, splitting the tool call from its result in the request. Providers reject that shape with `400 invalid params (2013)` ("tool call result does not follow tool call") on every subsequent turn, so the session appears permanently stuck.
 
 Recovery options:
 
-1. **Upgrade pi.** The context projection (`normalizeToolPairing` in [`core/messages.ts`](https://github.com/earendil-works/pi-mono/blob/main/packages/coding-agent/src/core/messages.ts)) moves any user-role message that lands between a tool call and its result to after the result group, and the request builder (`transformMessages`) keeps `tool_result` blocks adjacent to their `tool_use` instead of synthesizing duplicates. Existing stuck session files work again without modification.
+1. **Upgrade qi.** The context projection (`normalizeToolPairing` in [`core/messages.ts`](https://github.com/bramburn/qi/blob/main/packages/coding-agent/src/core/messages.ts)) moves any user-role message that lands between a tool call and its result to after the result group, and the request builder (`transformMessages`) keeps `tool_result` blocks adjacent to their `tool_use` instead of synthesizing duplicates. Existing stuck session files work again without modification.
 
-2. **Manual repair of the session JSONL** (only for files that must be handed to older pi versions). Back up the file first, then in `~/.pi/agent/sessions/<project>/<session>.jsonl`:
+2. **Manual repair of the session JSONL** (only for files that must be handed to older qi versions). Back up the file first, then in `~/.qi/agent/sessions/<project>/<session>.jsonl`:
    - Locate the compaction line sandwiched between an assistant message containing a `toolCall` block and the `toolResult` message for that call (the `toolResult` entry's `parentId` is the compaction entry's id).
    - Delete the compaction line.
    - Set the `toolResult` entry's `parentId` to the assistant entry's id.

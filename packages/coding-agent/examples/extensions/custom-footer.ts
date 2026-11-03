@@ -12,10 +12,10 @@ import type { AssistantMessage } from "@bramburn/qi-ai";
 import type { ExtensionAPI } from "@bramburn/qi-coding-agent";
 import { truncateToWidth, visibleWidth } from "@bramburn/qi-tui";
 
-export default function (pi: ExtensionAPI) {
+export default function (qi: ExtensionAPI) {
 	let enabled = false;
 
-	pi.registerCommand("footer", {
+	qi.registerCommand("footer", {
 		description: "Toggle custom footer",
 		handler: async (_args, ctx) => {
 			enabled = !enabled;

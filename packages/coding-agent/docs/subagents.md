@@ -1,10 +1,10 @@
 # Subagents
 
-Pi ships a built-in `subagent` tool: the model delegates work to a child pi process with a fresh context and gets back a summary. A call defines the subagent inline — or names a reusable [agent definition file](#agent-definition-files) with `agent`. There is no discovery daemon and no trust prompt: definitions are ordinary files in the repo or in your agent dir, read at dispatch time.
+Qi ships a built-in `subagent` tool: the model delegates work to a child qi process with a fresh context and gets back a summary. A call defines the subagent inline — or names a reusable [agent definition file](#agent-definition-files) with `agent`. There is no discovery daemon and no trust prompt: definitions are ordinary files in the repo or in your agent dir, read at dispatch time.
 
-The tool is active out of the box (`subagent.enabled` defaults to `true`): a fresh pi session's default tool set is `read`, `bash`, `edit`, `write`, `subagent`. Remove it with `subagent.enabled: false`, `--exclude-tools subagent`, or an explicit `defaultTools` / `tools` list that omits it. The `experiment_*` tools join the default set when `subagent.enableExperiments` is on.
+The tool is active out of the box (`subagent.enabled` defaults to `true`): a fresh qi session's default tool set is `read`, `bash`, `edit`, `write`, `subagent`. Remove it with `subagent.enabled: false`, `--exclude-tools subagent`, or an explicit `defaultTools` / `tools` list that omits it. The `experiment_*` tools join the default set when `subagent.enableExperiments` is on.
 
-The child is a real `pi --mode json` subprocess spawned with `Bun.spawn`, so the tool is registered only under the Bun runtime. Set `subagent.enabled: false` to leave it out entirely. When the tool is active, the system prompt gains a short orchestration guide (`SUBAGENT_USAGE`) describing the three modes below.
+The child is a real `qi --mode json` subprocess spawned with `Bun.spawn`, so the tool is registered only under the Bun runtime. Set `subagent.enabled: false` to leave it out entirely. When the tool is active, the system prompt gains a short orchestration guide (`SUBAGENT_USAGE`) describing the three modes below.
 
 ## Modes
 
@@ -82,14 +82,14 @@ proposed fix, and say plainly where something does not exist.
 
 `tools` is a built-in allowlist (built-in names only: `read`, `bash`, `edit`, `write`, `grep`, `find`, `ls`; the comma list and YAML sequence forms are equivalent). The same field on an inline call works the same way, so the read-only delegate pattern is one frontmatter line — `tools: read, grep, ls` plus a system prompt that states the constraint, with the body beneath those fields carrying the prompt. Omitting `tools` gives the child every built-in, which is what an open-ended worker like `reviewer` wants.
 
-The frontmatter is parsed by the same primitive that reads skills and prompt templates, so the subset is YAML, not JSON: `name` (required), `description`, `tools` (a comma list or a YAML sequence), `model`, `thinking`, `systemPrompt`. Unknown keys are ignored rather than rejected — a definition written for a newer pi keeps working on an older one. Without `systemPrompt`, the markdown body below the frontmatter is the standing prompt. `description` is never sent to the child; it is the human- and orchestrator-facing label.
+The frontmatter is parsed by the same primitive that reads skills and prompt templates, so the subset is YAML, not JSON: `name` (required), `description`, `tools` (a comma list or a YAML sequence), `model`, `thinking`, `systemPrompt`. Unknown keys are ignored rather than rejected — a definition written for a newer qi keeps working on an older one. Without `systemPrompt`, the markdown body below the frontmatter is the standing prompt. `description` is never sent to the child; it is the human- and orchestrator-facing label.
 
 Two scopes are read, in this order, first match wins:
 
 | Scope | Path |
 |-------|------|
-| project | `<cwd>/.pi/agents/*.md` |
-| user | `<agentDir>/agents/*.md` (`~/.pi/agent/agents/` by default, `PI_CODING_AGENT_DIR` honoured) |
+| project | `<cwd>/.qi/agents/*.md` |
+| user | `<agentDir>/agents/*.md` (`~/.qi/agent/agents/` by default, `QI_CODING_AGENT_DIR` honoured) |
 
 The project scope resolves against the session's working directory, so a subdirectory's definitions are not merged into a parent's; a repo that wants one set of agents keeps them at the root. Project wins on a name collision, which is what lets a repo pin the agent its team actually runs over whatever a developer has in their own dir.
 
@@ -137,9 +137,9 @@ Both contracts apply to inline runs only: a `background: true` call that declare
 
 ## Background results
 
-Pass `"background": true` with any mode to detach: the call returns task ids immediately instead of waiting. Background chain steps still run sequentially so `{previous}` keeps working. When a task settles, pi posts a `subagent-background-result` custom message with the outcome and output, queued for the next turn (`deliverAs: "nextTurn"`, `triggerTurn: true`). Background task state lives in an on-disk registry; check it after a restart before assuming a task is still running.
+Pass `"background": true` with any mode to detach: the call returns task ids immediately instead of waiting. Background chain steps still run sequentially so `{previous}` keeps working. When a task settles, qi posts a `subagent-background-result` custom message with the outcome and output, queued for the next turn (`deliverAs: "nextTurn"`, `triggerTurn: true`). Background task state lives in an on-disk registry; check it after a restart before assuming a task is still running.
 
-Background dispatch is capped by the same `subagent.maxConcurrent` budget (default 4) that bounds inline runs — the limit counts every subagent child this pi process has running, not just detached ones, so the worst case is 4 concurrent children in total, not 4 per mode. A detached call starts up to that many children itself and queues the rest. Overflow is recorded as a `pending` row in the registry — labelled `<role> (queued)`, no process spawned — and promoted in FIFO order whenever a running task settles or is cancelled, whether that task was started in the background or inline. Inline runs draw from the same budget, so a full set of inline children holds every background dispatch in the queue until one of them finishes.
+Background dispatch is capped by the same `subagent.maxConcurrent` budget (default 4) that bounds inline runs — the limit counts every subagent child this qi process has running, not just detached ones, so the worst case is 4 concurrent children in total, not 4 per mode. A detached call starts up to that many children itself and queues the rest. Overflow is recorded as a `pending` row in the registry — labelled `<role> (queued)`, no process spawned — and promoted in FIFO order whenever a running task settles or is cancelled, whether that task was started in the background or inline. Inline runs draw from the same budget, so a full set of inline children holds every background dispatch in the queue until one of them finishes.
 
 A queued task reports its id and queue position in the dispatch result and in `action="status"`, and its result is delivered exactly like a started one: when it settles. Cancelling a queued task drops it from the line without spending a slot. The queue belongs to the session that filled it, so after a restart its `pending` rows are marked crashed alongside running ones — nothing is resumed from a dead session's backlog.
 
@@ -165,7 +165,7 @@ If a session dies outright while a background child is running, the next session
 }
 ```
 
-The prior run must have settled cleanly — a still-running run is steered, not resumed, because two processes appending to one session file corrupts it. The resume itself holds a cross-process lease on the child session file for its whole duration (`session-lease.ts`), so a second pi process cannot revive the same session in the window between the old child settling and the replacement opening it; the lease is what makes "the previous run settled, but no one else picked it up yet" a safe moment to act. `outputSchema` and `gate` are refused on `resume` (a resumed task inherits the prior task text but never the contract — a contract a handler depends on was never established for the new task), and the new task counts against the spawn budget because the replacement path still spawns a child.
+The prior run must have settled cleanly — a still-running run is steered, not resumed, because two processes appending to one session file corrupts it. The resume itself holds a cross-process lease on the child session file for its whole duration (`session-lease.ts`), so a second qi process cannot revive the same session in the window between the old child settling and the replacement opening it; the lease is what makes "the previous run settled, but no one else picked it up yet" a safe moment to act. `outputSchema` and `gate` are refused on `resume` (a resumed task inherits the prior task text but never the contract — a contract a handler depends on was never established for the new task), and the new task counts against the spawn budget because the replacement path still spawns a child.
 
 ## Control plane
 
@@ -178,15 +178,15 @@ Every background run owns a control inbox at `<taskDir>/control/`, where `<taskD
   receipts.jsonl  append-only state ledger
 ```
 
-Three actions are filed there: `steer` (carries the message, capped at 50 KB — the remainder is dropped and the request is marked `truncated`), `interrupt`, and `stop`. A child consumes its inbox with a watcher that polls `requests/`, moves what it took into `applied/`, and applies the request as a session operation; the watcher only runs while the child's environment names its inbox via `PI_SUBAGENT_CONTROL_DIR`, which the spawner sets from the run's `taskDir`.
+Three actions are filed there: `steer` (carries the message, capped at 50 KB — the remainder is dropped and the request is marked `truncated`), `interrupt`, and `stop`. A child consumes its inbox with a watcher that polls `requests/`, moves what it took into `applied/`, and applies the request as a session operation; the watcher only runs while the child's environment names its inbox via `QI_SUBAGENT_CONTROL_DIR`, which the spawner sets from the run's `taskDir`.
 
 The ledger records every state transition for a request id: `requested` when the parent files it, `scheduled` when a settle path has picked it up, `queued` once the child watcher has taken it, then `delivered` or `failed`. `action="status"` prints the inbox beside each run — one line per request with its action, latest state, and any note — so an unanswered steer is visible instead of silently lost. Filing a request against a run whose child is still attached takes the live path and settles the same receipt; both paths leave the same ledger, so the state does not depend on which one ran.
 
 ## Supervisor channel
 
-The mirror of the control inbox lets a child ask its supervisor a question. When pi spawns a child it may set `PI_SUBAGENT_SUPERVISOR_DIR` to `<taskDir>/supervisor/`; the child then gets the `contact_supervisor` tool, which posts a question to `requests/` and blocks until an answer appears in `replies/` or the timeout expires (default 60 s, capped at 5 min). Without the env var the tool is not offered, so a plain child never sees it.
+The mirror of the control inbox lets a child ask its supervisor a question. When qi spawns a child it may set `QI_SUBAGENT_SUPERVISOR_DIR` to `<taskDir>/supervisor/`; the child then gets the `contact_supervisor` tool, which posts a question to `requests/` and blocks until an answer appears in `replies/` or the timeout expires (default 60 s, capped at 5 min). Without the env var the tool is not offered, so a plain child never sees it.
 
-Questions are `open` until answered, and an unanswered question does not die with the run: when a background run settles, pi raises its open questions into the parent session as part of the `subagent-background-result` message, and json mode lists them in the exit-time handoff entry (see below). Answer one with `action="supervisor"` plus the run `id`, the question's `replyTo` id, and the `message` — the reply is written to the run's `replies/`, where a still-running child picks it up on its next poll. For a run that already settled the reply still closes the question, so `status` and any later session see it answered rather than open.
+Questions are `open` until answered, and an unanswered question does not die with the run: when a background run settles, qi raises its open questions into the parent session as part of the `subagent-background-result` message, and json mode lists them in the exit-time handoff entry (see below). Answer one with `action="supervisor"` plus the run `id`, the question's `replyTo` id, and the `message` — the reply is written to the run's `replies/`, where a still-running child picks it up on its next poll. For a run that already settled the reply still closes the question, so `status` and any later session see it answered rather than open.
 
 Both directories are pruned defensively: consumed requests and aged unanswered ones are dropped after 24 h, the ledger is capped at its last 500 lines, and the tool's own listings show at most three open questions per run so status output stays bounded.
 
@@ -200,7 +200,7 @@ Each subagent's output is capped at 50 KB in the model-facing text (`Output trun
 
 ### Delegation depth
 
-A child is its own `pi` process with its own spawn counter, so per-process limits cannot bound a delegation tree. `subagent.maxDepth` (default `1`) is the bound that crosses the process boundary: the top-level session is depth `0`, so the default permits one level of subagents and refuses grandchildren.
+A child is its own `qi` process with its own spawn counter, so per-process limits cannot bound a delegation tree. `subagent.maxDepth` (default `1`) is the bound that crosses the process boundary: the top-level session is depth `0`, so the default permits one level of subagents and refuses grandchildren.
 
 At the limit, delegation fails two ways on purpose. The parent refuses the call with an error naming the limit and telling the model to finish the work in its own session — so the parent can re-plan. And the child drops `subagent` from its own tool set, so a grandchild is never offered the tool and there is nothing to refuse. The second is the one that actually stops the tree.
 
@@ -240,7 +240,7 @@ Gated behind `subagent.enableExperiments` (default off). When enabled, eight too
 | `experiment_list` | List experiments from the registry |
 | `experiment_compare` | Compare two experiments (logs and diffs) |
 
-The registry lives at `<repo>/.pi-experiments/registry.json` (format version 1). Worktrees live at `<repo>/<worktreeBase>/<slug>`, defaulting to `.worktrees/`. Per-experiment logs stay in `.pi-experiments/`.
+The registry lives at `<repo>/.qi-experiments/registry.json` (format version 1). Worktrees live at `<repo>/<worktreeBase>/<slug>`, defaulting to `.worktrees/`. Per-experiment logs stay in `.qi-experiments/`.
 
 ### Research Mode
 
@@ -252,4 +252,4 @@ Research Mode is a suggestion, never an automatic action: when the same tool err
 
 ## Coexistence with the example extension
 
-`examples/extensions/subagent/` remains a reference implementation. If a user-symlinked extension registers a tool named `subagent` while the built-in one is enabled, the extension's tool takes precedence and pi logs a one-line warning suggesting removal of the symlink. Nothing is disabled automatically.
+`examples/extensions/subagent/` remains a reference implementation. If a user-symlinked extension registers a tool named `subagent` while the built-in one is enabled, the extension's tool takes precedence and qi logs a one-line warning suggesting removal of the symlink. Nothing is disabled automatically.

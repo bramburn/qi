@@ -6,7 +6,7 @@ sidebar_label: Background Subagent
 
 # Background Subagent Mode
 
-Run a subagent without blocking the LLM. The child `pi` process starts detached,
+Run a subagent without blocking the LLM. The child `qi` process starts detached,
 the parent returns a task ID immediately, and the result is pushed back as a
 custom message on the **next** turn. Useful for long-running work, fire-and-forget
 sweeps, and parallel experiments where the parent should keep making progress.
@@ -80,7 +80,7 @@ Started 3 background tasks: bg_lz8x4y_5a2c, bg_lz8x4y_8f1b, bg_lz8x4y_c03a. Use
 `/tasks` or `Ctrl+T` to monitor. Results will be injected on the next turn.
 ```
 
-Each task runs in its own `pi` subprocess. They run concurrently. The parent
+Each task runs in its own `qi` subprocess. They run concurrently. The parent
 does not block.
 
 ## Chain mode (sequential, with hand-off)
@@ -97,7 +97,7 @@ subagent({
 ```
 
 Each step in the chain is launched as its own background task. Steps run in
-order, but each step's `pi` subprocess is independent — the parent does not
+order, but each step's `qi` subprocess is independent — the parent does not
 block waiting for one step to finish before spawning the next. The result of
 step N is injected as a custom message before the parent's next turn, so the
 parent LLM can decide whether to start step N+1.
@@ -183,7 +183,7 @@ The pill is cleared automatically when the registry becomes empty.
 ## On-disk state
 
 Background tasks persist across process restarts. The state lives under the
-agent directory (`getAgentDir()` — typically `~/.pi/agent`):
+agent directory (`getAgentDir()` — typically `~/.qi/agent`):
 
 ```
 <agentDir>/
@@ -193,8 +193,8 @@ agent directory (`getAgentDir()` — typically `~/.pi/agent`):
         └── log.jsonl              # per-task append-only event log
 ```
 
-`<agentDir>` comes from `getAgentDir()` in `@earendil-works/pi-coding-agent`.
-On a default install this is `~/.pi/agent`.
+`<agentDir>` comes from `getAgentDir()` in `@bramburn/qi-coding-agent`.
+On a default install this is `~/.qi/agent`.
 
 `registry.json` is the single source of truth for "what background tasks
 exist". Each `<taskId>/log.jsonl` records the per-task event stream (spawn,
@@ -215,11 +215,11 @@ bug in the subagent code.
 
 Practical consequences:
 
-- **`pi -p "..."` foreground mode**: the parent exits as soon as the LLM's
+- **`qi -p "..."` foreground mode**: the parent exits as soon as the LLM's
   final response is delivered. Any background tasks spawned during that turn
   are killed at the same instant. The task record will show `crashed` (not
   `completed`) the next time `session_start` runs.
-- **Interactive TUI (`pi` with no `-p`)**: the parent stays alive, so
+- **Interactive TUI (`qi` with no `-p`)**: the parent stays alive, so
   background tasks keep running normally. They are killed only when the TUI
   session itself ends (`session_shutdown` hook).
 - **Recovery**: on `session_start`, every previously-`running` or `pending`
@@ -227,14 +227,14 @@ Practical consequences:
   task completed". The on-disk log is preserved for post-mortem.
 
 If you need long-running background work, use the interactive TUI, not
-`pi -p`.
+`qi -p`.
 
 ## Result injection
 
 When a child task finishes (success, failure, or crash), the parent calls:
 
 ```ts
-pi.sendMessage(
+qi.sendMessage(
   {
     customType: "subagent-background-result",
     content: "Background task bg_xyz (scout) completed.\n\n<final assistant text>",
@@ -249,7 +249,7 @@ The custom type is `subagent-background-result`. The `display: true` flag
 shows the message in the TUI. `details` carries the structured fields for
 consumers that want to parse the result without scraping the text.
 
-If the parent has already exited (the Windows D8 case, or any `pi -p` run
+If the parent has already exited (the Windows D8 case, or any `qi -p` run
 that ends before the child), `sendMessage` may fail silently. The failure is
 logged to the task's `log.jsonl` as a `POST_RESULT_FAILED` event but does
 not change the task's terminal status.
@@ -258,11 +258,11 @@ not change the task's terminal status.
 
 The background-mode source lives in the fork-local extension at
 `packages/coding-agent/examples/extensions/subagent/`. The installed location
-is `~/.pi/agent/extensions/subagent/`. The fork deploys the new
+is `~/.qi/agent/extensions/subagent/`. The fork deploys the new
 `background.ts` and `status-injector.ts` modules alongside the existing
 `index.ts`, `agents.ts`, `ui.ts`, and the `agents/` + `prompts/` directories.
 
-After deploying, restart the `pi` TUI to pick up the new code. The
+After deploying, restart the `qi` TUI to pick up the new code. The
 `/tasks` command and `Ctrl+T` shortcut are registered at extension load
 time.
 
@@ -278,7 +278,7 @@ The implementation ships with two unit test files:
 Run from the extension directory:
 
 ```bash
-cd ~/.pi/agent/extensions/subagent
+cd ~/.qi/agent/extensions/subagent
 bun test
 ```
 

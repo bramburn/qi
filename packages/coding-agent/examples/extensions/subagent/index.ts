@@ -2,7 +2,7 @@
  * Subagent Tool + Experimental Mode
  *
  * Two capabilities in one extension:
- *   1. Subagent: spawn isolated `pi` subprocesses for parallel/chain/single tasks.
+ *   1. Subagent: spawn isolated `qi` subprocesses for parallel/chain/single tasks.
  *   2. Experimental mode: hypothesis-driven worktree-based parallel exploration
  *      with E.D.I.T. loop tooling, registry persistence, status pill, and
  *      Research Mode auto-trigger on 3x-same-error.
@@ -14,7 +14,7 @@
  *
  * The experimental mode adds 8 sibling tools: experiment_start, experiment_run,
  * experiment_test, experiment_diff, experiment_merge, experiment_discard,
- * experiment_list, experiment_compare. Each is a top-level pi.registerTool call;
+ * experiment_list, experiment_compare. Each is a top-level qi.registerTool call;
  * the subagent extension is the single entry point.
  *
  * JSON mode is used to capture structured output from subagents.
@@ -89,8 +89,8 @@ const MAX_CONCURRENCY = 4;
 const COLLAPSED_ITEM_COUNT = 10;
 const PER_TASK_OUTPUT_CAP = 50 * 1024;
 
-// Guard for pi.agent.task span instrumentation.
-// Set to true when the analytics InlineExtension is loaded (it registers pi:analytics flag).
+// Guard for qi.agent.task span instrumentation.
+// Set to true when the analytics InlineExtension is loaded (it registers qi:analytics flag).
 let _analyticsEnabled = false;
 
 function formatTokens(count: number): string {
@@ -295,7 +295,7 @@ async function mapWithConcurrencyLimit<TIn, TOut>(
 }
 
 async function writePromptToTempFile(agentName: string, prompt: string): Promise<{ dir: string; filePath: string }> {
-	const tmpDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "pi-subagent-"));
+	const tmpDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "qi-subagent-"));
 	const safeName = agentName.replace(/[^\w.-]+/g, "_");
 	const filePath = path.join(tmpDir, `prompt-${safeName}.md`);
 	await withFileMutationQueue(filePath, async () => {
@@ -317,7 +317,7 @@ function getPiInvocation(args: string[]): { command: string; args: string[] } {
 		return { command: process.execPath, args };
 	}
 
-	return { command: "pi", args };
+	return { command: "qi", args };
 }
 
 type OnUpdateCallback = (partial: AgentToolResult<SubagentDetails>) => void;
@@ -508,7 +508,7 @@ async function runSingleAgent(
 // ============================================================================
 //
 // Fire-and-forget variant of runSingleAgent. The LLM tool call returns
-// immediately with a task ID; the child pi process runs detached; when it
+// immediately with a task ID; the child qi process runs detached; when it
 // finishes, a custom message is sent to the parent session so the result
 // appears in the next turn.
 //
@@ -526,7 +526,7 @@ interface BackgroundSpec {
 	scriptOrTask: string;
 	cwd: string;
 	dispatchDefaults: DispatchDefaults;
-	pi: ExtensionAPI;
+	qi: ExtensionAPI;
 	registry: BackgroundRegistry;
 	agentScope: AgentScope;
 }
@@ -555,7 +555,7 @@ function fireBackground(spec: BackgroundSpec): { taskId: string } {
 	const taskId = spec.registry.makeTaskId();
 	const initialTask = {
 		id: taskId,
-		kind: "pi-subprocess" as const,
+		kind: "qi-subprocess" as const,
 		mode: spec.mode,
 		agent: spec.agentName,
 		agentScope: spec.agentScope,
@@ -627,7 +627,7 @@ async function runBackgroundSubagentInner(spec: BackgroundSpec, taskId: string):
 		});
 		registry.appendLog(taskId, { type: "SPAWN_ERROR", error: (err as Error).message });
 		try {
-			spec.pi.sendMessage(
+			spec.qi.sendMessage(
 				{
 					customType: SUBAGENT_BACKGROUND_RESULT_CUSTOM_TYPE,
 					content: `Background task ${taskId} (${spec.agentName}) failed to start: ${(err as Error).message}`,
@@ -726,7 +726,7 @@ async function runBackgroundSubagentInner(spec: BackgroundSpec, taskId: string):
 			? `Background task ${taskId} (${spec.agentName}) ${status}${errorMessage ? `: ${errorMessage}` : exitCode !== undefined ? ` with exit code ${exitCode}` : ""}.\n\n${finalText}`
 			: `Background task ${taskId} (${spec.agentName}) completed.\n\n${finalText}`;
 		try {
-			spec.pi.sendMessage(
+			spec.qi.sendMessage(
 				{
 					customType: SUBAGENT_BACKGROUND_RESULT_CUSTOM_TYPE,
 					content,
@@ -885,7 +885,7 @@ function truncate(s: string, n: number): string {
 	return s.length > n ? `${s.slice(0, n - 3)}...` : s;
 }
 
-function registerExperimentalMode(pi: ExtensionAPI): void {
+function registerExperimentalMode(qi: ExtensionAPI): void {
 	const sessionState = new Map<string, ExperimentalSessionState>();
 	const researchTracker = new ResearchModeTracker({ notify: () => {} });
 
@@ -908,7 +908,7 @@ function registerExperimentalMode(pi: ExtensionAPI): void {
 	// -------------------------------------------------------------------------
 	// Lifecycle: session_start (crash recovery for running experiments)
 	// -------------------------------------------------------------------------
-	pi.on("session_start", async (_event, ctx) => {
+	qi.on("session_start", async (_event, ctx) => {
 		if (!(await isGitRepo(ctx.cwd))) return;
 		const all = listExperiments(ctx.cwd, "all");
 		let changed = false;
@@ -942,7 +942,7 @@ function registerExperimentalMode(pi: ExtensionAPI): void {
 	// -------------------------------------------------------------------------
 	// before_agent_start: inject the E.D.I.T. + Research Mode fragments when enabled
 	// -------------------------------------------------------------------------
-	pi.on("before_agent_start", async (event, ctx) => {
+	qi.on("before_agent_start", async (event, ctx) => {
 		if (!stateFor(ctx).enabled) return;
 		const { editLoop, research } = readFragments();
 		return { systemPrompt: `${event.systemPrompt}\n\n${editLoop}\n\n${research}` };
@@ -951,7 +951,7 @@ function registerExperimentalMode(pi: ExtensionAPI): void {
 	// -------------------------------------------------------------------------
 	// tool_result: Research Mode 3x-same-error watcher
 	// -------------------------------------------------------------------------
-	pi.on("tool_result", async (event, ctx) => {
+	qi.on("tool_result", async (event, ctx) => {
 		const s = stateFor(ctx);
 		if (!s.enabled || !s.researchModeEnabled) return;
 		if (!event.isError) return;
@@ -968,7 +968,7 @@ function registerExperimentalMode(pi: ExtensionAPI): void {
 	// -------------------------------------------------------------------------
 	// Commands
 	// -------------------------------------------------------------------------
-	pi.registerCommand("experimental", {
+	qi.registerCommand("experimental", {
 		description: "Toggle experimental mode (E.D.I.T. loop + worktree substrate).",
 		handler: async (args, ctx) => {
 			const arg = (args ?? "").trim().toLowerCase();
@@ -986,14 +986,14 @@ function registerExperimentalMode(pi: ExtensionAPI): void {
 		},
 	});
 
-	pi.registerCommand("experiments", {
+	qi.registerCommand("experiments", {
 		description: "Show the experiment dashboard overlay.",
 		handler: async (_args, ctx) => {
 			await showDashboard(ctx, ctx.cwd);
 		},
 	});
 
-	pi.registerShortcut(Key.ctrl("e"), {
+	qi.registerShortcut(Key.ctrl("e"), {
 		description: "Open the experiment dashboard.",
 		handler: async (ctx) => {
 			await showDashboard(ctx, ctx.cwd);
@@ -1003,7 +1003,7 @@ function registerExperimentalMode(pi: ExtensionAPI): void {
 	// -------------------------------------------------------------------------
 	// Tool: experiment_start
 	// -------------------------------------------------------------------------
-	pi.registerTool({
+	qi.registerTool({
 		name: "experiment_start",
 		label: "Experiment Start",
 		description: "Fork a worktree for one experimental approach. Use once per approach when comparing 2+ candidates.",
@@ -1064,7 +1064,7 @@ function registerExperimentalMode(pi: ExtensionAPI): void {
 	// -------------------------------------------------------------------------
 	// Tool: experiment_run
 	// -------------------------------------------------------------------------
-	pi.registerTool({
+	qi.registerTool({
 		name: "experiment_run",
 		label: "Experiment Run",
 		description:
@@ -1114,7 +1114,7 @@ function registerExperimentalMode(pi: ExtensionAPI): void {
 	// -------------------------------------------------------------------------
 	// Tool: experiment_test
 	// -------------------------------------------------------------------------
-	pi.registerTool({
+	qi.registerTool({
 		name: "experiment_test",
 		label: "Experiment Test",
 		description:
@@ -1165,7 +1165,7 @@ function registerExperimentalMode(pi: ExtensionAPI): void {
 	// -------------------------------------------------------------------------
 	// Tool: experiment_diff
 	// -------------------------------------------------------------------------
-	pi.registerTool({
+	qi.registerTool({
 		name: "experiment_diff",
 		label: "Experiment Diff",
 		description: "Show what changed in the experiment's worktree vs the parent commit.",
@@ -1197,7 +1197,7 @@ function registerExperimentalMode(pi: ExtensionAPI): void {
 	// -------------------------------------------------------------------------
 	// Tool: experiment_merge
 	// -------------------------------------------------------------------------
-	pi.registerTool({
+	qi.registerTool({
 		name: "experiment_merge",
 		label: "Experiment Merge",
 		description: "Transfer the winning experiment back to the main worktree via cherry-pick, squash, or merge.",
@@ -1208,8 +1208,8 @@ function registerExperimentalMode(pi: ExtensionAPI): void {
 			if (row.merged) return errorToolResult(`Experiment ${row.id} is already merged.`);
 
 			// Refuse to merge if the main worktree has uncommitted changes (ignoring the
-			// .pi-experiments/ registry dir which is expected to be untracked).
-			const status = await runShellCommand("git status --porcelain -- . :!./.pi-experiments :!./.pi-experiments/", {
+			// .qi-experiments/ registry dir which is expected to be untracked).
+			const status = await runShellCommand("git status --porcelain -- . :!./.qi-experiments :!./.qi-experiments/", {
 				cwd: ctx.cwd,
 			});
 			if (status.stdout.trim().length > 0) {
@@ -1272,7 +1272,7 @@ function registerExperimentalMode(pi: ExtensionAPI): void {
 	// -------------------------------------------------------------------------
 	// Tool: experiment_discard
 	// -------------------------------------------------------------------------
-	pi.registerTool({
+	qi.registerTool({
 		name: "experiment_discard",
 		label: "Experiment Discard",
 		description:
@@ -1326,7 +1326,7 @@ function registerExperimentalMode(pi: ExtensionAPI): void {
 	// -------------------------------------------------------------------------
 	// Tool: experiment_list
 	// -------------------------------------------------------------------------
-	pi.registerTool({
+	qi.registerTool({
 		name: "experiment_list",
 		label: "Experiment List",
 		description: "List experiments, optionally filtered by status.",
@@ -1351,7 +1351,7 @@ function registerExperimentalMode(pi: ExtensionAPI): void {
 	// -------------------------------------------------------------------------
 	// Tool: experiment_compare
 	// -------------------------------------------------------------------------
-	pi.registerTool({
+	qi.registerTool({
 		name: "experiment_compare",
 		label: "Experiment Compare",
 		description: "Side-by-side diff of two experiments' benchmarks, tests, and diff stats.",
@@ -1404,15 +1404,15 @@ async function finalizeExperimentMerge(
 	refreshStatusPill(ctx, ctx.cwd, false);
 }
 
-export default function (pi: ExtensionAPI) {
+export default function (qi: ExtensionAPI) {
 	// Check if the analytics InlineExtension registered its internal flag.
-	_analyticsEnabled = pi.getFlag("pi:analytics") === true;
+	_analyticsEnabled = qi.getFlag("qi:analytics") === true;
 
-	registerExperimentalMode(pi);
+	registerExperimentalMode(qi);
 
 	const backgroundRegistry = getBackgroundRegistry();
 
-	pi.on("session_start", async () => {
+	qi.on("session_start", async () => {
 		const crashedCount = await backgroundRegistry.markAllRunningAsCrashed();
 		const pruned = await backgroundRegistry.prune();
 		if (crashedCount > 0) {
@@ -1427,14 +1427,14 @@ export default function (pi: ExtensionAPI) {
 		}
 	});
 
-	pi.on("session_shutdown", async () => {
+	qi.on("session_shutdown", async () => {
 		const runningTasks = backgroundRegistry.listRunning();
 		for (const t of runningTasks) {
 			await backgroundRegistry.cancel(t.id, "Parent session ended");
 		}
 	});
 
-	pi.on("before_agent_start", async (event, ctx) => {
+	qi.on("before_agent_start", async (event, ctx) => {
 		const tasks = backgroundRegistry.snapshot().tasks;
 		const runningCount = tasks.filter((t) => t.status === "running" || t.status === "pending").length;
 		const totalCount = tasks.length;
@@ -1444,7 +1444,7 @@ export default function (pi: ExtensionAPI) {
 		return { systemPrompt: `${event.systemPrompt}\n\n${injection}` };
 	});
 
-	pi.registerCommand("tasks", {
+	qi.registerCommand("tasks", {
 		description: "Show the background-task dashboard (subagent background mode).",
 		handler: async (_args, ctx) => {
 			const tasks = backgroundRegistry.snapshot().tasks;
@@ -1462,7 +1462,7 @@ export default function (pi: ExtensionAPI) {
 		},
 	});
 
-	pi.registerShortcut(Key.ctrl("t"), {
+	qi.registerShortcut(Key.ctrl("t"), {
 		description: "Toggle the background-task dashboard.",
 		handler: async (ctx) => {
 			const tasks = backgroundRegistry.snapshot().tasks;
@@ -1475,7 +1475,7 @@ export default function (pi: ExtensionAPI) {
 		},
 	});
 
-	pi.registerTool({
+	qi.registerTool({
 		name: "subagent",
 		label: "Subagent",
 		description: [
@@ -1556,7 +1556,7 @@ export default function (pi: ExtensionAPI) {
 						scriptOrTask,
 						cwd: params.cwd ?? ctx.cwd,
 						dispatchDefaults,
-						pi,
+						qi,
 						registry,
 						agentScope,
 					});
@@ -1570,7 +1570,7 @@ export default function (pi: ExtensionAPI) {
 							scriptOrTask: td,
 							cwd: t.cwd ?? ctx.cwd,
 							dispatchDefaults,
-							pi,
+							qi,
 							registry,
 							agentScope,
 						});
@@ -1585,7 +1585,7 @@ export default function (pi: ExtensionAPI) {
 							scriptOrTask: step.task,
 							cwd: step.cwd ?? ctx.cwd,
 							dispatchDefaults,
-							pi,
+							qi,
 							registry,
 							agentScope,
 						});

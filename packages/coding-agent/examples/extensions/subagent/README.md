@@ -5,7 +5,7 @@ hypothesis-driven parallel experiments in git worktrees.
 
 ## Features
 
-- **Isolated context**: Each subagent runs in a separate `pi` process
+- **Isolated context**: Each subagent runs in a separate `qi` process
 - **Streaming output**: See tool calls and progress as they happen
 - **Parallel streaming**: All parallel tasks stream updates simultaneously
 - **Markdown rendering**: Final output rendered with proper formatting (expanded view)
@@ -40,30 +40,30 @@ From the repository root, symlink the files:
 
 ```bash
 # Symlink the extension (must be in a subdirectory with index.ts)
-mkdir -p ~/.pi/agent/extensions/subagent
-ln -sf "$(pwd)/packages/coding-agent/examples/extensions/subagent/index.ts" ~/.pi/agent/extensions/subagent/index.ts
-ln -sf "$(pwd)/packages/coding-agent/examples/extensions/subagent/agents.ts" ~/.pi/agent/extensions/subagent/agents.ts
+mkdir -p ~/.qi/agent/extensions/subagent
+ln -sf "$(pwd)/packages/coding-agent/examples/extensions/subagent/index.ts" ~/.qi/agent/extensions/subagent/index.ts
+ln -sf "$(pwd)/packages/coding-agent/examples/extensions/subagent/agents.ts" ~/.qi/agent/extensions/subagent/agents.ts
 
 # Symlink agents
-mkdir -p ~/.pi/agent/agents
+mkdir -p ~/.qi/agent/agents
 for f in packages/coding-agent/examples/extensions/subagent/agents/*.md; do
-  ln -sf "$(pwd)/$f" ~/.pi/agent/agents/$(basename "$f")
+  ln -sf "$(pwd)/$f" ~/.qi/agent/agents/$(basename "$f")
 done
 
 # Symlink workflow prompts
-mkdir -p ~/.pi/agent/prompts
+mkdir -p ~/.qi/agent/prompts
 for f in packages/coding-agent/examples/extensions/subagent/prompts/*.md; do
-  ln -sf "$(pwd)/$f" ~/.pi/agent/prompts/$(basename "$f")
+  ln -sf "$(pwd)/$f" ~/.qi/agent/prompts/$(basename "$f")
 done
 ```
 
 ## Security Model
 
-This tool executes a separate `pi` subprocess with a delegated system prompt and tool/model configuration.
+This tool executes a separate `qi` subprocess with a delegated system prompt and tool/model configuration.
 
-**Project-local agents** (`.pi/agents/*.md`) are repo-controlled prompts that can instruct the model to read files, run bash commands, etc.
+**Project-local agents** (`.qi/agents/*.md`) are repo-controlled prompts that can instruct the model to read files, run bash commands, etc.
 
-**Default behavior:** Only loads **user-level agents** from `~/.pi/agent/agents`.
+**Default behavior:** Only loads **user-level agents** from `~/.qi/agent/agents`.
 
 To enable project-local agents, pass `agentScope: "both"` (or `"project"`). Only do this for repositories you trust.
 
@@ -145,8 +145,8 @@ System prompt for the agent goes here.
 When `model` is omitted, the subagent inherits the dispatching session's active model and thinking level.
 
 **Locations:**
-- `~/.pi/agent/agents/*.md` - User-level (always loaded)
-- `.pi/agents/*.md` - Project-level (only with `agentScope: "project"` or `"both"`)
+- `~/.qi/agent/agents/*.md` - User-level (always loaded)
+- `.qi/agents/*.md` - Project-level (only with `agentScope: "project"` or `"both"`)
 
 Project agents override user agents with the same name when `agentScope: "both"`.
 
@@ -222,10 +222,10 @@ archaeology.
 
 ### Worktree substrate
 
-Every worktree lives at `<repo>/.pi-experiments/<approach-slug>/`. One
+Every worktree lives at `<repo>/.qi-experiments/<approach-slug>/`. One
 branch per approach: `exp/<approach-slug>`. The registry at
-`.pi-experiments/registry.json` is the single source of truth. Per-experiment
-output streams to `.pi-experiments/<id>/log.jsonl` (append-only, one JSON
+`.qi-experiments/registry.json` is the single source of truth. Per-experiment
+output streams to `.qi-experiments/<id>/log.jsonl` (append-only, one JSON
 event per line, 1 MB cap per line).
 
 ### Composing subagent with experiments
@@ -245,10 +245,10 @@ experiment_merge(experiment_id, "cherry-pick")
 ### Security model
 
 - Worktrees don't escape the project — every worktree is at
-  `<repo>/.pi-experiments/`, no remote, no containers.
-- `.pi-experiments/` is gitignored. Add it to your repo's `.gitignore` to
+  `<repo>/.qi-experiments/`, no remote, no containers.
+- `.qi-experiments/` is gitignored. Add it to your repo's `.gitignore` to
   keep the agent's scratch space out of git.
-- `registry.lock` is a file lock with 5-second retry; a second pi process
+- `registry.lock` is a file lock with 5-second retry; a second qi process
   opening the same repo gets a clear "registry locked" error and falls back
   to read-only.
 - The branch is kept after merge/discard. The worktree directory is removed
@@ -261,10 +261,10 @@ experiment_merge(experiment_id, "cherry-pick")
 | `git` not on PATH | `experiment_start` fails with "experimental mode requires git" |
 | Worktree path already exists | `experiment_start` returns the offending path; run `experiment_discard` first |
 | `git worktree remove` fails (Windows MAX_PATH, handle lock) | Error message includes the `Move-Item` command to move the build dir aside |
-| Lock contention (another pi process) | After 5s, surface a `notify()` and fall back to read-only |
+| Lock contention (another qi process) | After 5s, surface a `notify()` and fall back to read-only |
 | `experiment_run` hangs >10 min | `SIGTERM` at 10 min, `SIGKILL` at 10:05 min; registry marks `cancelled` |
 | Same tool fails 3x | Research Mode `notify()` + log event |
-| Pi crashes mid-experiment | On `session_start`, `running` rows whose pid is gone are flipped to `failed` |
+| Qi crashes mid-experiment | On `session_start`, `running` rows whose pid is gone are flipped to `failed` |
 
 ### Worked example
 

@@ -4,7 +4,7 @@
 
 # Qi Coding Agent — bramburn fork
 
-Hardened fork of `pi` maintained by
+An independent, hardened coding agent maintained by
 [Kaps Ramburn](https://github.com/bramburn) (`nitrogen@gmail.com`).
 
 Current release: **v0.85.0-b1**.
@@ -45,6 +45,22 @@ Why Bun:
   ships for users who prefer it.
 
 To install Bun: <https://bun.sh/docs/installation>.
+
+## Migrating from `pi`
+
+`qi` is a hard cut: it reads no `pi` state and no `PI_*` variables. Migration is manual.
+
+```bash
+# User state
+mv ~/.pi ~/.qi
+
+# Project state (per repository)
+git mv .pi .qi
+
+# Environment variables: rename every PI_* variable to QI_*
+```
+
+Run `qi` afterwards and confirm your model, provider credentials, and extensions still load. The `[bramburn]` suffix in `qi --version` identifies the build.
 
 ## Differences from upstream
 
@@ -110,7 +126,7 @@ bun run build:both    # Build Node.js and Bun targets in one shot (skips whichev
 bun run build:bun     # Build only the Bun binary (qi.exe on Windows, qi on Unix)
 bun run check         # Lint, format, and type check
 ./test.sh             # Run tests (skips LLM-dependent tests without API keys)
-./pi-test.sh          # Run qi from sources (can be run from any directory)
+./qi-test.sh          # Run qi from sources (can be run from any directory)
 
 # Legacy (Node.js / npm) — still works but no longer the default
 npm install --ignore-scripts
@@ -128,7 +144,7 @@ for the full output format and platform wrappers.
 ## Building standalone binaries from release source
 
 The `bun run release:local` script builds unpackaged Node and Bun binaries
-under `/tmp/pi-local-release/`. Use it to smoke-test a release build before
+under `/tmp/qi-local-release/`. Use it to smoke-test a release build before
 publishing.
 
 ## Dependency security

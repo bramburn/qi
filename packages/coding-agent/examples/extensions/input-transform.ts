@@ -1,18 +1,18 @@
 /**
  * Input Transform Example - demonstrates the `input` event for intercepting user input.
  *
- * Start pi with this extension:
- *   pi -e ./examples/extensions/input-transform.ts
+ * Start qi with this extension:
+ *   qi -e ./examples/extensions/input-transform.ts
  *
- * Then type these inside pi:
+ * Then type these inside qi:
  *   ?quick What is TypeScript?  → "Respond briefly: What is TypeScript?"
  *   ping                        → "pong" (instant, no LLM)
  *   time                        → current time (instant, no LLM)
  */
 import type { ExtensionAPI } from "@bramburn/qi-coding-agent";
 
-export default function (pi: ExtensionAPI) {
-	pi.on("input", async (event, ctx) => {
+export default function (qi: ExtensionAPI) {
+	qi.on("input", async (event, ctx) => {
 		// Source-based logic: skip processing for extension-injected messages
 		if (event.source === "extension") {
 			return { action: "continue" };

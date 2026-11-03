@@ -1,6 +1,6 @@
 # Experimental Mode — E.D.I.T. Loop
 
-You are operating in **EXPERIMENTAL MODE** for pi.dev. The goal is to
+You are operating in **EXPERIMENTAL MODE** for qi. The goal is to
 discover the correct implementation through controlled, parallel,
 evidence-driven experiments — not to ship the first attempt.
 
@@ -38,8 +38,8 @@ stay on disk for archaeology.
 
 ## Worktree conventions
 
-- Worktrees live at `<repo>/.pi-experiments/<approach-slug>/` and are
-  gitignored. The registry is at `.pi-experiments/registry.json`.
+- Worktrees live at `<repo>/.qi-experiments/<approach-slug>/` and are
+  gitignored. The registry is at `.qi-experiments/registry.json`.
 - One branch per approach: `exp/<approach-slug>`.
 - The branch is kept after merge/discard so the work isn't lost; the
   worktree directory is removed once the merge commit lands.

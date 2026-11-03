@@ -5,31 +5,29 @@ sidebar_label: Introduction
 slug: /intro
 ---
 
-# pi — Local AI Coding Agent
+# qi — Local AI Coding Agent
 
-pi is a local-first, terminal-native AI coding agent. It reads your codebase, edits files, runs shell commands, and searches the web — using your own API credentials, running entirely on your machine.
+qi is a local-first, terminal-native AI coding agent. It reads your codebase, edits files, runs shell commands, and searches the web — using your own API credentials, running entirely on your machine.
 
-This site documents the **bramburn/qi** fork of the upstream [earendil-works/pi](https://github.com/earendil-works/pi) project. For the canonical upstream documentation, see [pi.dev/docs/latest](https://pi.dev/docs/latest).
+## What qi does
 
-## What pi does
-
-pi is an interactive CLI tool. You run it from your terminal, describe what you want to build or fix, and pi plans and executes the changes:
+qi is an interactive CLI tool. You run it from your terminal, describe what you want to build or fix, and qi plans and executes the changes:
 
 - **Reads and edits source files** across your project
 - **Runs shell commands** — builds, tests, git operations, anything in your `$PATH`
 - **Uses your own LLM provider** — no data leaves your machine
-- **Augments itself** with custom tools and prompts
+- **Augments itself** with custom tools, extensions, and prompts
 - **Supports multiple providers** — Anthropic Claude, OpenAI GPT, Google Gemini, Groq, and more
 
-## Who this fork is for
+## Design priorities
 
-This fork (`bramburn/qi`) exists because the author wanted:
+qi is developed as an independent project. Its priorities:
 
-1. **Build autonomy** — independent npm publishing and binary releases, not tied to upstream's pipeline
-2. **Windows-first iteration** — faster dev loop on Windows with worktree-based agents
-3. **Selected fork features** — changes that don't (yet) have a path into upstream
+1. **Bun-first runtime** — install, build, check, and test all run under Bun
+2. **Windows-first iteration** — the build pipeline and CI cover Windows explicitly
+3. **Self-contained releases** — npm publishes to `@bramburn/*` and binaries ship on GitHub releases
 
-For the full list of differences, see [Why a Fork?](./fork/why-fork)
+See [Fork Features](./fork/features) for the feature list.
 
 ## Quick start
 
@@ -44,17 +42,17 @@ npm install -g @bramburn/qi-coding-agent
 export ANTHROPIC_API_KEY=sk-...
 
 # Launch the interactive TUI
-pi
+qi
 
 # Or run a one-shot prompt
-pi -p "Explain this function"
+qi -p "Explain this function"
 ```
 
 For full installation steps, see [Installation](./getting-started/installation).
 
 ## Architecture overview
 
-pi is a TypeScript monorepo with five core packages:
+qi is a TypeScript monorepo with five core packages:
 
 | Package | Role |
 |---------|------|
@@ -66,17 +64,6 @@ pi is a TypeScript monorepo with five core packages:
 
 For a deep dive, see the [Architecture](./architecture) section.
 
-## Fork vs upstream
+## History
 
-:::caution This is a fork
-The `bramburn/qi` fork diverges from `earendil-works/pi` in several ways. Not all upstream changes are merged, and not all fork changes go upstream. Always check which repo you are reading from.
-:::
-
-Key differences:
-
-- **npm publishing** — fork publishes to `@bramburn/*` scope; upstream publishes to `@earendil-works/*`
-- **Binary naming** — fork binary is `pi-bramburn`; upstream is `pi`
-- **Release process** — fork has its own CI pipeline; upstream uses a different one
-- **Build tooling** — fork uses a custom `build-both` orchestrator
-
-See [Fork Features](./fork/features) for the full list.
+qi began as a fork of the `pi` coding agent and is now maintained independently: the command is `qi`, published packages use the `@bramburn/qi-*` scope, and configuration lives under `~/.qi` and `.qi/`. See [Why a Fork?](./fork/why-fork) for the origin and [Sync Process](./fork/sync) for how upstream changes are handled.
