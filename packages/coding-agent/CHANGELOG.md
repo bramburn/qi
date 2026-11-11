@@ -4,6 +4,7 @@
 
 ### Added
 
+- `@bramburn/qi-coding-agent` now exports `getModelSearchText`, `getModelSelectorSearchText`, and `ModelSearchItem`, so extensions can rank models exactly like the `/model` selector instead of mirroring the helpers.
 - Remember the last-used thinking level per model (`modelThinkingLevels`, keyed by `provider/modelId`) and restore it when a new session starts or the active model changes. `/thinking`, the thinking picker, Shift+Tab, and the RPC `set_thinking_level` / `cycle_thinking_level` commands persist the effective clamped level; session history, `--models provider/id:level`, `--thinking`, and the SDK `thinkingLevel` option still take precedence and are not written by construction alone.
 - Ctrl+V paste now reads video payloads from the Wayland/X11 clipboard and attaches them behind `[paste #N video: file]` markers. Video attachments are uploaded only when the active model's API accepts video (Google Gemini/Vertex); otherwise they are dropped with a warning.
 - Ctrl+V paste now attaches clipboard PDFs (`readClipboardPdf`) behind `[paste #N pdf: file]` markers. Video/PDF uploads are gated per model via `modelSupportsMediaUpload` (registry `input` modality plus API serialization support) instead of an API-name check.
