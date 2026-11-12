@@ -1,20 +1,4 @@
 export {
-	createExperimentToolDefinitions,
-	createExperimentTools,
-	EXPERIMENT_TOOL_NAMES,
-	type ExperimentToolName,
-	shouldRegisterExperimentTools,
-} from "../subagent/experiment-tools.ts";
-export {
-	createSubagentTool,
-	createSubagentToolDefinition,
-	type SubagentSettingsReader,
-	type SubagentToolDetails,
-	type SubagentToolInput,
-	type SubagentToolOptions,
-	shouldRegisterSubagentTool,
-} from "../subagent/subagent-tool.ts";
-export {
 	type BashOperations,
 	type BashSpawnContext,
 	type BashSpawnHook,
@@ -97,19 +81,6 @@ export {
 
 import type { AgentTool } from "@bramburn/qi-agent-core";
 import type { ToolDefinition } from "../extensions/types.ts";
-import {
-	createExperimentToolDefinitions,
-	createExperimentTools,
-	EXPERIMENT_TOOL_NAMES,
-	type ExperimentToolName,
-	shouldRegisterExperimentTools,
-} from "../subagent/experiment-tools.ts";
-import {
-	createSubagentTool,
-	createSubagentToolDefinition,
-	type SubagentToolOptions,
-	shouldRegisterSubagentTool,
-} from "../subagent/subagent-tool.ts";
 import { type BashToolOptions, createBashTool, createBashToolDefinition } from "./bash.ts";
 import { createEditTool, createEditToolDefinition, type EditToolOptions } from "./edit.ts";
 import { createFindTool, createFindToolDefinition, type FindToolOptions } from "./find.ts";
@@ -121,17 +92,7 @@ import { createWriteTool, createWriteToolDefinition, type WriteToolOptions } fro
 
 export type Tool = AgentTool<any>;
 export type ToolDef = ToolDefinition<any, any>;
-export type ToolName =
-	| "read"
-	| "bash"
-	| "powershell"
-	| "edit"
-	| "write"
-	| "grep"
-	| "find"
-	| "ls"
-	| "subagent"
-	| ExperimentToolName;
+export type ToolName = "read" | "bash" | "powershell" | "edit" | "write" | "grep" | "find" | "ls";
 export const allToolNames: Set<ToolName> = new Set([
 	"read",
 	"bash",
@@ -141,8 +102,6 @@ export const allToolNames: Set<ToolName> = new Set([
 	"grep",
 	"find",
 	"ls",
-	"subagent",
-	...EXPERIMENT_TOOL_NAMES,
 ]);
 
 export interface ToolsOptions {
@@ -154,23 +113,6 @@ export interface ToolsOptions {
 	grep?: GrepToolOptions;
 	find?: FindToolOptions;
 	ls?: LsToolOptions;
-	subagent?: SubagentToolOptions;
-}
-
-/**
- * By-name factories are explicit opt-ins, so they enforce the same registration
- * guards as the registry paths instead of handing out flag-gated tools.
- */
-function ensureSubagentToolAllowed(options?: ToolsOptions): void {
-	if (shouldRegisterSubagentTool(options?.subagent)) return;
-	throw new Error(
-		"subagent tool requires the Bun runtime (or an injected runner) with subagent.enabled: true — use createAllToolDefinitions for conditional registration",
-	);
-}
-
-function ensureExperimentToolsAllowed(options?: ToolsOptions): void {
-	if (shouldRegisterExperimentTools(options?.subagent)) return;
-	throw new Error("experiment tools require subagent.enableExperiments: true — use createAllToolDefinitions");
 }
 
 export function createToolDefinition(toolName: ToolName, cwd: string, options?: ToolsOptions): ToolDef {
@@ -191,19 +133,6 @@ export function createToolDefinition(toolName: ToolName, cwd: string, options?: 
 			return createFindToolDefinition(cwd, options?.find);
 		case "ls":
 			return createLsToolDefinition(cwd, options?.ls);
-		case "subagent":
-			ensureSubagentToolAllowed(options);
-			return createSubagentToolDefinition(cwd, options?.subagent);
-		case "experiment_start":
-		case "experiment_run":
-		case "experiment_test":
-		case "experiment_diff":
-		case "experiment_merge":
-		case "experiment_discard":
-		case "experiment_list":
-		case "experiment_compare":
-			ensureExperimentToolsAllowed(options);
-			return createExperimentToolDefinitions(cwd, options?.subagent)[toolName];
 		default:
 			throw new Error(`Unknown tool name: ${toolName}`);
 	}
@@ -227,19 +156,6 @@ export function createTool(toolName: ToolName, cwd: string, options?: ToolsOptio
 			return createFindTool(cwd, options?.find);
 		case "ls":
 			return createLsTool(cwd, options?.ls);
-		case "subagent":
-			ensureSubagentToolAllowed(options);
-			return createSubagentTool(cwd, options?.subagent);
-		case "experiment_start":
-		case "experiment_run":
-		case "experiment_test":
-		case "experiment_diff":
-		case "experiment_merge":
-		case "experiment_discard":
-		case "experiment_list":
-		case "experiment_compare":
-			ensureExperimentToolsAllowed(options);
-			return createExperimentTools(cwd, options?.subagent)[toolName];
 		default:
 			throw new Error(`Unknown tool name: ${toolName}`);
 	}
@@ -252,14 +168,6 @@ export function createCodingToolDefinitions(cwd: string, options?: ToolsOptions)
 		createEditToolDefinition(cwd, options?.edit),
 		createWriteToolDefinition(cwd, options?.write),
 	];
-	// Not read-only: a subagent spawns full agents with write access.
-	if (shouldRegisterSubagentTool(options?.subagent)) {
-		definitions.push(createSubagentToolDefinition(cwd, options?.subagent));
-	}
-	// Experiments create worktrees and merge branches — full write access.
-	if (shouldRegisterExperimentTools(options?.subagent)) {
-		definitions.push(...Object.values(createExperimentToolDefinitions(cwd, options?.subagent)));
-	}
 	return definitions;
 }
 
@@ -283,12 +191,6 @@ export function createAllToolDefinitions(cwd: string, options?: ToolsOptions): P
 		find: createFindToolDefinition(cwd, options?.find),
 		ls: createLsToolDefinition(cwd, options?.ls),
 	};
-	if (shouldRegisterSubagentTool(options?.subagent)) {
-		definitions.subagent = createSubagentToolDefinition(cwd, options?.subagent);
-	}
-	if (shouldRegisterExperimentTools(options?.subagent)) {
-		Object.assign(definitions, createExperimentToolDefinitions(cwd, options?.subagent));
-	}
 	return definitions;
 }
 
@@ -299,12 +201,6 @@ export function createCodingTools(cwd: string, options?: ToolsOptions): Tool[] {
 		createEditTool(cwd, options?.edit),
 		createWriteTool(cwd, options?.write),
 	];
-	if (shouldRegisterSubagentTool(options?.subagent)) {
-		tools.push(createSubagentTool(cwd, options?.subagent));
-	}
-	if (shouldRegisterExperimentTools(options?.subagent)) {
-		tools.push(...Object.values(createExperimentTools(cwd, options?.subagent)));
-	}
 	return tools;
 }
 
@@ -328,11 +224,5 @@ export function createAllTools(cwd: string, options?: ToolsOptions): Partial<Rec
 		find: createFindTool(cwd, options?.find),
 		ls: createLsTool(cwd, options?.ls),
 	};
-	if (shouldRegisterSubagentTool(options?.subagent)) {
-		tools.subagent = createSubagentTool(cwd, options?.subagent);
-	}
-	if (shouldRegisterExperimentTools(options?.subagent)) {
-		Object.assign(tools, createExperimentTools(cwd, options?.subagent));
-	}
 	return tools;
 }

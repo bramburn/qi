@@ -22,9 +22,6 @@ export interface AppKeybindings {
 	"app.model.cycleBackward": true;
 	"app.model.select": true;
 	"app.tools.expand": true;
-	"app.subagent.experimentsDashboard": true;
-	"app.subagent.bgDashboardUp": true;
-	"app.subagent.bgDashboardDown": true;
 	"app.thinking.toggle": true;
 	"app.session.toggleNamedFilter": true;
 	"app.editor.external": true;
@@ -119,24 +116,6 @@ export const KEYBINDINGS = {
 	},
 	"app.model.select": { defaultKeys: "ctrl+l", description: "Open model selector" },
 	"app.tools.expand": { defaultKeys: "ctrl+o", description: "Toggle tool output" },
-	"app.subagent.experimentsDashboard": {
-		// ctrl+e is a tui.editor.cursorLineEnd default, and app keybindings are
-		// checked before editor actions — keep these defaults disjoint.
-		defaultKeys: "ctrl+shift+e",
-		description: "Open subagent experiments dashboard",
-	},
-	// Bound only while the background-task dashboard (`/subagents`) is the
-	// visible overlay, so up/down reach the editor normally otherwise. The
-	// handler is registered and removed with the overlay — see
-	// InteractiveMode.setBackgroundDashboardNavigation.
-	"app.subagent.bgDashboardUp": {
-		defaultKeys: "up",
-		description: "Select previous row in the background-task dashboard",
-	},
-	"app.subagent.bgDashboardDown": {
-		defaultKeys: "down",
-		description: "Select next row in the background-task dashboard",
-	},
 	"app.thinking.toggle": {
 		defaultKeys: "ctrl+t",
 		description: "Toggle thinking blocks",

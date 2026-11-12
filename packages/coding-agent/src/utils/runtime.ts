@@ -1,8 +1,8 @@
 /**
- * Bun runtime surface for the native subagent capability.
+ * Bun runtime surface used by subprocess helpers and bash teardown.
  *
  * pi is Bun-only. This module is the single place that declares the Bun APIs
- * used by the subagent runner, so the rest of the module can import a typed
+ * used for subprocesses, so the rest of the module can import a typed
  * `bun` object instead of either (a) reaching for a `Bun` global that
  * `tsconfig.base.json` does not type (it pins `"types": ["node"]`) or (b)
  * importing the untyped `"bun"` module.
@@ -110,13 +110,13 @@ const candidate = (globalThis as { Bun?: BunApi }).Bun;
 /**
  * The Bun API object.
  *
- * Throws when called off Bun. Callers that must degrade gracefully (tool
- * registration) check {@link isBunRuntime} first; the runner itself does not,
- * because a subagent run is only ever started by code that already gated on it.
+ * Throws when called off Bun. Callers that must degrade gracefully check
+ * {@link isBunRuntime} first; callers that cannot run at all off Bun call this
+ * directly and let it throw.
  */
 export function getBun(): BunApi {
 	if (!candidate || typeof candidate.spawn !== "function") {
-		throw new Error("Native subagents require the Bun runtime (pi is Bun-only).");
+		throw new Error("This feature requires the Bun runtime (pi is Bun-only).");
 	}
 	return candidate;
 }
