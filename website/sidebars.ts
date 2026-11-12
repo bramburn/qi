@@ -64,11 +64,6 @@ const sidebars: SidebarsConfig = {
     },
     {
       type: 'doc',
-      id: 'fork/background-subagent',
-      label: 'Background Subagent',
-    },
-    {
-      type: 'doc',
       id: 'fork/sync',
       label: 'Sync Process',
     },
