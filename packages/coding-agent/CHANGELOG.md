@@ -5,6 +5,8 @@
 ### Breaking Changes
 
 - The native subagent subsystem is removed. The built-in `subagent` tool, the eight `experiment_*` tools, `contact_supervisor`, `/subagents`, the background-task and experiments dashboards, the `app.subagent.*` keybindings, and every `subagent.*` setting are gone; there is no shim and no deprecation period. `--subagent-depth` is rejected as an unknown option. `AgentSessionEvent` no longer includes `background_task_settled`. The package root no longer exports `SubagentEvent`, `SubagentRunner`, `SubagentSpec`, or the analytics helpers `startSubagentTask` / `endSubagentTask` / `newTaskSpanId`, and `CreateAgentSessionOptions` no longer accepts `subagentDepth`.
+- `ToolName` no longer includes `"subagent"` or the eight `experiment_*` names, and the exported `ToolsOptions` interface no longer carries a `subagent` field. Code that passed `new AgentSession({ tools: { subagent: ... } })` or narrowed on the removed `ToolName` members no longer compiles; an extension that registers its own tool must register it under a name of its own choosing.
+- The `pi.agent.task` span type in `HARNESS_TELEMETRY_SCHEMA` (declared in `packages/agent`) keeps its schema but lost its only producers — `startSubagentTask` / `endSubagentTask` / `newTaskSpanId` were the sole emitters. Telemetry consumers that read `pi.agent.task` now receive nothing. Removing the schema entry is out of scope here because the schema lives in a different package.
 
 ### Removed
 
