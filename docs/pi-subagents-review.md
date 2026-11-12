@@ -1,3 +1,11 @@
+> **Historical analysis — subsystem removed.** This document reviews the native
+> subagent subsystem, which was removed by
+> [ADR-0007](../specs/adr/0007-remove-native-subagent.md) on 2026-10-26.
+> Every `path:line` citation, `REQ-*` identifier, and `specs/subagent/**`
+> reference below is dead. The recommendations in this document are **not
+> actionable** — there is no subsystem left to apply them to. Retained for
+> architectural rationale only.
+
 # Review: `tintinweb/pi-subagents`
 
 Third reference in the subagent-architecture comparison, after
@@ -224,6 +232,8 @@ process get two managers, two independent 10-slot budgets, and only the first is
 ---
 
 ## 5. What to take, and what to refuse
+
+> Not actionable: the subsystem this table would change no longer exists (ADR-0007).
 
 | Idea | Verdict | Why |
 |---|---|---|
