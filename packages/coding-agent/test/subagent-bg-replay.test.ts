@@ -48,7 +48,7 @@ const bunRef = vi.hoisted(() => ({ current: undefined as unknown }));
 // background.ts reads crash evidence via getBun().file().text(). The vitest
 // runner is Node (no `Bun` global), so swap in a node:fs-backed reader — the
 // same injection seam the registry tests use.
-vi.mock("../src/core/subagent/runtime.ts", () => ({
+vi.mock("../src/utils/runtime.ts", () => ({
 	getBun: () => bunRef.current,
 	isBunRuntime: () => true,
 }));

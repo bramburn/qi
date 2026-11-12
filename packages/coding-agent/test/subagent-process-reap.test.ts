@@ -30,7 +30,7 @@ import { createEmptyUsage, type SubagentResult, type SubagentRunner } from "../s
 
 const bunRef = vi.hoisted(() => ({ current: undefined as unknown }));
 
-vi.mock("../src/core/subagent/runtime.ts", () => ({
+vi.mock("../src/utils/runtime.ts", () => ({
 	getBun: () => bunRef.current,
 	isBunRuntime: () => true,
 }));

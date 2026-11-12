@@ -48,6 +48,7 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 import { getAgentDir } from "../../config.ts";
+import { getBun } from "../../utils/runtime.ts";
 import { endSubagentTask, newTaskSpanId, startSubagentTask } from "../analytics-store.ts";
 import {
 	applySettleToStreaks,
@@ -76,7 +77,6 @@ import {
 	writeFailureCounters,
 	writeRecordFile,
 } from "./result-record.ts";
-import { getBun } from "./runtime.ts";
 import { killPidTree } from "./shell.ts";
 import {
 	createEmptyUsage,

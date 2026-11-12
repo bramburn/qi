@@ -55,12 +55,12 @@ const fakeBun = {
 	},
 };
 
-vi.mock("../src/core/subagent/runtime.ts", () => ({
+vi.mock("../src/utils/runtime.ts", () => ({
 	getBun: () => fakeBun,
 	isBunRuntime: () => true,
 }));
 
-const { parseProcessTable, snapshotDescendants } = await import("../src/core/subagent/win32-tree.ts");
+const { parseProcessTable, snapshotDescendants } = await import("../src/utils/win32-tree.ts");
 const { killProcessTree } = await import("../src/utils/shell.ts");
 
 function delay(ms: number): Promise<void> {

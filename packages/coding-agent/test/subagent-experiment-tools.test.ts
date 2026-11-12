@@ -27,18 +27,12 @@ import {
 	createExperimentToolDefinitions,
 	type TestRunnerPlan,
 } from "../src/core/subagent/experiment-tools.ts";
-import type {
-	BunApi,
-	BunReadableStream,
-	BunShell,
-	BunShellCommand,
-	BunSubprocess,
-} from "../src/core/subagent/runtime.ts";
 import { runShell } from "../src/core/subagent/shell.ts";
+import type { BunApi, BunReadableStream, BunShell, BunShellCommand, BunSubprocess } from "../src/utils/runtime.ts";
 
 const bunRef = vi.hoisted(() => ({ current: undefined as unknown }));
 
-vi.mock("../src/core/subagent/runtime.ts", () => ({
+vi.mock("../src/utils/runtime.ts", () => ({
 	getBun: () => bunRef.current,
 	isBunRuntime: () => true,
 }));

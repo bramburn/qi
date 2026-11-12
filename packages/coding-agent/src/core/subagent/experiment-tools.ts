@@ -22,6 +22,7 @@ import { join } from "node:path";
 import type { AgentTool, AgentToolResult } from "@bramburn/qi-agent-core";
 import { StringEnum } from "@bramburn/qi-ai";
 import { type Static, Type } from "typebox";
+import { getBun } from "../../utils/runtime.ts";
 import { DEFAULT_SUBAGENT_SETTINGS } from "../defaults.ts";
 import type { ToolDefinition } from "../extensions/types.ts";
 import { wrapToolDefinition } from "../tools/tool-definition-wrapper.ts";
@@ -37,7 +38,6 @@ import {
 	makeExperimentId,
 	updateExperiment,
 } from "./experiment-registry.ts";
-import { getBun } from "./runtime.ts";
 import { runShell, runShellLine, type ShellOptions, type ShellResult } from "./shell.ts";
 import type { SubagentToolOptions } from "./subagent-tool.ts";
 import {

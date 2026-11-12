@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { isBunRuntime } from "../src/core/subagent/runtime.ts";
 import { createTool, createToolDefinition, type ToolsOptions } from "../src/core/tools/index.ts";
+import { isBunRuntime } from "../src/utils/runtime.ts";
 
 /**
  * The by-name factories (createTool / createToolDefinition) must enforce the

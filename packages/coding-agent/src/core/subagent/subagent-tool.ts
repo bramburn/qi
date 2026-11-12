@@ -63,6 +63,7 @@ import type { AgentTool, AgentToolResult, AgentToolUpdateCallback, ThinkingLevel
 import type { Message } from "@bramburn/qi-ai";
 import { type Static, Type } from "typebox";
 import { getAgentDir } from "../../config.ts";
+import { isBunRuntime } from "../../utils/runtime.ts";
 import { endSubagentTask, newTaskSpanId, startSubagentTask } from "../analytics-store.ts";
 import { DEFAULT_SUBAGENT_SETTINGS, type ResolvedSubagentSettings } from "../defaults.ts";
 import type { ToolDefinition } from "../extensions/types.ts";
@@ -89,7 +90,6 @@ import {
 } from "./control.ts";
 import { createDagRun, type DagStateFile, makeDagRunId, runDagInline, startDagDetached } from "./orchestration.ts";
 import { renderSubagentCall, renderSubagentResult } from "./render.ts";
-import { isBunRuntime } from "./runtime.ts";
 import { deleteSpec, listSpecs, loadSpec, saveSpec } from "./saved-specs.ts";
 import {
 	checkSchemaSupport,

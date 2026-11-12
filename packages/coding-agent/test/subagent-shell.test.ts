@@ -25,6 +25,7 @@ import { type ChildProcess, spawn as nodeSpawn } from "node:child_process";
 import { constants } from "node:os";
 import type { Readable } from "node:stream";
 import { describe, expect, it } from "vitest";
+import { createKillController, runShell } from "../src/core/subagent/shell.ts";
 import {
 	type BunApi,
 	type BunReadableStream,
@@ -33,9 +34,8 @@ import {
 	type BunShellResult,
 	type BunSubprocess,
 	isBunRuntime,
-} from "../src/core/subagent/runtime.ts";
-import { createKillController, runShell } from "../src/core/subagent/shell.ts";
-import { createStreamPump } from "../src/core/subagent/stream.ts";
+} from "../src/utils/runtime.ts";
+import { createStreamPump } from "../src/utils/subprocess-stream.ts";
 
 /** Prints its own argv (minus node and the -e script) as JSON. */
 const PROBE_ARGV = "process.stdout.write(JSON.stringify(process.argv.slice(1)))";

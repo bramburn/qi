@@ -20,13 +20,6 @@ import { join } from "node:path";
 import type { Readable } from "node:stream";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ENV_AGENT_DIR } from "../src/config.ts";
-import type {
-	BunApi,
-	BunReadableStream,
-	BunShell,
-	BunSpawnOptions,
-	BunSubprocess,
-} from "../src/core/subagent/runtime.ts";
 import { loadSpec, saveSpec, specsDir } from "../src/core/subagent/saved-specs.ts";
 import { createSubagentToolDefinition } from "../src/core/subagent/subagent-tool.ts";
 import {
@@ -37,13 +30,14 @@ import {
 	type SubagentRunner,
 	type SubagentRunRequest,
 } from "../src/core/subagent/types.ts";
+import type { BunApi, BunReadableStream, BunShell, BunSpawnOptions, BunSubprocess } from "../src/utils/runtime.ts";
 
 // ---------------------------------------------------------------------------
 // Fake Bun: `spawn` only. `file`, `write`, and `$` throw on purpose — nothing on
 // these paths should reach them, and a silent stub would hide the dependency.
 // ---------------------------------------------------------------------------
 
-vi.mock("../src/core/subagent/runtime.ts", async () => {
+vi.mock("../src/utils/runtime.ts", async () => {
 	const { spawn: nodeSpawn } = await import("node:child_process");
 
 	/** Adapt a node readable to Bun's WHATWG default-reader shape. */
