@@ -35,11 +35,6 @@ const sidebars: SidebarsConfig = {
       label: 'Agent Event Loop',
     },
     {
-      type: 'doc',
-      id: 'architecture/background-tasks',
-      label: 'Background Tasks',
-    },
-    {
       type: 'link',
       label: 'Repository docs',
       href: 'https://github.com/bramburn/qi/tree/main/packages/coding-agent/docs',
@@ -56,11 +51,6 @@ const sidebars: SidebarsConfig = {
       type: 'doc',
       id: 'fork/features',
       label: 'Fork Features',
-    },
-    {
-      type: 'doc',
-      id: 'fork/experimental-mode',
-      label: 'Experimental Mode',
     },
     {
       type: 'doc',
