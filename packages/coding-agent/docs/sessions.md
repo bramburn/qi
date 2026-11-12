@@ -1,18 +1,18 @@
 # Sessions
 
-Pi saves conversations as sessions so you can continue work, branch from earlier turns, and revisit previous paths.
+Qi saves conversations as sessions so you can continue work, branch from earlier turns, and revisit previous paths.
 
 ## Session Storage
 
-Sessions auto-save to `~/.pi/agent/sessions/`, organized by working directory. Each session is a JSONL file with a tree structure.
+Sessions auto-save to `~/.qi/agent/sessions/`, organized by working directory. Each session is a JSONL file with a tree structure.
 
 ```bash
-pi -c                  # Continue most recent session
-pi -r                  # Browse and select from past sessions
-pi --no-session        # Ephemeral mode; do not save
-pi --name "my task"    # Set session display name at startup
-pi --session <path|id> # Use a specific session file or partial session ID
-pi --fork <path|id>    # Fork a session file or partial session ID into a new session
+qi -c                  # Continue most recent session
+qi -r                  # Browse and select from past sessions
+qi --no-session        # Ephemeral mode; do not save
+qi --name "my task"    # Set session display name at startup
+qi --session <path|id> # Use a specific session file or partial session ID
+qi --fork <path|id>    # Fork a session file or partial session ID into a new session
 ```
 
 Use `/session` in interactive mode to see the current session file, session ID, message count, tokens, and cost.
@@ -21,9 +21,9 @@ For the JSONL file format and SessionManager API, see [Session Format](session-f
 
 ## Per-Session Default Model
 
-Each session file can carry a preferred model declaration. When a session is created or resumed, pi uses that model as the default instead of the global `defaultModel` setting.
+Each session file can carry a preferred model declaration. When a session is created or resumed, qi uses that model as the default instead of the global `defaultModel` setting.
 
-**Current behavior:** `defaultModel` is global — stored in `~/.pi/settings.json` and written by the model selector. Switching models in the TUI changes the default for all future sessions.
+**Current behavior:** `defaultModel` is global — stored in `~/.qi/settings.json` and written by the model selector. Switching models in the TUI changes the default for all future sessions.
 
 **Planned behavior:** The session file's header will carry an optional `model` field:
 
@@ -52,7 +52,7 @@ See [Per-Session Model Plan](/docs/per-session-model-plan.md) for the full archi
 
 ## Resuming and Deleting Sessions
 
-`/resume` opens an interactive session picker for the current project. `pi -r` opens the same picker at startup.
+`/resume` opens an interactive session picker for the current project. `qi -r` opens the same picker at startup.
 
 In the picker you can:
 
@@ -63,7 +63,7 @@ In the picker you can:
 - rename with Ctrl+R
 - delete with Ctrl+D, then confirm
 
-When available, pi uses the `trash` CLI for deletion instead of permanently removing files.
+When available, qi uses the `trash` CLI for deletion instead of permanently removing files.
 
 ## Naming Sessions
 
@@ -76,11 +76,11 @@ Use `/name <name>` to set a human-readable session name:
 Set the name at startup with `--name` or `-n`:
 
 ```bash
-pi --name "Refactor auth module"
-pi --name "CI audit" -p "Review this build failure"
+qi --name "Refactor auth module"
+qi --name "CI audit" -p "Review this build failure"
 ```
 
-Named sessions are easier to find in `/resume` and `pi -r`.
+Named sessions are easier to find in `/resume` and `qi -r`.
 
 ## Branching with `/tree`
 
@@ -144,7 +144,7 @@ Use `/tree` when you want to keep alternatives together. Use `/fork` or `/clone`
 
 ## Branch Summaries
 
-When `/tree` switches away from one branch to another, pi can summarize the abandoned branch and attach that summary at the new position. This preserves important context from the path you left without replaying the whole branch.
+When `/tree` switches away from one branch to another, qi can summarize the abandoned branch and attach that summary at the new position. This preserves important context from the path you left without replaying the whole branch.
 
 When prompted, choose one of:
 

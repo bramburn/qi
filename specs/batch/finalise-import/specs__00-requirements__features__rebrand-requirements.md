@@ -21,10 +21,10 @@ This specification defines the requirements for cutting all ties between `qi` an
 
 **Priority:** MUST
 **Statement:** The system names the root workspace `qi-monorepo` while naming all published workspace packages under the `@bramburn/qi-*` scope.
-**Rationale:** Decision D2 replaces all 11 `@earendil-works/pi-*` packages with `@bramburn/qi-*` and renames the root workspace in `package.json:2` from `pi-monorepo` to `qi-monorepo`. Currently `packages/coding-agent/package.json:2,51-56` and sibling packages declare `@earendil-works/pi-*` and `scripts/fork-publish-rename.mjs:21-22` rewrites them to `@bramburn/pi-*` only during publishing. All 11 workspace `package.json` manifests and internal workspace imports are renamed in-tree to `@bramburn/qi-*` rather than rewritten transiently at publish time, eliminating the publish-time shrinkwrap drift noted in `AGENTS.md:323` (`R2`).
+**Rationale:** Decision D2 replaces all 11 `@earendil-works/pi-*` packages with `@bramburn/qi-*` and renames the root workspace in `package.json:2` from `pi-monorepo` to `qi-monorepo`. Currently `packages/coding-agent/package.json:2,51-56` and sibling packages declare `@earendil-works/pi-*` and `scripts/fork-publish-rename.mjs:21-22` rewrites them to `@bramburn/qi-*` only during publishing. All 11 workspace `package.json` manifests and internal workspace imports are renamed in-tree to `@bramburn/qi-*` rather than rewritten transiently at publish time, eliminating the publish-time shrinkwrap drift noted in `AGENTS.md:323` (`R2`).
 **Acceptance criteria:**
 - AC1: Given the root workspace manifest, when reading its `name` field, then the value is `"qi-monorepo"`.
-- AC2: Given all 11 publishable workspace package manifests, when inspecting their `name` fields and internal workspace dependency keys, then every package uses `@bramburn/qi-*` and zero `@earendil-works/pi-*` or `@bramburn/pi-*` package names remain.
+- AC2: Given all 11 publishable workspace package manifests, when inspecting their `name` fields and internal workspace dependency keys, then every package uses `@bramburn/qi-*` and zero `@earendil-works/pi-*` or `@bramburn/qi-*` package names remain.
 **Source:** Decision D2 (`specs/batch/batch-context.md`), derived from `ADR-0001`
 
 ### R-REBRAND-003: User state directory and project directory use `.qi`
@@ -65,7 +65,7 @@ This specification defines the requirements for cutting all ties between `qi` an
 **Rationale:** `packages/coding-agent/src/cli/startup-ui.ts:33-46` gates first-time setup on `OFFICIAL_PACKAGE_NAME = "@earendil-works/pi-coding-agent"`, `OFFICIAL_APP_NAME = "pi"`, and `OFFICIAL_CONFIG_DIR_NAME = ".pi"`, while `packages/coding-agent/src/config.ts:346` points binary self-update instructions to `https://github.com/earendil-works/pi-mono/releases/latest` and `config.ts:518` defines `FORK_NAME = "bramburn"`. `FORK_NAME = "bramburn"` is retained so `qi --version` at `packages/coding-agent/src/main.ts:832` prints `qi <version> [bramburn]` per `AGENTS.md` §Forking (`R4`).
 **Acceptance criteria:**
 - AC1: Given `startup-ui.ts` distribution constants, when `isOfficialDistribution` is called with runtime `PACKAGE_NAME`, `APP_NAME`, and `CONFIG_DIR_NAME`, then it returns `true` for `@bramburn/qi-coding-agent`, `qi`, and `.qi`.
-- AC2: Given binary installation mode in `getSelfUpdateUnavailableInstruction` (`config.ts:346`), when update instructions are formatted, then the download URL references `https://github.com/bramburn/pi/releases/latest` (or `bramburn/qi`) and not `earendil-works/pi-mono`.
+- AC2: Given binary installation mode in `getSelfUpdateUnavailableInstruction` (`config.ts:346`), when update instructions are formatted, then the download URL references `https://github.com/bramburn/qi/releases/latest` (or `bramburn/qi`) and not `earendil-works/pi-mono`.
 **Source:** Decisions D1, D2 (`specs/batch/batch-context.md`), derived from `ADR-0001`
 
 ### R-REBRAND-007: Zero outbound requests to upstream `pi.dev` endpoints
@@ -112,7 +112,7 @@ This specification defines the requirements for cutting all ties between `qi` an
 
 **Priority:** MUST
 **Statement:** The system documentation plus website landing pages specify `qi` with `@bramburn/qi-coding-agent` for installation, usage, plus package references.
-**Rationale:** `README.md:1-164` references `@earendil-works/pi-*` and `pi.dev`, `packages/coding-agent/docs/environment-variables.md` documents `PI_*`, `packages/coding-agent/docs/packages.md:137` links to `pi.dev/packages`, and `website/docusaurus.config.ts:93` plus `website/src/pages/index.tsx:116` instruct users to run `npm install -g @bramburn/pi-codes`.
+**Rationale:** `README.md:1-164` references `@earendil-works/pi-*` and `pi.dev`, `packages/coding-agent/docs/environment-variables.md` documents `PI_*`, `packages/coding-agent/docs/packages.md:137` links to `pi.dev/packages`, and `website/docusaurus.config.ts:93` plus `website/src/pages/index.tsx:116` instruct users to run `npm install -g @bramburn/qi-codes`.
 **Acceptance criteria:**
 - AC1: Given `README.md`, `packages/coding-agent/docs/environment-variables.md`, and `packages/coding-agent/docs/packages.md`, when inspecting package names, command examples, and gallery links, then all references use `qi`, `@bramburn/qi-*`, `~/.qi`, and `QI_*` with zero `pi.dev` links.
 - AC2: Given `website/docusaurus.config.ts` and `website/src/pages/index.tsx`, when inspecting the site configuration and install call-to-action, then the install command specifies `@bramburn/qi-coding-agent`.

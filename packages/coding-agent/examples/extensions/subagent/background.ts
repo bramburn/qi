@@ -1,7 +1,7 @@
 /**
  * Background-task registry — file-backed store for fire-and-forget subagents.
  *
- * The subagent extension's `background: true` mode spawns detached child pi
+ * The subagent extension's `background: true` mode spawns detached child qi
  * processes and tracks their lifecycle here. On disk:
  *
  *   <agentDir>/subagent-bg/
@@ -51,7 +51,7 @@ export interface BackgroundUsage {
 
 export interface BackgroundTask {
 	id: string;
-	kind: "pi-subprocess";
+	kind: "qi-subprocess";
 	mode: "single" | "parallel" | "chain" | "script";
 	agent: string;
 	agentScope: "user" | "project" | "both";

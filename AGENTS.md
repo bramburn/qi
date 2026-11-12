@@ -2,7 +2,7 @@
 
 ## Planned Features
 
-- **Per-session default model** — allow each `.pi-session` file to carry its own preferred `defaultModel`, overriding the global setting. Currently `defaultModel` is global-only (`setDefaultModelAndProvider` writes to `~/.pi/settings.json`). Plan: `docs/per-session-model-plan.md`.
+- **Per-session default model** — allow each `.qi-session` file to carry its own preferred `defaultModel`, overriding the global setting. Currently `defaultModel` is global-only (`setDefaultModelAndProvider` writes to `~/.qi/agent/settings.json`). Plan: `docs/per-session-model-plan.md`.
 
 ## Conversational Style
 
@@ -18,7 +18,7 @@
 
 ## Runtime: Bun only
 
-pi runs on Bun. New code must use Bun APIs, not Node APIs, and must not carry a
+qi runs on Bun. New code must use Bun APIs, not Node APIs, and must not carry a
 Node fallback.
 
 - Use `Bun.spawn` for subprocesses. Never import `node:child_process` in new code; use `Bun.spawn` and do not rely on a `spawn` re-export from the `"bun"` import path; there is no dual-backend runner.
@@ -163,11 +163,11 @@ commit — do not use `--no-verify` to bypass it.
 - Hydrate/update locally with `bun install --ignore-scripts --linker=hoisted`; CI uses the same flags. The legacy `npm install --ignore-scripts` and `npm ci --ignore-scripts` still work but are not what CI runs. Don't run lifecycle scripts unless the user asks.
 - If dep metadata changes, refresh `package-lock.json` with `npm install --package-lock-only --ignore-scripts` (or `bun install` to update `bun.lock` instead).
 - If `packages/coding-agent/npm-shrinkwrap.json` needs regen, run `node scripts/generate-coding-agent-shrinkwrap.mjs` (verify with `--check` or `npm run check`). New deps with lifecycle scripts require review and an explicit allowlist entry in that script; never add one silently.
-- Pre-commit blocks lockfile commits unless `PI_ALLOW_LOCKFILE_CHANGE=1`. Don't bypass unless the user wants the lockfile change committed.
+- Pre-commit blocks lockfile commits unless `QI_ALLOW_LOCKFILE_CHANGE=1`. Don't bypass unless the user wants the lockfile change committed.
 
 ## Git
 
-Multiple pi sessions may be running in this cwd at the same time, each modifying different files. Git operations that touch unstaged, staged, or untracked files outside your own changes will stomp on other sessions' work. Follow these rules:
+Multiple qi sessions may be running in this cwd at the same time, each modifying different files. Git operations that touch unstaged, staged, or untracked files outside your own changes will stomp on other sessions' work. Follow these rules:
 
 Committing:
 
@@ -206,15 +206,17 @@ If rebase conflicts occur:
 
 ## Fork vs Upstream Remotes
 
-This checkout is a fork of `earendil-works/pi` (the original upstream). Two remotes are configured:
+This checkout is severed from upstream `earendil-works/pi` (ADR-0002, `specs/adr/0002-sever-upstream-endpoints.md`). Upstream sync is permanently disabled: do not merge, rebase onto, or cherry-pick `origin/main`.
 
-- `origin` = `https://github.com/earendil-works/pi.git` (the upstream; read-only from this account)
-- `fork` = `https://github.com/bramburn/pi.git` (the maintainer's fork; writable)
+Two remotes are configured:
+
+- `origin` = `https://github.com/earendil-works/pi.git` (historical reference only; never writable from this account)
+- `fork` = `https://github.com/bramburn/qi.git` (the only writable remote)
 
 Rules:
 
 - **Never push to `origin`.** This includes `origin/main`, `origin/<any-branch>`, and any tag pointing to an `origin` ref. All pushes — branches, tags, force-with-lease — go to `fork` only. Treat `origin` as read-only.
-- **Never create a PR against `origin`**, including `origin/main` (`earendil-works/pi`). Every PR Claude opens targets `fork` (`bramburn/pi`), with `fork/main` as the base. The standard workflow is: push the branch to `fork`, then Claude opens the PR against `fork/main`. The user (not Claude) opens any PR against upstream from the GitHub UI.
+- **Never create a PR against `origin`**, including `origin/main` (`earendil-works/pi`). Every PR Claude opens targets `fork` (`bramburn/qi`), with `fork/main` as the base. The standard workflow is: push the branch to `fork`, then Claude opens the PR against `fork/main`. The user (not Claude) opens any PR against upstream from the GitHub UI.
 - **Never auto-merge into `fork/main`.** A "Merge into fork/main" step in a test plan, follow-up list, or automation is a step Claude does **not** perform. PRs Claude opens are left for the user to review and merge. Do not include "Merge into fork/main" as an action item in PR descriptions, follow-up checklists, or any agent-issued task list.
 - Before any push, double-check the remote name in the command. `git push origin <branch>` is the wrong command; `git push fork <branch>` is right.
 - If a `gh` command targets `earendil-works/pi` and the API returns `user is blocked` / `HTTP 422: user is blocked`, surface the block to the user and stop. Do not retry against upstream via a different endpoint or token.
@@ -232,7 +234,7 @@ When reviewing PRs:
 When creating issues:
 
 - Add `pkg:*` labels for affected packages (`pkg:agent`, `pkg:ai`, `pkg:coding-agent`, `pkg:tui`); use all that apply.
-- **This repo is a fork of `earendil-works/pi`.** The `earendil-works/pi` repo blocks write access for external contributors — `gh issue create` silently fails with HTTP 403. Always create issues on the fork (`bramburn/pi`) unless the user explicitly confirms the upstream repo is writable.
+- **The only writable target is `bramburn/qi`.** Upstream `earendil-works/pi` blocks write access for external contributors — `gh issue create` silently fails with HTTP 403. Always create issues on the fork (`bramburn/qi`) unless the user explicitly confirms the upstream repo is writable.
 
 When posting issue/PR comments:
 
@@ -244,17 +246,17 @@ When closing issues via commit:
 
 - Include `fixes #<number>` or `closes #<number>` in the message so merging auto-closes the issue. For multiple issues, repeat the keyword per issue (`closes #1, closes #2`); a shared keyword (`closes #1, #2`) only closes the first.
 
-## Testing pi Interactive Mode with tmux
+## Testing qi Interactive Mode with tmux
 
 Run the TUI in a controlled terminal (from the repo root):
 
 ```bash
-tmux new-session -d -s pi-test -x 80 -y 24
-tmux send-keys -t pi-test "./pi-test.sh" Enter
-sleep 3 && tmux capture-pane -t pi-test -p     # capture after startup
-tmux send-keys -t pi-test "your prompt here" Enter
-tmux send-keys -t pi-test Escape               # special keys (also C-o for ctrl+o, etc.)
-tmux kill-session -t pi-test
+tmux new-session -d -s qi-test -x 80 -y 24
+tmux send-keys -t qi-test "./qi-test.sh" Enter
+sleep 3 && tmux capture-pane -t qi-test -p     # capture after startup
+tmux send-keys -t qi-test "your prompt here" Enter
+tmux send-keys -t qi-test Escape               # special keys (also C-o for ctrl+o, etc.)
+tmux kill-session -t qi-test
 ```
 
 ## Changelog
@@ -271,8 +273,8 @@ Rules:
 
 Attribution:
 
-- Internal (from issues): `Fixed foo bar ([#123](https://github.com/earendil-works/pi-mono/issues/123))`
-- External contributions: `Added feature X ([#456](https://github.com/earendil-works/pi-mono/pull/456) by [@username](https://github.com/username))`
+- Internal (from issues): `Fixed foo bar ([#123](https://github.com/bramburn/qi/issues/123))`
+- External contributions: `Added feature X ([#456](https://github.com/bramburn/qi/pull/456) by [@username](https://github.com/username))`
 
 ## Releasing
 
@@ -282,35 +284,35 @@ Attribution:
 
 2. **Local smoke test**: build an unpublished release and smoke test from outside the repo (so it can't resolve workspace files):
    ```bash
-   npm run release:local -- --out /tmp/pi-local-release --force
+   npm run release:local -- --out /tmp/qi-local-release --force
    cd /tmp
 
    # Node package install smoke tests
-   /tmp/pi-local-release/node/pi --help
-   /tmp/pi-local-release/node/pi --version
-   /tmp/pi-local-release/node/pi --list-models
-   /tmp/pi-local-release/node/pi -p "Say exactly: ok"
-   /tmp/pi-local-release/node/pi
+   /tmp/qi-local-release/node/pi --help
+   /tmp/qi-local-release/node/pi --version
+   /tmp/qi-local-release/node/pi --list-models
+   /tmp/qi-local-release/node/pi -p "Say exactly: ok"
+   /tmp/qi-local-release/node/pi
 
    # Bun binary smoke tests
-   /tmp/pi-local-release/bun/pi --help
-   /tmp/pi-local-release/bun/pi --version
-   /tmp/pi-local-release/bun/pi --list-models
-   /tmp/pi-local-release/bun/pi -p "Say exactly: ok"
-   /tmp/pi-local-release/bun/pi
+   /tmp/qi-local-release/bun/pi --help
+   /tmp/qi-local-release/bun/pi --version
+   /tmp/qi-local-release/bun/pi --list-models
+   /tmp/qi-local-release/bun/pi -p "Say exactly: ok"
+   /tmp/qi-local-release/bun/pi
    ```
-   Verify both Node and Bun startup, model/account listing, interactive startup, and at least one real prompt with the intended default provider. The bare commands `/tmp/pi-local-release/node/pi` and `/tmp/pi-local-release/bun/pi` start interactive mode; run each in tmux, submit a prompt, and wait for the model reply before considering the interactive smoke test passed. Failures are release blockers unless the user explicitly accepts the risk.
+   Verify both Node and Bun startup, model/account listing, interactive startup, and at least one real prompt with the intended default provider. The bare commands `/tmp/qi-local-release/node/pi` and `/tmp/qi-local-release/bun/pi` start interactive mode; run each in tmux, submit a prompt, and wait for the model reply before considering the interactive smoke test passed. Failures are release blockers unless the user explicitly accepts the risk.
 
 3. **Run the release script**:
    ```bash
-   PI_ALLOW_LOCKFILE_CHANGE=1 npm_config_min_release_age=0 npm run release:patch    # fixes + additions
-   PI_ALLOW_LOCKFILE_CHANGE=1 npm_config_min_release_age=0 npm run release:minor    # breaking changes
+   QI_ALLOW_LOCKFILE_CHANGE=1 npm_config_min_release_age=0 npm run release:patch    # fixes + additions
+   QI_ALLOW_LOCKFILE_CHANGE=1 npm_config_min_release_age=0 npm run release:minor    # breaking changes
    ```
    Use `npm_config_min_release_age=0` only for the release command. The repo's normal npm age gate can otherwise block the release lockfile refresh when the current workspace package version was published recently. Review any lockfile or shrinkwrap diffs the release creates before push.
 
    The release script bumps all package versions, updates changelogs, regenerates release artifacts, runs `npm run check`, commits `Release vX.Y.Z`, tags `vX.Y.Z`, adds fresh `## [Unreleased]` changelog sections, commits `Add [Unreleased] section for next cycle`, then pushes `main` and the tag. Do not rerun the release script after a tag was pushed.
 
-4. **CI verifies and announces the npm release**: pushing the `vX.Y.Z` tag triggers `.github/workflows/build-binaries.yml`. The `publish-npm` job uses npm trusted publishing through GitHub Actions OIDC with environment `npm-publish`; no local `npm publish`, `npm whoami`, OTP, or WebAuthn flow is required. After publishing, `announce-pi-dev-release` verifies every public workspace package resolves at the exact release version and that its npm tarball is available, then writes the verified release marker to R2. `pi.dev/api/latest-version` reads that marker; it must never announce a release from npm before this job succeeds.
+4. **CI verifies and announces the npm release**: pushing the `vX.Y.Z` tag triggers `.github/workflows/build-binaries.yml`. The `publish-npm` job uses npm trusted publishing through GitHub Actions OIDC with environment `npm-publish`; no local `npm publish`, `npm whoami`, OTP, or WebAuthn flow is required. After publishing, `announce-pi-dev-release` verifies every public workspace package resolves at the exact release version and that its npm tarball is available, then writes the verified release marker to R2. The R2 marker is legacy: `qi` resolves the latest version from the npm registry (`utils/version-check.ts`), so a release must still never be announced before this job succeeds.
 
 5. **If CI publish or announcement fails**: inspect the failed job. The publish helper is idempotent and skips package versions already present on npm; the announcement job rechecks availability before updating the R2 marker. Rerun the failed job or workflow after fixing CI or transient npm issues. Do not rerun `npm run release:patch` or `npm run release:minor` for the same version.
 
@@ -322,9 +324,15 @@ When you create a new package under `packages/*` or `packages/session-backends/*
 
 2. **Check the workspace entry.** The root `package.json` `workspaces` array already globs `packages/*` and `packages/session-backends/*`, so a package under those directories needs no edit. Add an entry only for something outside them (the `examples/extensions/*` packages are listed individually). Without a workspace entry `findPackageDirectories()` in `scripts/package-workspaces.mjs` and the npm CLI will not see the package, so the release script and the publish workflow both skip it.
 
-3. **Add a publish step** in `.github/workflows/publish.yml`:
+3. **Add a publish entry** in `.github/workflows/publish.yml`'s `jobs.publish.strategy.matrix.package` list, and a matching step in `.github/workflows/build-binaries.yml`'s `publish-npm` job (the tag-driven path):
 
    ```yaml
+   # .github/workflows/publish.yml — matrix entry (manual dispatch path)
+   - { name: '@bramburn/qi-<x>', dir: packages/<dir> }
+   ```
+
+   ```yaml
+   # .github/workflows/build-binaries.yml — publish-npm job (tag path)
    - name: Publish @bramburn/qi-<x>
      run: |
        node scripts/publish-with-skip.mjs packages/<dir> npm publish --access public --tag fork
@@ -354,27 +362,17 @@ External LLM code reviews run via the `repomix-code-review` skill. That skill wr
 
 ## Forking
 
-When this repo is forked (e.g. `bramburn/pi` from `earendil-works/pi`), the fork needs build-time markers so users can tell at a glance that they are running the fork rather than upstream:
+When this repo is forked (e.g. `bramburn/qi` from `earendil-works/pi`), the fork needs build-time markers so users can tell at a glance that they are running the fork rather than upstream:
 
-- `packages/coding-agent/src/config.ts` exports `FORK_NAME` (string) and uses it in the `pi --version` output. Format: `pi <version> [<FORK_NAME>]`.
+- `packages/coding-agent/src/config.ts` exports `FORK_NAME` (string) and uses it in the `qi --version` output. Format: `qi <version> [<FORK_NAME>]`.
 - `packages/coding-agent/src/main.ts` references `FORK_NAME` in the `parsed.version` branch and prints `${FORK_NAME}` next to the version line.
-- When changing the fork's identity (renaming, merging with another fork, dropping the fork marker), update `FORK_NAME` in `config.ts` and verify `pi --version` still prints the new marker. The output is the source of truth: if it doesn't say the right name, the constant is stale.
+- When changing the fork's identity (renaming, merging with another fork, dropping the fork marker), update `FORK_NAME` in `config.ts` and verify `qi --version` still prints the new marker. The output is the source of truth: if it doesn't say the right name, the constant is stale.
 - Do NOT remove `FORK_NAME` to "match upstream" without explicit user instruction — the fork marker is intentional even though upstream lacks it. The fork publishes to its own npm scope and the marker tells users which scope's binaries they have installed.
 - `packages/coding-agent/test/stdout-cleanliness.test.ts` `--version` assertion regex must match the fork marker. If the fork version is a pre-release (e.g. `0.84.2-b1`), the regex needs to accept the `-<suffix>` portion in addition to `<digit>.<digit>.<digit>`.
 
 ### Fork sync (origin/main -> fork main)
 
-When upstream `earendil-works/pi` ships a new release and the fork needs to follow:
-
-1. **Open a sync branch** off fork `main` (`git checkout -b sync/upstream-<version> fork/main`). Do not commit fork-local work to a long-lived branch.
-2. **Merge `origin/main` into the sync branch**: `git merge --no-ff origin/main -m "Merge upstream <version> into bramburn/pi"`. Resolve conflicts with the table in `.pi/plans/sync-upstream-<version>.md`.
-3. **Bump all workspace package versions to `<version>-b<patch>`** (e.g. `0.84.2-b1`). The fork suffix signals "fork build on the upstream baseline" without colliding with upstream tags.
-4. **Regenerate `packages/coding-agent/npm-shrinkwrap.json`** via `node scripts/generate-coding-agent-shrinkwrap.mjs`.
-5. **Regenerate `packages/coding-agent/install-lock/package.json` and `package-lock.json`** via `node scripts/generate-coding-agent-install-lock.mjs` so the CI `check:install-lock:coding-agent` step passes.
-6. **Re-apply fork-local preserves** that were either dropped by the merge (e.g. `FORK_NAME` references in `config.ts`/`main.ts`/`stdout-cleanliness.test.ts`) or that were never merged to fork main (e.g. `validateLlmMessages` lived only on a feature branch).
-7. **Append a `### Fork-local (bramburn)` section** to each package's `CHANGELOG.md` under `## [Unreleased]`.
-8. **Commit, push, open a PR to fork `main`, and rely on CI** for `npm run check` + `npm run build` + `npm test`. Do not run vitest locally; CI is cleaner.
-9. **After CI passes**, push the fork tag: `git tag -a v<version>-b<patch> -m "..."; git push fork v<version>-b<patch>`.
+Sync is disabled (ADR-0002). Do not merge `origin/main`, open sync branches, or re-apply upstream preserves: the repository no longer follows upstream releases, and the fork maintains its own version line.
 
 ### npm trusted publisher setup (one-time per `@bramburn/*` package)
 
@@ -388,20 +386,20 @@ below).
 Configure once per package:
 
 1. Open https://www.npmjs.com/package/<name>/edit (e.g.
-   `/package/@bramburn%2fpi-coding-agent/edit`) and sign in as the fork
+   `/package/@bramburn%2fqi-coding-agent/edit`) and sign in as the fork
    maintainer. If the package does not exist on npm yet (e.g.
-   `@bramburn/pi-clipboard-rs`), publish it first via local `npm login` +
+   `@bramburn/qi-clipboard-rs`), publish it first via local `npm login` +
    `cd packages/<pkg> && npm publish --access public --tag fork`, then come
    back to this step.
 2. Under **Trusted Publishers** → **Add GitHub Actions**, set:
-   - **Repository**: `bramburn/pi`
+   - **Repository**: `bramburn/qi`
    - **Workflow filename**: `publish.yml`
    - **Environment name**: `npm-publish` (must match `environment:` in the
      workflow's `jobs.publish` block)
 3. Save. The next tag push should publish that package without further
-   config. Repeat for every `@bramburn/pi-*` workspace package.
+   config. Repeat for every `@bramburn/qi-*` workspace package.
 
-Verify with `npm view @bramburn/pi-<pkg> versions --json` after each
+Verify with `npm view @bramburn/qi-<pkg> versions --json` after each
 release — the new version should appear under the `fork` dist-tag.
 
 ### Fork publish troubleshooting
@@ -412,18 +410,18 @@ distinguishing log line now comes from `scripts/publish-with-skip.mjs`:
 | log line | meaning | fix |
 | --- | --- | --- |
 | `version already on npm, treating as success (idempotent)` | npm returned HTTP 403 `You cannot publish over the previously published versions`. Expected on re-runs. | nothing |
-| `ENEEDAUTH / registry auth failure. ... Configure it under the package's npmjs.com Settings -> Trusted Publishers` | The npm trusted publisher entry for this package is missing, or its workflow filename / environment / repository doesn't match the running workflow. | Add or fix the entry per `## npm trusted publisher setup` above, then re-run the workflow (`gh workflow run publish.yml --repo bramburn/pi --ref v<version> -f tag=v<version>`). |
+| `ENEEDAUTH / registry auth failure. ... Configure it under the package's npmjs.com Settings -> Trusted Publishers` | The npm trusted publisher entry for this package is missing, or its workflow filename / environment / repository doesn't match the running workflow. | Add or fix the entry per `## npm trusted publisher setup` above, then re-run the workflow (`gh workflow run publish.yml --repo bramburn/qi --ref v<version> -f tag=v<version>`). |
 
-(Publish-time package renaming via `scripts/fork-publish-rename.mjs` was removed on 2026-10-20: workspace packages are renamed in-tree to `@bramburn/qi-*` per ADR-0001, so the `Cannot resolve @bramburn/pi-<x>` failure mode can no longer occur.)
+(Publish-time package renaming via `scripts/fork-publish-rename.mjs` was removed on 2026-10-20: workspace packages are renamed in-tree to `@bramburn/qi-*` per ADR-0001, so the legacy-scope `Cannot resolve @bramburn/<pkg>` failure mode can no longer occur.)
 
 ### Windows prebuild file lock
 
 On Windows, `git merge` / `git rebase` / `git reset --hard` will fail with `unable to unlink old ... Invalid argument` when the working tree contains
 `packages/tui/native/win32/prebuilds/{win32-x64,win32-arm64}/win32-console-mode.node`
-and a running `pi` TUI has the prebuild mmap'd. The fork has historically
-held 4+ open pi TUI processes that pin these files.
+and a running `qi` TUI has the prebuild mmap'd. The fork has historically
+held 4+ open qi TUI processes that pin these files.
 
-Workaround: do NOT kill the pi TUI processes (they belong to user
+Workaround: do NOT kill the qi TUI processes (they belong to user
 sessions). Instead, when a git operation fails on the prebuild:
 
 1. Determine which blob hash the operation needs from the target commit
@@ -441,26 +439,62 @@ shows up locally on Windows during branch switches.
 
 ### `.github/workflows/publish.yml` (fork-only)
 
-The fork uses a fork-local publish workflow that runs `npm publish` per
-package on tag push. Two structural rules from the current implementation:
+Two publish paths exist and both must stay:
 
-- `npm ci --ignore-scripts` MUST run at the repo root before per-package
-  builds; running it inside each package subdir skips workspace-root
-  devDependencies (notably `@typescript/native-preview` which provides the
-  `tsgo` binary), and every package's `npm run build` then fails with
-  `sh: 1: tsgo: not found`.
-- A single `npm run build` at the repo root builds every package in
-  dependency order (tui → telemetry → ai → agent → session-backends/sqlite-node
-  → protocol → client → server → coding-agent) and populates every `dist/`.
-  Subsequent `cd packages/<x> && npm publish --access public` steps just
-  publish from the prebuilt dist; do not reinstall or rebuild per package.
-- When upstream renames a package (e.g. `storage/sqlite-node` →
-  `session-backends/sqlite-node` in v0.84.2), update the matching publish
-  step's `cd` path AND the `@bramburn/<x>` package name in `name:`.
-- The current workflow uses `secrets.NPM_TOKEN` which is blocked by npm 2FA
-  OTP (see *Known issues* in README.md). Switch to npm trusted publishing
-  via OIDC (`id-token: write` + `npm-publish` environment) once the npm
-  scope is configured, matching upstream's approach.
+- **Automatic (tag push).** `v*` tag pushes run `build-binaries.yml`, whose
+  `publish-npm` job calls `node scripts/publish.mjs` after the binaries and the
+  GitHub release are staged. This is the normal release path and is ordered
+  with the release announcement.
+- **Manual (workflow dispatch).** `.github/workflows/publish.yml` publishes
+  every public `@bramburn/qi-*` package on demand. Use it for recovery (e.g.
+  after fixing a missing trusted-publisher entry) or to republish a specific
+  tag without rebuilding binaries.
+
+Manual dispatch inputs:
+
+| input | meaning |
+| --- | --- |
+| `tag` | Required. Tag to publish (e.g. `v0.85.0`). Drives the `concurrency` group and the default checkout ref. |
+| `source_ref` | Optional. Ref to build/publish from; defaults to `tag`. Use only for recovery. |
+| `dry_run` | Optional boolean. When `true`, prints `name@version` for every public workspace package and skips all publish steps. |
+
+```bash
+gh workflow run publish.yml --repo bramburn/qi --ref v0.85.0 -f tag=v0.85.0
+gh workflow run publish.yml --repo bramburn/qi --ref v0.85.0 -f tag=v0.85.0 -f dry_run=true
+```
+
+Properties that make re-runs safe:
+
+- **OIDC trusted publishing only.** `permissions.id-token: write` plus the
+  `npm-publish` environment; no `NPM_TOKEN`, no OTP. Requires npm CLI >=
+  11.5.1, so the workflow upgrades npm before publishing.
+- **Idempotent per package.** Each matrix entry runs
+  `node scripts/publish-with-skip.mjs <dir> npm publish --access public --tag fork`.
+  A version already on npm logs `version already on npm, treating as success
+  (idempotent)` and exits 0. A missing trusted-publisher entry surfaces as
+  `ENEEDAUTH` and fails that matrix entry only (`fail-fast: false`), so the
+  other packages still publish.
+- **Parallel matrix.** npm does not require a package's dependencies to exist
+  before it is published, so the ten matrix entries run concurrently. Publish
+  order is not significant.
+- **Never a substitute for the release flow.** `scripts/release.mjs` still bumps
+  versions, updates changelogs, and pushes the tag; the manual workflow only
+  publishes the tree that tag already points at.
+
+Structural rules inherited from the tag-driven path:
+
+- `bun install --ignore-scripts --linker=hoisted` and `bun run build` run once
+  in the publish job; do not reinstall or rebuild per package. Installing at
+  the repo root is required: a per-package install skips workspace-root
+  devDependencies (notably `@typescript/native-preview`, which provides the
+  `tsgo` binary), and every package's build then fails with `sh: 1: tsgo: not
+  found`.
+- When upstream renames a package (e.g. `storage/sqlite-node` ->
+  `session-backends/sqlite-node` in v0.84.2), update the matrix `dir` AND the
+  `name` for that package.
+- New public package: add a matrix entry here **and** a `publish-with-skip`
+  step in `.github/workflows/build-binaries.yml` (tag path). See
+  `## Adding a new workspace package`.
 
 ## Bun Development
 
@@ -484,9 +518,9 @@ bun run --cwd packages/client build
 bun run --cwd packages/server build
 bun run --cwd packages/coding-agent build
 
-# Build the standalone Bun binary (pi.exe)
+# Build the standalone Bun binary (qi.exe)
 bun run --cwd packages/coding-agent build:binary
-# Output: packages/coding-agent/dist/pi.exe
+# Output: packages/coding-agent/dist/qi.exe
 ```
 
 ### Known Bun install quirks
@@ -529,13 +563,13 @@ fs.writeFileSync('package.json', JSON.stringify(data, null, 2), 'utf8');
 
 ### Testing the Bun binary
 
-`pi-bun` is available on PATH via `C:\Users\bramburn\.pi\agent\bin\pi-bun.cmd`.
-This wrapper calls `packages/coding-agent/dist/pi.exe` directly:
+`qi-bun` is available on PATH via `C:\Users\<user>\.qi\agent\bin\qi-bun.cmd`.
+This wrapper calls `packages/coding-agent/dist/qi.exe` directly:
 
 ```powershell
-pi-bun --version     # -> pi 0.84.2-b1 (bun) [bramburn]
-pi-bun --list-models
-pi-bun --help
+qi-bun --version # -> qi 0.84.2-b1 (bun) [bramburn]
+qi-bun --list-models
+qi-bun --help
 ```
 
 Rebuild the binary after any source change:
@@ -546,7 +580,7 @@ bun run --cwd packages/coding-agent build:binary
 
 ### Remaining Bun runtime issues
 
-These are tracked as `migration:bun` issues on `bramburn/pi` and do not block
+These are tracked as `migration:bun` issues on `bramburn/qi` and do not block
 the build:
 
 - `#524` — `process.report.getReport()` not implemented (windows-self-update)
@@ -581,8 +615,8 @@ bash scripts/build-both.sh --bun-only
   Expected artifact: `packages/coding-agent/dist/cli.js`.
 - **Bun target** — runs `bun run --cwd packages/coding-agent build:binary`,
   which compiles all packages and then `bun build --compile`s a
-  standalone binary. Expected artifact: `packages/coding-agent/dist/pi`
-  (or `pi.exe` on Windows).
+  standalone binary. Expected artifact: `packages/coding-agent/dist/qi`
+  (or `qi.exe` on Windows).
 
 The Node target requires `node` on `PATH`. The Bun target requires
 `bun` on `PATH`. The script itself runs in Node, so the Node target
@@ -625,7 +659,7 @@ Example (both runtimes present):
 [build-both] bun   1.3.14    C:\Users\bramburn\.bun\bin\bun.exe
 [build-both]
 [build-both] Node  (npm run build)  BUILT    -> packages/coding-agent/dist/cli.js
-[build-both] Bun   (build:binary)   BUILT    -> packages/coding-agent/dist/pi.exe
+[build-both] Bun   (build:binary)   BUILT    -> packages/coding-agent/dist/qi.exe
 [build-both] 2 built, 0 skipped, 0 failed.
 ```
 
@@ -656,7 +690,7 @@ Example with only Node (no Bun on this machine):
 - `0` — all enabled builds succeeded (skipped targets do not fail the script)
 - `1` — one or more enabled builds failed
 - `2` — invalid arguments
-- `3` — script is not located inside a pi-monorepo checkout
+- `3` — script is not located inside a qi-monorepo checkout
 
 ### Flags
 
@@ -704,7 +738,7 @@ The Docusaurus site lives in `website/`. Docs live under `website/docs/`.
 
 ### Content rules
 
-- **Fork docs only** — `website/docs/` documents the bramburn/pi fork. Upstream documentation lives at [pi.dev/docs/latest](https://pi.dev/docs/latest).
+- **Fork docs only** — `website/docs/` documents the bramburn/qi fork. The fork is severed from upstream (ADR-0002); do not link to upstream documentation.
 - **Architecture docs** go in `website/docs/architecture/`
 - **Fork-specific docs** (sync process, fork features) go in `website/docs/fork/`
 - **No placeholders** — every page must have real content. Remove the Docusaurus tutorial/blog boilerplate before committing.

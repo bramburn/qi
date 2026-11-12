@@ -12,6 +12,7 @@
 ### Changed
 
 - Request builds now downgrade media blocks the current model cannot accept to text placeholders (e.g. after a mid-session model swap to a model without video/PDF support), instead of sending them to the provider. Session history keeps the original blocks, so swapping back restores them.
+- Published to the public npm registry as `@bramburn/qi-ai` at `0.85.1`, the first release under the `@bramburn` scope.
 
 ### Fixed
 

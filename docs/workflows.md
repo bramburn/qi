@@ -1,14 +1,14 @@
 # Project Workflows
 
 Opinionated architecture and process workflows enforced for this fork
-(`bramburn/pi`). Each entry is a navigable index entry — for the full
+(`bramburn/qi`). Each entry is a navigable index entry — for the full
 spec and rules, follow the `→ AGENTS.md` link to the originating
 section. Workflows are grouped by area; numbered steps are the canonical
 order; "gotchas" highlight the things that bite on first encounter.
 
 Source-of-truth note: this catalog is a *pointer*. When AGENTS.md and
 this file disagree, AGENTS.md wins. When a workflow changes, update
-both. Workflows marked **(fork-only)** apply to `bramburn/pi` but not
+both. Workflows marked **(fork-only)** apply to `bramburn/qi` but not
 upstream `earendil-works/pi`.
 
 ## Contents
@@ -37,7 +37,7 @@ upstream `earendil-works/pi`.
   - [Multi-session git safety](#multi-session-git-safety)
   - [Issues & PRs workflow](#issues--prs-workflow)
   - [Changelog attribution format](#changelog-attribution-format)
-  - [Local pi-test TUI loop](#local-pi-test-tui-loop)
+  - [Local qi-test TUI loop](#local-qi-test-tui-loop)
   - [Testing rules](#testing-rules)
   - [Dependency / lockfile hygiene](#dependency--lockfile-hygiene)
 - [Planned](#planned)
@@ -106,7 +106,7 @@ Use `npm run build:both` when you want both targets verified; use
 
 Flags: `--node-only`, `--bun-only`, `--skip-node`, `--skip-bun`,
 `--clean`, `--quiet`, `-h`. Exit codes: `0` ok, `1` failure, `2` bad
-args, `3` not a pi-monorepo checkout.
+args, `3` not a qi-monorepo checkout.
 
 → AGENTS.md §"Building the Project (Node.js + Bun)"
 
@@ -157,17 +157,17 @@ Before `npm run release:patch|minor`:
 
 1. Update CHANGELOGs — confirm `/cl` was run on the latest commit on
    `main`; if not, the user must run it.
-2. Build an unpublished release into `/tmp/pi-local-release` and smoke
+2. Build an unpublished release into `/tmp/qi-local-release` and smoke
    test from *outside* the repo so workspace files don't resolve:
    ```bash
-   npm run release:local -- --out /tmp/pi-local-release --force
+   npm run release:local -- --out /tmp/qi-local-release --force
    cd /tmp
    # Node: --help, --version, --list-models, -p "Say exactly: ok", TUI
    # Bun:  same set
    ```
 3. Run the release script:
    ```bash
-   PI_ALLOW_LOCKFILE_CHANGE=1 \
+   QI_ALLOW_LOCKFILE_CHANGE=1 \
      npm_config_min_release_age=0 \
      npm run release:patch    # or release:minor
    ```
@@ -190,8 +190,9 @@ Pushing the `vX.Y.Z` tag triggers `.github/workflows/build-binaries.yml`.
 - `announce-pi-dev-release` verifies every public workspace package
   resolves at the exact release version and that the npm tarball is
   available, then writes a verified release marker to R2.
-- `pi.dev/api/latest-version` reads that R2 marker — it must never
-  announce a release from npm before this job succeeds.
+- The R2 marker is a legacy artifact of the original pipeline; `qi` itself
+ resolves the latest version from the npm registry (`src/utils/version-check.ts`),
+ so a release must still never be announced before this job succeeds.
 
 If CI publish or announcement fails: inspect the failed job. The
 publish helper is idempotent (skips versions already on npm); the
@@ -247,7 +248,7 @@ needs to follow:
    `git checkout -b sync/upstream-<version> fork/main`.
    Do not commit fork-local work to a long-lived branch.
 2. **Merge `origin/main`** with `--no-ff`:
-   `git merge --no-ff origin/main -m "Merge upstream <version> into bramburn/pi"`.
+   `git merge --no-ff origin/main -m "Merge upstream <version> into bramburn/qi"`.
    Resolve conflicts using the table in
    `.pi/plans/sync-upstream-<version>.md`.
 3. **Bump all workspace package versions** to `<version>-b<patch>`
@@ -302,7 +303,7 @@ push. Two structural rules:
 ### Pre-commit lockfile gate
 
 Pre-commit blocks lockfile commits unless
-`PI_ALLOW_LOCKFILE_CHANGE=1` is set. Do not bypass unless the user
+`QI_ALLOW_LOCKFILE_CHANGE=1` is set. Do not bypass unless the user
 wants the lockfile change committed. Lockfile churn is a security
 event (treat npm dep and lockfile changes as reviewed code; direct
 external deps stay pinned to exact versions).
@@ -407,7 +408,7 @@ Commit message format:
 
 ### Issues & PRs workflow
 
-**Always create issues on the fork (`bramburn/pi`)**. The upstream
+**Always create issues on the fork (`bramburn/qi`)**. The upstream
 `earendil-works/pi` repo blocks write access for external contributors
 — `gh issue create` silently fails with HTTP 403. Only use upstream if
 the user explicitly confirms it's writable.
@@ -445,23 +446,23 @@ When closing issues via commit:
 ### Changelog attribution format
 
 - Internal (from issues):
-  `Fixed foo bar ([#123](https://github.com/earendil-works/pi-mono/issues/123))`
+  `Fixed foo bar ([#123](https://github.com/bramburn/qi/issues/123))`
 - External contributions:
-  `Added feature X ([#456](https://github.com/earendil-works/pi-mono/pull/456) by [@username](https://github.com/username))`
+  `Added feature X ([#456](https://github.com/bramburn/qi/pull/456) by [@username](https://github.com/username))`
 
 → AGENTS.md §"Changelog" attribution block
 
-### Local pi-test TUI loop
+### Local qi-test TUI loop
 
 Run the TUI in a controlled terminal (from the repo root) for
 interactive smoke testing:
 ```bash
-tmux new-session -d -s pi-test -x 80 -y 24
-tmux send-keys -t pi-test "./pi-test.sh" Enter
-sleep 3 && tmux capture-pane -t pi-test -p     # capture after startup
-tmux send-keys -t pi-test "your prompt here" Enter
-tmux send-keys -t pi-test Escape               # special keys
-tmux kill-session -t pi-test
+tmux new-session -d -s qi-test -x 80 -y 24
+tmux send-keys -t qi-test "./qi-test.sh" Enter
+sleep 3 && tmux capture-pane -t qi-test -p     # capture after startup
+tmux send-keys -t qi-test "your prompt here" Enter
+tmux send-keys -t qi-test Escape               # special keys
+tmux kill-session -t qi-test
 ```
 
 The pre-release smoke test runs each artifact through this loop (bare
@@ -516,7 +517,7 @@ The pre-release smoke test runs each artifact through this loop (bare
   require review and an explicit allowlist entry in that script; never
   add one silently.
 - Pre-commit blocks lockfile commits unless
-  `PI_ALLOW_LOCKFILE_CHANGE=1`. Don't bypass unless the user wants
+  `QI_ALLOW_LOCKFILE_CHANGE=1`. Don't bypass unless the user wants
   the lockfile change committed.
 
 → AGENTS.md §"Dependency and Install Security"

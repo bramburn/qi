@@ -41,8 +41,8 @@ const sidebars: SidebarsConfig = {
     },
     {
       type: 'link',
-      label: 'Upstream docs',
-      href: 'https://pi.dev/docs/latest',
+      label: 'Repository docs',
+      href: 'https://github.com/bramburn/qi/tree/main/packages/coding-agent/docs',
     },
   ],
 

@@ -18,7 +18,7 @@
  * registry is the record of what is running.
  *
  * Agent dispatch (`agent: "<name>"`) resolves one name against two stores,
- * definition files first: a markdown file under `.pi/agents/` (project scope,
+ * definition files first: a markdown file under `.qi/agents/` (project scope,
  * then user scope) provides configuration — model, tools, thinking, a standing
  * system prompt — while the call still supplies the task in `instructions`; an
  * older `action: "save-spec"` entry provides both, and takes `instructions`
@@ -2667,7 +2667,7 @@ export function createSubagentToolDefinition(
 					if (!savedNames.has(agentName)) throw new Error(unknownAgentError(agentName, cwd));
 					if (rawParams.instructions !== undefined) {
 						throw new Error(
-							`Invalid parameters. "${agentName}" is a saved spec, which carries its own \`instructions\`, so they cannot be overridden here. Dispatch the definition-file form (.pi/agents/<name>.md) to supply the task per call, or save a new spec with action "save-spec".`,
+							`Invalid parameters. "${agentName}" is a saved spec, which carries its own \`instructions\`, so they cannot be overridden here. Dispatch the definition-file form (.qi/agents/<name>.md) to supply the task per call, or save a new spec with action "save-spec".`,
 						);
 					}
 					const saved = loadSpec(agentName);

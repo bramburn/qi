@@ -4,6 +4,7 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symli
 import { tmpdir } from "node:os";
 import { isAbsolute, join, relative, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 
 const packages = [
 	{ directory: "packages/telemetry", name: "@bramburn/qi-telemetry" },
@@ -85,14 +86,38 @@ function parseArgs() {
 	return options;
 }
 
+// cmd.exe cannot execute the POSIX-style "./test.sh" path, so shell scripts are
+// run through bash explicitly on Windows instead of relying on cmd.exe splitting.
+// Windows also cannot spawn the "npm" .cmd shim directly (EINVAL), so it is run
+// through cmd.exe with the npm.cmd shim named explicitly.
+export function resolveSpawnCommand(command, args, platform = process.platform) {
+	if (platform === "win32") {
+		if (command === "./test.sh" || command.endsWith(".sh")) {
+			return { command: "bash", args: [command, ...args], shell: false };
+		}
+		if (command === "npm" || command === "npx") {
+			return { command: "cmd.exe", args: ["/d", "/s", "/c", `${command}.cmd`, ...args], shell: false };
+		}
+	}
+	return { command, args, shell: false };
+}
+
 function run(command, args, options = {}) {
 	console.log(`$ ${[command, ...args].join(" ")}`);
-	const result = spawnSync(command, args, {
+	const resolved = resolveSpawnCommand(command, args);
+	const result = spawnSync(resolved.command, resolved.args, {
 		cwd: options.cwd,
 		encoding: "utf8",
-		shell: process.platform === "win32",
+		shell: resolved.shell,
 		stdio: options.capture ? ["inherit", "pipe", "inherit"] : "inherit",
 	});
+
+	if (result.error) {
+		if (resolved.command === "bash" && result.error.code === "ENOENT") {
+			throw new Error('Cannot run shell scripts: "bash" was not found. Install Git for Windows or add bash to PATH.');
+		}
+		throw result.error;
+	}
 
 	if (result.status !== 0) {
 		throw new Error(`Command failed: ${[command, ...args].join(" ")}`);
@@ -116,7 +141,7 @@ function isInsidePath(child, parent) {
 
 function prepareOutputDirectory(options, repoRoot) {
 	if (!options.outDir) {
-		return mkdtempSync(join(tmpdir(), "pi-local-release-"));
+		return mkdtempSync(join(tmpdir(), "qi-local-release-"));
 	}
 
 	const outDir = resolve(options.outDir);
@@ -165,7 +190,7 @@ function buildBunBinaryRelease(targetDirectory, archiveDirectory) {
 	]);
 	rmSync(targetDirectory, { force: true, recursive: true });
 	cpSync(join(binaryBuildDirectory, platform), targetDirectory, { recursive: true });
-	const archiveName = platform.startsWith("windows-") ? `pi-${platform}.zip` : `pi-${platform}.tar.gz`;
+	const archiveName = platform.startsWith("windows-") ? `qi-${platform}.zip` : `qi-${platform}.tar.gz`;
 	cpSync(join(binaryBuildDirectory, archiveName), join(archiveDirectory, archiveName));
 	return platform;
 }
@@ -201,95 +226,97 @@ function packPackage(pkg, tarballDirectory) {
 	return join(tarballDirectory, packed.filename);
 }
 
-const options = parseArgs();
-const repoRoot = process.cwd();
-const rootPackageJson = readPackageJson(repoRoot);
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+	const options = parseArgs();
+	const repoRoot = process.cwd();
+	const rootPackageJson = readPackageJson(repoRoot);
 
-if (rootPackageJson.name !== "qi-monorepo") {
-	throw new Error("Run this script from the repository root");
-}
-
-const outDir = prepareOutputDirectory(options, repoRoot);
-const tarballDirectory = join(outDir, "tarballs");
-const nodeInstallDirectory = join(outDir, "node");
-const bunInstallDirectory = join(outDir, "bun-install");
-const binaryDirectory = join(outDir, "bun");
-mkdirSync(tarballDirectory, { recursive: true });
-
-// Release artifacts always use a freshly generated, strictly validated catalog,
-// including when checks or tests are explicitly skipped.
-run("npm", ["run", "generate:models"], { cwd: repoRoot });
-
-if (!options.skipCheck) {
-	run("npm", ["run", "check"], { cwd: repoRoot });
-}
-
-for (const pkg of packages) {
-	run("npm", ["run", "clean"], { cwd: pkg.directory });
-	run("npm", ["run", pkg.directory === "packages/ai" ? "build:offline" : "build"], { cwd: pkg.directory });
-}
-
-if (!options.skipTest) {
-	run("./test.sh", [], { cwd: repoRoot });
-}
-
-const tarballs = new Map();
-for (const pkg of packages) {
-	const tarball = packPackage(pkg, tarballDirectory);
-	tarballs.set(pkg.name, tarball);
-}
-
-let binaryPlatform;
-if (!options.skipInstall) {
-	binaryPlatform = buildBunBinaryRelease(binaryDirectory, outDir);
-
-	mkdirSync(nodeInstallDirectory, { recursive: true });
-	const dependencies = Object.fromEntries(
-		packages.map((pkg) => [pkg.name, fileSpecifier(nodeInstallDirectory, tarballs.get(pkg.name))]),
-	);
-	const installPackageJson = `${JSON.stringify({ private: true, dependencies, overrides: dependencies }, undefined, "\t")}\n`;
-	writeFileSync(join(nodeInstallDirectory, "package.json"), installPackageJson);
-
-	run("npm", ["install", "--omit=dev", "--ignore-scripts"], { cwd: nodeInstallDirectory });
-	createQiShim(nodeInstallDirectory);
-
-	if (!options.skipBunInstall) {
-		if (!commandExists("bun")) {
-			throw new Error("Bun is required for the isolated Bun install. Use --skip-bun-install to skip it.");
-		}
-		mkdirSync(bunInstallDirectory, { recursive: true });
-		const bunDependencies = Object.fromEntries(
-			packages.map((pkg) => [pkg.name, fileSpecifier(bunInstallDirectory, tarballs.get(pkg.name))]),
-		);
-		writeFileSync(join(bunInstallDirectory, "package.json"), `${JSON.stringify({ private: true, dependencies: bunDependencies, overrides: bunDependencies }, undefined, "\t")}\n`);
-		run("bun", ["install", "--production", "--ignore-scripts"], { cwd: bunInstallDirectory });
-		createQiShim(bunInstallDirectory);
+	if (rootPackageJson.name !== "qi-monorepo") {
+		throw new Error("Run this script from the repository root");
 	}
-}
 
-console.log("\nLocal release artifacts created:");
-console.log(`  ${outDir}`);
-console.log("\nTarballs:");
-for (const tarball of tarballs.values()) {
-	console.log(`  ${tarball}`);
-}
+	const outDir = prepareOutputDirectory(options, repoRoot);
+	const tarballDirectory = join(outDir, "tarballs");
+	const nodeInstallDirectory = join(outDir, "node");
+	const bunInstallDirectory = join(outDir, "bun-install");
+	const binaryDirectory = join(outDir, "bun");
+	mkdirSync(tarballDirectory, { recursive: true });
 
-if (!options.skipInstall) {
-	console.log("\nLocal Bun binary release:");
-	console.log(`  ${binaryDirectory}`);
-	console.log(`  ${join(outDir, `pi-${binaryPlatform}.${String(binaryPlatform).startsWith("windows-") ? "zip" : "tar.gz"}`)}`);
-	console.log("\nRun the local Bun binary release from outside the repository:");
-	console.log(`  ${join(binaryDirectory, String(binaryPlatform).startsWith("windows-") ? "pi.exe" : "pi")} --help`);
+	// Release artifacts always use a freshly generated, strictly validated catalog,
+	// including when checks or tests are explicitly skipped.
+	run("npm", ["run", "generate:models"], { cwd: repoRoot });
 
-	console.log("\nIsolated npm install:");
-	console.log(`  ${nodeInstallDirectory}`);
-	console.log("\nRun the locally packed npm CLI from outside the repository:");
-	console.log(`  ${join(nodeInstallDirectory, process.platform === "win32" ? "qi.cmd" : "qi")} --help`);
+	if (!options.skipCheck) {
+		run("npm", ["run", "check"], { cwd: repoRoot });
+	}
 
-	if (!options.skipBunInstall) {
-		console.log("\nIsolated Bun package install:");
-		console.log(`  ${bunInstallDirectory}`);
-		console.log("\nRun the locally packed Bun package CLI from outside the repository:");
-		console.log(`  ${join(bunInstallDirectory, process.platform === "win32" ? "qi.cmd" : "qi")} --help`);
+	for (const pkg of packages) {
+		run("npm", ["run", "clean"], { cwd: pkg.directory });
+		run("npm", ["run", pkg.directory === "packages/ai" ? "build:offline" : "build"], { cwd: pkg.directory });
+	}
+
+	if (!options.skipTest) {
+		run("./test.sh", [], { cwd: repoRoot });
+	}
+
+	const tarballs = new Map();
+	for (const pkg of packages) {
+		const tarball = packPackage(pkg, tarballDirectory);
+		tarballs.set(pkg.name, tarball);
+	}
+
+	let binaryPlatform;
+	if (!options.skipInstall) {
+		binaryPlatform = buildBunBinaryRelease(binaryDirectory, outDir);
+
+		mkdirSync(nodeInstallDirectory, { recursive: true });
+		const dependencies = Object.fromEntries(
+			packages.map((pkg) => [pkg.name, fileSpecifier(nodeInstallDirectory, tarballs.get(pkg.name))]),
+		);
+		const installPackageJson = `${JSON.stringify({ private: true, dependencies, overrides: dependencies }, undefined, "\t")}\n`;
+		writeFileSync(join(nodeInstallDirectory, "package.json"), installPackageJson);
+
+		run("npm", ["install", "--omit=dev", "--ignore-scripts"], { cwd: nodeInstallDirectory });
+		createQiShim(nodeInstallDirectory);
+
+		if (!options.skipBunInstall) {
+			if (!commandExists("bun")) {
+				throw new Error("Bun is required for the isolated Bun install. Use --skip-bun-install to skip it.");
+			}
+			mkdirSync(bunInstallDirectory, { recursive: true });
+			const bunDependencies = Object.fromEntries(
+				packages.map((pkg) => [pkg.name, fileSpecifier(bunInstallDirectory, tarballs.get(pkg.name))]),
+			);
+			writeFileSync(join(bunInstallDirectory, "package.json"), `${JSON.stringify({ private: true, dependencies: bunDependencies, overrides: bunDependencies }, undefined, "\t")}\n`);
+			run("bun", ["install", "--production", "--ignore-scripts"], { cwd: bunInstallDirectory });
+			createQiShim(bunInstallDirectory);
+		}
+	}
+
+	console.log("\nLocal release artifacts created:");
+	console.log(`  ${outDir}`);
+	console.log("\nTarballs:");
+	for (const tarball of tarballs.values()) {
+		console.log(`  ${tarball}`);
+	}
+
+	if (!options.skipInstall) {
+		console.log("\nLocal Bun binary release:");
+		console.log(`  ${binaryDirectory}`);
+		console.log(`  ${join(outDir, `qi-${binaryPlatform}.${String(binaryPlatform).startsWith("windows-") ? "zip" : "tar.gz"}`)}`);
+		console.log("\nRun the local Bun binary release from outside the repository:");
+		console.log(`  ${join(binaryDirectory, String(binaryPlatform).startsWith("windows-") ? "qi.exe" : "qi")} --help`);
+
+		console.log("\nIsolated npm install:");
+		console.log(`  ${nodeInstallDirectory}`);
+		console.log("\nRun the locally packed npm CLI from outside the repository:");
+		console.log(`  ${join(nodeInstallDirectory, process.platform === "win32" ? "qi.cmd" : "qi")} --help`);
+
+		if (!options.skipBunInstall) {
+			console.log("\nIsolated Bun package install:");
+			console.log(`  ${bunInstallDirectory}`);
+			console.log("\nRun the locally packed Bun package CLI from outside the repository:");
+			console.log(`  ${join(bunInstallDirectory, process.platform === "win32" ? "qi.cmd" : "qi")} --help`);
+		}
 	}
 }

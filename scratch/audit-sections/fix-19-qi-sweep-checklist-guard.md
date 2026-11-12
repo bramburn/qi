@@ -43,9 +43,9 @@ Post-critical-path sweep plan for the remaining ~7,550 `earendil` (~4,604) and w
 | **A2** | `packages/*/src/**` (runtime strings, comments, types, error messages, extension loader aliases) | `\bpi\b`, `.pi/`, `pi-session`, `pi.share`, `pi-package` | `grep -rnE '(\bpi\b|\.pi/|pi-session|pi\.share|pi-package|PI_[A-Z0-9_]+)' packages/*/src/ packages/session-backends/*/src/` | **HIGH** | `bun run check && ./test.sh` | **Yes** (per-package vitest + `packages/tui` `node --test`) |
 | **A3** | `packages/*/test/**` & `packages/*/examples/**` | `@earendil-works/pi-*`, `\bpi\b`, `.pi/`, `PI_*` | `grep -rnE '(@earendil-works/pi-|\bpi\b|\.pi/|PI_[A-Z0-9_]+)' packages/*/test/ packages/coding-agent/examples/` | **MEDIUM** | `./test.sh` | **Yes** (mandatory; check test count `N > 0`) |
 | **B** | `packages/coding-agent/docs/**` & `docs/**` & root `README.md`, `AGENTS.md`, `CONTRIBUTING.md` | `earendil`, `pi.dev`, `PI_*`, `~/.pi`, `.pi/`, `\bpi\b` | `grep -rnE '(earendil|pi\.dev|PI_[A-Z0-9_]+|~/.pi|\.pi/|\bpi\b)' packages/coding-agent/docs/ docs/ README.md AGENTS.md` | **LOW** | `node scripts/check-no-earendil.mjs` | No (docs only) |
-| **C** | `website/**` (Docusaurus config, sidebars, docs, landing page `website/src/pages/index.tsx:116`) | `earendil`, `@bramburn/pi-`, `pi.dev`, `/pi/`, `\bpi\b` | `grep -rnE '(earendil|@bramburn/pi-|pi\.dev|\bpi\b)' website/docs/ website/src/ website/docusaurus.config.ts website/sidebars.ts` | **LOW** | `bun run --cwd website build` (`onBrokenLinks: 'throw'`) | No (website build verifies links) |
-| **D** | `scripts/**` (build, shrinkwrap, install-lock, release, check scripts; `scripts/check-pinned-deps.mjs:27`) | `@earendil-works/pi-`, `pi-monorepo`, `PI_ALLOW_LOCKFILE_CHANGE`, `pi.exe` | `grep -rnE '(earendil|@bramburn/pi-|pi-monorepo|PI_[A-Z0-9_]+|\bpi\b)' scripts/` | **HIGH** | `bun run check && bun test scripts/*.test.mjs` | **Yes** (`bun run test:scripts`) |
-| **E** | `.github/**` (workflows, actions, issue templates, `.github/workflows/publish.yml`) | `earendil`, `@bramburn/pi-`, `PI_*`, `pi-mono`, `\bpi\b` | `grep -rnE '(earendil|@bramburn/pi-|PI_[A-Z0-9_]+|\bpi\b)' .github/` | **MEDIUM** | `node scripts/check-no-earendil.mjs` + YAML syntax check | No |
+| **C** | `website/**` (Docusaurus config, sidebars, docs, landing page `website/src/pages/index.tsx:116`) | `earendil`, `@bramburn/qi-`, `pi.dev`, `/pi/`, `\bpi\b` | `grep -rnE '(earendil|@bramburn/qi-|pi\.dev|\bpi\b)' website/docs/ website/src/ website/docusaurus.config.ts website/sidebars.ts` | **LOW** | `bun run --cwd website build` (`onBrokenLinks: 'throw'`) | No (website build verifies links) |
+| **D** | `scripts/**` (build, shrinkwrap, install-lock, release, check scripts; `scripts/check-pinned-deps.mjs:27`) | `@earendil-works/pi-`, `pi-monorepo`, `PI_ALLOW_LOCKFILE_CHANGE`, `pi.exe` | `grep -rnE '(earendil|@bramburn/qi-|pi-monorepo|PI_[A-Z0-9_]+|\bpi\b)' scripts/` | **HIGH** | `bun run check && bun test scripts/*.test.mjs` | **Yes** (`bun run test:scripts`) |
+| **E** | `.github/**` (workflows, actions, issue templates, `.github/workflows/publish.yml`) | `earendil`, `@bramburn/qi-`, `PI_*`, `pi-mono`, `\bpi\b` | `grep -rnE '(earendil|@bramburn/qi-|PI_[A-Z0-9_]+|\bpi\b)' .github/` | **MEDIUM** | `node scripts/check-no-earendil.mjs` + YAML syntax check | No |
 
 ### Batch Execution Rules
 
@@ -224,7 +224,7 @@ Rationale: Add `scripts/check-no-earendil.mjs` (plus its initial empty baseline 
 +	},
 +	{
 +		id: "pi-package-scope",
-+		description: "Legacy pi package scope (@earendil-works/pi-* or @bramburn/pi-*)",
++		description: "Legacy pi package scope (@earendil-works/pi-* or @bramburn/qi-*)",
 +		pattern: /@(?:earendil-works|bramburn)\/pi-[a-z0-9-]+/,
 +	},
 +	{

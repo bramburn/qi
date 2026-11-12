@@ -58,7 +58,7 @@ if (combined.includes("ENEEDAUTH") || /code E40[2345]\b/.test(combined) || /code
 		`[publish-with-skip] ${pkgDir}: ENEEDAUTH / registry auth failure.\n` +
 			`  This usually means the npm trusted publisher entry for this package on npmjs.com is\n` +
 			`  missing or doesn't match this workflow (filename: publish.yml, environment:\n` +
-			`  npm-publish, repo: bramburn/pi). Configure it under the package's npmjs.com\n` +
+			`  npm-publish, repo: bramburn/qi). Configure it under the package's npmjs.com\n` +
 			`  Settings -> Trusted Publishers and re-run the workflow.`,
 	);
 	process.exit(result.status ?? 1);

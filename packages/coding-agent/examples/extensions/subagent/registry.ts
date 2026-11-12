@@ -1,7 +1,7 @@
 /**
  * Registry — single source of truth for experiment state.
  *
- * On-disk layout: <repo>/.pi-experiments/registry.json
+ * On-disk layout: <repo>/.qi-experiments/registry.json
  * Concurrency: single-writer per process; cross-process via a *.lock file
  * with 5-second retry. Atomic writes via *.tmp rename.
  *
@@ -22,7 +22,7 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 
-export const EXPERIMENTS_DIR_NAME = ".pi-experiments";
+export const EXPERIMENTS_DIR_NAME = ".qi-experiments";
 export const REGISTRY_FILE_NAME = "registry.json";
 export const LOCK_FILE_NAME = "registry.lock";
 export const REGISTRY_VERSION = 1;

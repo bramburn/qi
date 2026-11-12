@@ -1,7 +1,7 @@
 /**
  * Runner — spawn + stream for experiment_run and friends.
  *
- * Output streams to <repo>/.pi-experiments/<id>/log.jsonl (append-only,
+ * Output streams to <repo>/.qi-experiments/<id>/log.jsonl (append-only,
  * one JSON message per line, capped at 1 MB per line). stdout/stderr
  * from the subprocess is also returned to the caller for direct display.
  *

@@ -23,7 +23,7 @@ Consequences:
 4. If a design is adopted, it is implemented against **our** architecture and **our** contracts,
    with citations pointing at our own files.
 
-> pi is a published product (npm `@bramburn/pi-*`). A traceable copy of someone else's leaked
+> pi is a published product (npm `@bramburn/qi-*`). A traceable copy of someone else's leaked
 > source in its history is a liability that outlives any feature it enabled.
 
 ---

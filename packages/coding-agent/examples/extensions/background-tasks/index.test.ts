@@ -21,7 +21,7 @@ describe("registry", () => {
 	let dir: string;
 
 	beforeEach(() => {
-		dir = mkdtempSync(join(tmpdir(), "pi-bg-"));
+		dir = mkdtempSync(join(tmpdir(), "qi-bg-"));
 	});
 
 	afterEach(() => {
@@ -146,20 +146,20 @@ describe("status-injector", () => {
 
 describe("extension factory", () => {
 	it("registers expected tools and commands", () => {
-		const pi = makeMockPi();
+		const qi = makeMockPi();
 		const factory = require("./index.ts").default;
-		factory(pi);
+		factory(qi);
 
-		expect(pi.tools.has("background_task")).toBe(true);
-		expect(pi.tools.has("background_status")).toBe(true);
-		expect(pi.tools.has("background_wait")).toBe(true);
-		expect(pi.tools.has("background_cancel")).toBe(true);
+		expect(qi.tools.has("background_task")).toBe(true);
+		expect(qi.tools.has("background_status")).toBe(true);
+		expect(qi.tools.has("background_wait")).toBe(true);
+		expect(qi.tools.has("background_cancel")).toBe(true);
 
-		expect(pi.commands.has("bg-tasks")).toBe(true);
-		expect(pi.commands.has("bg-clear")).toBe(true);
+		expect(qi.commands.has("bg-tasks")).toBe(true);
+		expect(qi.commands.has("bg-clear")).toBe(true);
 
-		expect(pi.handlers.has("session_start")).toBe(true);
-		expect(pi.handlers.has("before_agent_start")).toBe(true);
+		expect(qi.handlers.has("session_start")).toBe(true);
+		expect(qi.handlers.has("before_agent_start")).toBe(true);
 	});
 });
 
@@ -176,7 +176,7 @@ function createSampleTask(id: string) {
 		status: "running" as const,
 		startedAt: new Date().toISOString(),
 		updatedAt: new Date().toISOString(),
-		command: "pi",
+		command: "qi",
 		args: ["--mode", "json"],
 		cwd: "/tmp",
 		outputPath: `/tmp/${id}`,
@@ -199,7 +199,7 @@ function createTaskForInjector(
 		status,
 		startedAt: new Date().toISOString(),
 		updatedAt: new Date().toISOString(),
-		command: "pi",
+		command: "qi",
 		args: [],
 		cwd: "/tmp",
 		outputPath: `/tmp/${id}`,
@@ -216,19 +216,19 @@ interface MockPi {
 }
 
 function makeMockPi(): MockPi {
-	const pi: MockPi = {
+	const qi: MockPi = {
 		tools: new Map(),
 		commands: new Map(),
 		handlers: new Map(),
 	};
 
-	(pi as any).registerTool = (t: { name: string }) => pi.tools.set(t.name, t);
-	(pi as any).registerCommand = (name: string, def: unknown) => pi.commands.set(name, def);
-	(pi as any).on = (event: string, handler: (event: unknown, ctx: unknown) => unknown) => {
-		const list = pi.handlers.get(event) ?? [];
+	(qi as any).registerTool = (t: { name: string }) => qi.tools.set(t.name, t);
+	(qi as any).registerCommand = (name: string, def: unknown) => qi.commands.set(name, def);
+	(qi as any).on = (event: string, handler: (event: unknown, ctx: unknown) => unknown) => {
+		const list = qi.handlers.get(event) ?? [];
 		list.push(handler);
-		pi.handlers.set(event, list);
+		qi.handlers.set(event, list);
 	};
 
-	return pi;
+	return qi;
 }

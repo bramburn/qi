@@ -6,7 +6,7 @@ sidebar_label: Package Overview
 
 # Package Architecture
 
-pi is a TypeScript monorepo. This page describes the five core packages and how they interact.
+qi is a TypeScript monorepo. This page describes the five core packages and how they interact.
 
 ## Dependency graph
 
@@ -27,7 +27,7 @@ The user-facing CLI. Responsible for:
 - TUI bootstrapping (`TuiScreen`, `model-selector.ts`)
 - Binary packaging (`build:binary`, copies the Bun exe + runtime assets)
 
-This is what `pi` the command is. It wires together the lower-level packages and owns the entry point.
+This is what `qi` the command is. It wires together the lower-level packages and owns the entry point.
 
 ## packages/agent
 
@@ -77,7 +77,7 @@ The telemetry package has no runtime dependency on the other packages. Other pac
 | Package | Role |
 |---------|------|
 | `packages/protocol` | Wire-format types for IPC between client/server |
-| `packages/client` | HTTP client for the pi server mode |
+| `packages/client` | HTTP client for the qi server mode |
 | `packages/server` | Optional HTTP server exposing the agent as a REST API |
 | `packages/storage` | Session persistence backends (file, SQLite) |
 | `packages/session-backends` | Session file I/O (file-based and SQLite-backed) |

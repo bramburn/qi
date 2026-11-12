@@ -117,7 +117,7 @@ export default function Home(): ReactNode {
             </pre>
             <p className={styles.installNote}>
               Or download a prebuilt binary from the{' '}
-              <Link to="https://github.com/bramburn/pi/releases">GitHub releases</Link>.
+              <Link to="https://github.com/bramburn/qi/releases">GitHub releases</Link>.
             </p>
           </div>
         </section>

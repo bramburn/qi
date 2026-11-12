@@ -46,7 +46,7 @@ We will remove or disable every runtime network call, default URL constant, docu
 ## Compliance checklist
 
 - [ ] `grep -rn 'pi\.dev' packages/*/src/ packages/coding-agent/docs/ README.md website/` returns zero matches.
-- [ ] `grep -rn 'earendil-works' packages/*/src/ scripts/ .github/workflows/` returns zero matches (outside the temporary `ADR-0003` loader shim in `packages/coding-agent/src/core/extensions/loader.ts`; `packages/coding-agent/src/config.ts:346` points to `https://github.com/bramburn/pi/releases/latest`).
+- [ ] `grep -rn 'earendil-works' packages/*/src/ scripts/ .github/workflows/` returns zero matches (outside the temporary `ADR-0003` loader shim in `packages/coding-agent/src/core/extensions/loader.ts`; `packages/coding-agent/src/config.ts:346` points to `https://github.com/bramburn/qi/releases/latest`).
 - [ ] `scripts/README-sync-upstream.md` and `scripts/fork-publish-rename.mjs` are removed from the tree.
 - [ ] `packages/coding-agent/src/core/session-share.ts:29` uses `"qi.share"` and `packages/coding-agent/src/config.ts:526-531` reads `process.env.QI_SHARE_VIEWER_URL` with raw Gist URL fallback and no `pi.dev` fallback.
 - [ ] Unit test asserts that startup version check and post-update install telemetry make zero `fetch` calls to `pi.dev` when `QI_OFFLINE` is unset.

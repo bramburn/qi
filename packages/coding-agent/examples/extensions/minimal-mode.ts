@@ -11,7 +11,7 @@
  * - Minimal: Shows only tool call, no output (this extension's collapsed mode)
  *
  * Usage:
- *   pi -e ./minimal-mode.ts
+ *   qi -e ./minimal-mode.ts
  *
  * Then use ctrl+o to toggle between minimal (collapsed) and full (expanded) views.
  */
@@ -64,11 +64,11 @@ function getBuiltInTools(cwd: string) {
 	return tools;
 }
 
-export default function (pi: ExtensionAPI) {
+export default function (qi: ExtensionAPI) {
 	// =========================================================================
 	// Read Tool
 	// =========================================================================
-	pi.registerTool({
+	qi.registerTool({
 		name: "read",
 		label: "read",
 		description:
@@ -115,7 +115,7 @@ export default function (pi: ExtensionAPI) {
 	// =========================================================================
 	// Bash Tool
 	// =========================================================================
-	pi.registerTool({
+	qi.registerTool({
 		name: "bash",
 		label: "bash",
 		description:
@@ -164,7 +164,7 @@ export default function (pi: ExtensionAPI) {
 	// =========================================================================
 	// Write Tool
 	// =========================================================================
-	pi.registerTool({
+	qi.registerTool({
 		name: "write",
 		label: "write",
 		description:
@@ -206,7 +206,7 @@ export default function (pi: ExtensionAPI) {
 	// =========================================================================
 	// Edit Tool
 	// =========================================================================
-	pi.registerTool({
+	qi.registerTool({
 		name: "edit",
 		label: "edit",
 		description:
@@ -251,7 +251,7 @@ export default function (pi: ExtensionAPI) {
 	// =========================================================================
 	// Find Tool
 	// =========================================================================
-	pi.registerTool({
+	qi.registerTool({
 		name: "find",
 		label: "find",
 		description:
@@ -309,7 +309,7 @@ export default function (pi: ExtensionAPI) {
 	// =========================================================================
 	// Grep Tool
 	// =========================================================================
-	pi.registerTool({
+	qi.registerTool({
 		name: "grep",
 		label: "grep",
 		description:
@@ -371,7 +371,7 @@ export default function (pi: ExtensionAPI) {
 	// =========================================================================
 	// Ls Tool
 	// =========================================================================
-	pi.registerTool({
+	qi.registerTool({
 		name: "ls",
 		label: "ls",
 		description:

@@ -11,7 +11,7 @@ export type ClipboardModule = {
 	// Callers accept both shapes so either prebuild keeps working.
 	getImageBinary: () => Promise<Uint8Array | Array<number>>;
 	// Fork-only: returns "pi-clipboard-rs v..." when the addon is usable,
-	// or an "@bramburn/clipboard-rs: no prebuild ..." sentinel when the
+	// or an "@bramburn/qi-clipboard-rs: no prebuild ..." sentinel when the
 	// .node file is missing or fails to load. Upstream has no marker.
 	addonMarker?: () => string;
 };
@@ -32,7 +32,7 @@ type ClipboardRequire = (id: string) => unknown;
 // prebuild" sentinel (or throws) when broken, which makes this loop
 // fall through to the next probe instead of handing back a module that
 // throws on first use.
-const CLIPBOARD_PROBES = ["@bramburn/clipboard-rs", "@mariozechner/clipboard"] as const;
+const CLIPBOARD_PROBES = ["@bramburn/qi-clipboard-rs", "@mariozechner/clipboard"] as const;
 
 function isUsableClipboardModule(module: unknown): module is ClipboardModule {
 	if (typeof module !== "object" || module === null) return false;
@@ -40,7 +40,7 @@ function isUsableClipboardModule(module: unknown): module is ClipboardModule {
 	if (!addonMarker) return true; // Upstream shape has no marker; require() succeeded.
 	try {
 		const marker = addonMarker.call(module);
-		return typeof marker === "string" && !marker.startsWith("@bramburn/clipboard-rs:");
+		return typeof marker === "string" && !marker.startsWith("@bramburn/qi-clipboard-rs:");
 	} catch {
 		return false;
 	}

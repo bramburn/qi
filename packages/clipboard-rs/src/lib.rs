@@ -1,8 +1,8 @@
-//! @bramburn/clipboard-rs — fork-local native clipboard addon.
+//! @bramburn/qi-clipboard-rs — fork-local native clipboard addon.
 //!
 //! Mirrors the four-method API of `@mariozechner/clipboard` so the
 //! `packages/coding-agent/src/utils/clipboard-native.ts` loader can
-//! `require("@bramburn/clipboard-rs")` unchanged in shape:
+//! `require("@bramburn/qi-clipboard-rs")` unchanged in shape:
 //!
 //!   - `getText(): Promise<string | null>`
 //!   - `setText(text: string): Promise<void>`
@@ -25,10 +25,10 @@ use image::{ExtendedColorType, ImageEncoder};
 /// addon and not a stray upstream `@mariozechner/clipboard` resolution.
 ///
 /// The cargo package name is `pi-clipboard-rs` (Cargo forbids `@` and `/`
-/// in `[package].name`). The npm-distribution name has `@earendil-works/`
-/// or `@bramburn/` prepended by `fork-publish-rename.mjs` at publish time.
-/// The integration test asserts the marker starts with `pi-clipboard-rs v`
-/// to accept both pre- and post-rename forms.
+/// in `[package].name`). The npm-distribution name is
+/// `@bramburn/qi-clipboard-rs`, taken from `package.json`; the marker keeps
+/// the bare crate name, so the integration test asserts it starts with
+/// `pi-clipboard-rs v`.
 #[napi]
 pub fn addon_marker() -> String {
     format!("{} v{}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"))

@@ -4,8 +4,8 @@ import type { ExtensionAPI } from "@bramburn/qi-coding-agent";
 
 const baseDir = dirname(fileURLToPath(import.meta.url));
 
-export default function (pi: ExtensionAPI) {
-	pi.on("resources_discover", () => {
+export default function (qi: ExtensionAPI) {
+	qi.on("resources_discover", () => {
 		return {
 			skillPaths: [join(baseDir, "SKILL.md")],
 			promptPaths: [join(baseDir, "dynamic.md")],

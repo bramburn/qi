@@ -4,6 +4,8 @@
 
 ### Added
 
+- `@bramburn/qi-coding-agent` now exports `getModelSearchText`, `getModelSelectorSearchText`, and `ModelSearchItem`, so extensions can rank models exactly like the `/model` selector instead of mirroring the helpers.
+- Remember the last-used thinking level per model (`modelThinkingLevels`, keyed by `provider/modelId`) and restore it when a new session starts or the active model changes. `/thinking`, the thinking picker, Shift+Tab, and the RPC `set_thinking_level` / `cycle_thinking_level` commands persist the effective clamped level; session history, `--models provider/id:level`, `--thinking`, and the SDK `thinkingLevel` option still take precedence and are not written by construction alone.
 - Ctrl+V paste now reads video payloads from the Wayland/X11 clipboard and attaches them behind `[paste #N video: file]` markers. Video attachments are uploaded only when the active model's API accepts video (Google Gemini/Vertex); otherwise they are dropped with a warning.
 - Ctrl+V paste now attaches clipboard PDFs (`readClipboardPdf`) behind `[paste #N pdf: file]` markers. Video/PDF uploads are gated per model via `modelSupportsMediaUpload` (registry `input` modality plus API serialization support) instead of an API-name check.
 - `models.json` `input` (custom model definitions and `modelOverrides`) can declare `video`, `pdf`, and `audio` modalities per model.
@@ -17,7 +19,9 @@
 
 ### Changed
 
+- Startup onboarding line now reads as Qi and states the `pi.dev 0.85` compatibility baseline.
 - Removed the `PI_SUMMARIZER_*` env-var summariser override (`PI_SUMMARIZER_BASE_URL`, `PI_SUMMARIZER_MODEL`, `PI_SUMMARIZER_API_KEY`, plus the optional `PI_SUMMARIZER_MAX_TOKENS` / `PI_SUMMARIZER_THINKING` tunables). Summariser model selection is now the `compactionModel` setting, configured from `/settings` → Compaction model; the `compaction.summaryMaxTokens` / `compaction.summaryThinking` settings again solely control the summariser budget and reasoning. `ModelRuntime.registerTransientProvider` (only existed for the override) is removed.
+- Published to the public npm registry as `@bramburn/qi-coding-agent` at `0.85.1`, the first release under the `@bramburn` scope.
 
 ### Changed
 
@@ -28,6 +32,7 @@
 
 ### Fixed
 
+- `release:local` on Windows now invokes `./test.sh` through `bash` instead of `cmd.exe`, which cannot execute the POSIX-style path and failed with `'.' is not recognized`. Windows `npm`/`npx` calls also resolve their `.cmd` shims explicitly.
 - Delegated work can no longer expand without bound. A child subagent runs as its own `pi` process with a fresh spawn counter, and the default child tool set included `subagent` itself, so a child could keep delegating — depth 2 reached 4,096 write-capable processes against one working tree. New `subagent.maxDepth` setting (default `1`) bounds delegation: the parent refuses a spawn past the limit with an error that tells the model to finish the work in its own session, and the child drops `subagent` from its tool set at the limit so a grandchild is never offered the tool. Set `maxDepth: 0` to forbid delegation, or raise it to allow nesting. Internally the depth rides to each child as `--subagent-depth`.
 - `subagent` `action="stop"` now stops a background child instead of only relabelling it. The registry never recorded the child's pid, so the tool marked the row `cancelled` and told the model the child keeps running — then the child settled and overwrote that status anyway. The pid is now captured from the runner's `spawned` event and `stop` signals it (graceful first, escalating to a process-tree kill if it survives), reports what it actually did, and never reports `cancelled` for a child it could not reach. A `stop` issued in the moment before the child spawns is honoured when the pid arrives. Signalling is gated on the row still being owned by this session, so a pid that outlived its row and was recycled by another program is never killed.
 - Startup reconciliation now reaps orphan children. If a parent session dies while a background child is running, the row was rewritten to `crashed` and the child was left alive, still able to edit files, with no process to stop it. Reconciliation now terminates the surviving child in the same pass that rewrites the row, and records the reap outcome in the row's `errorMessage`.
@@ -42,6 +47,8 @@
 - `/thinking` no longer sends its input to the model as a plain prompt. The `/thinking` dispatch branch (and the `ThinkingSelectorComponent` picker) was lost when the `/settings` selector rework replaced the command chain, so `/thinking high` fell through every slash-command check and was submitted as an LLM message, while `BUILTIN_SLASH_COMMANDS` and `docs/usage.md` still advertised the command. `/thinking <level>` validates against the model's available levels and applies the level (footer stats and editor border update); `/thinking` with no argument opens the level picker, where Ctrl+S saves the startup default.
 - Extensions importing the legacy `@earendil-works/pi-*` scope (the scope `docs/extensions.md` documents) no longer fail to load with `Cannot find module '@earendil-works/pi-coding-agent'` on built `cli.js` runs. The qi rebrand replaced the `@earendil-works/*` keys in the extension loader's jiti tables with `@bramburn/qi-*`, so jiti fell back to `node_modules` resolution from the extension's install dir (`~/.qi/agent/npm/...`), where the host package is never installed. The alias table (built Node hosts) and virtual-module table (source/binary hosts) now map every `@earendil-works/pi-*` specifier (`pi-coding-agent`, `pi-agent-core`, `pi-tui`, `pi-ai` + subpaths) to the same host modules as the `@bramburn/qi-*` entries.
 - Worktree records copied along with a `.git` directory no longer show up as this repository's worktrees. `git worktree list` reads `<common dir>/worktrees/` and `git worktree prune` validates only that a record's `gitdir` pointer names an existing git file, so a registry inherited from another repository passes both checks forever and reports that repo's checkouts as isolation targets. `listWorktrees()` now drops a record whose worktree `.git` file points back outside this repo's registry, and `pruneWorktrees()` deletes those admin directories (logging each by name) after git's own prune. Records whose pointers cannot be read are left untouched, so a deleted worktree is still handled by git ([#2](https://github.com/bramburn/qi/issues/2)).
+
+- Fixed the published `npm-shrinkwrap.json`, which shipped a repo-relative `packages/coding-agent/node_modules/better-sqlite3` key. npm installed nothing at `node_modules/better-sqlite3`, so `node node_modules/@bramburn/qi-coding-agent/dist/cli.js` failed with `ERR_MODULE_NOT_FOUND`. Both lockfile generators now flatten workspace-nested paths and reject keys outside `node_modules/`. Regression test: `scripts/generate-coding-agent-shrinkwrap.test.mjs`.
 
 ## [0.85.0-b1] - 2026-09-14
 

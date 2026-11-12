@@ -3,7 +3,7 @@
 //
 // Periodic sync: pull user-contributed closed issues from earendil-works/pi
 // (the upstream pi-mono repo) that look like code-improvement candidates,
-// dedupe against the bramburn/pi fork issue list, and create new fork issues
+// dedupe against the bramburn/qi fork issue list, and create new fork issues
 // so the fork can pick them up independently.
 //
 // Scope rules (see --help):
@@ -15,7 +15,7 @@
 //     "improve existing X", error-handling hardening, error-message clarity.
 //   - Skip issues touching packages the fork doesn't ship (mom, pods, proxy,
 //     web-ui, experimental, openclaw).
-//   - Skip issues already represented in bramburn/pi (title or body match).
+//   - Skip issues already represented in bramburn/qi (title or body match).
 //
 // State is persisted at scripts/.upstream-sync-state.json so re-runs only
 // process new closures since the last successful run.
@@ -29,7 +29,7 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const STATE_FILE = join(HERE, ".upstream-sync-state.json");
 
 const UPSTREAM = "earendil-works/pi";
-const FORK = "bramburn/pi";
+const FORK = "bramburn/qi";
 
 // Packages the fork publishes. Issues scoped only to other packages are dropped.
 const FORK_PACKAGE_LABELS = new Set([

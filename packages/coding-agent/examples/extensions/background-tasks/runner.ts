@@ -1,7 +1,7 @@
 /**
  * Background Task Runner
  *
- * Spawns detached pi subprocesses for background tasks.
+ * Spawns detached qi subprocesses for background tasks.
  * Each task gets its own log file and registry entry.
  *
  * Uses detached spawn so tasks survive parent process exit.
@@ -29,7 +29,7 @@ function getPiInvocation(args: string[]): { command: string; args: string[] } {
 		return { command: process.execPath, args };
 	}
 
-	return { command: "pi", args };
+	return { command: "qi", args };
 }
 
 export interface SpawnTaskOptions {
@@ -62,7 +62,7 @@ export function spawnBackgroundTask(opts: SpawnTaskOptions): SpawnedTask {
 
 	let tmpPromptPath: string | null = null;
 	if (opts.systemPrompt || taskPrompt) {
-		const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-bg-task-"));
+		const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "qi-bg-task-"));
 		tmpPromptPath = path.join(tmpDir, "task-prompt.md");
 		fs.writeFileSync(tmpPromptPath, taskPrompt, { encoding: "utf-8", mode: 0o600 });
 		args.push("--append-system-prompt", tmpPromptPath);

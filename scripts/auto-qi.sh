@@ -1,19 +1,19 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Developer wrapper that runs pi from this checkout's latest `npm run build`.
+# Developer wrapper that runs qi from this checkout's latest `npm run build`.
 # Development invocations use QI_EXPERIMENTAL=1 by default. Pass --stable to use
-# the next pi executable on PATH; `pi update` also uses stable so self-update
+# the next qi executable on PATH; `qi update` also uses stable so self-update
 # works.
 #
 # From the repository root, install with:
 #   mkdir -p "$HOME/.local/bin"
-#   ln -s "$PWD/scripts/auto-pi.sh" "$HOME/.local/bin/pi"
+#   ln -s "$PWD/scripts/auto-qi.sh" "$HOME/.local/bin/qi"
 #
-# ~/.local/bin must appear before the stable pi installation on PATH.
+# ~/.local/bin must appear before the stable qi installation on PATH.
 
 # Resolve this script through symlinks so repo_dir points at the development
-# checkout rather than the directory containing the `pi` symlink.
+# checkout rather than the directory containing the `qi` symlink.
 script_path="${BASH_SOURCE[0]}"
 while [[ -L "$script_path" ]]; do
 	script_dir="$(cd -P "$(dirname "$script_path")" && pwd)"
@@ -27,13 +27,13 @@ done
 script_dir="$(cd -P "$(dirname "$script_path")" && pwd)"
 repo_dir="$(cd "$script_dir/.." && pwd)"
 
-find_stable_pi() {
+find_stable_qi() {
 	local path_entry candidate candidate_dir
 	local -a path_entries
 	IFS=: read -r -a path_entries <<< "${PATH:-}"
 	for path_entry in "${path_entries[@]}"; do
 		[[ -n "$path_entry" ]] || path_entry=.
-		candidate="$path_entry/pi"
+		candidate="$path_entry/qi"
 		[[ -x "$candidate" && ! -d "$candidate" ]] || continue
 		[[ "$candidate" -ef "$script_path" ]] && continue
 		candidate_dir="$(cd -P "$(dirname "$candidate")" && pwd)" || continue
@@ -58,18 +58,18 @@ if [[ "${args[0]:-}" == "update" ]]; then
 fi
 
 if [[ "$use_stable" == true ]]; then
-	if ! stable_pi="$(find_stable_pi)"; then
-		echo "error: could not find a stable pi executable after the auto-pi wrapper on PATH" >&2
+	if ! stable_qi="$(find_stable_qi)"; then
+		echo "error: could not find a stable qi executable after the auto-qi wrapper on PATH" >&2
 		exit 1
 	fi
-	exec "$stable_pi" ${args[@]+"${args[@]}"}
+	exec "$stable_qi" ${args[@]+"${args[@]}"}
 fi
 
-dev_pi="$repo_dir/packages/coding-agent/dist/cli.js"
-if [[ ! -x "$dev_pi" ]]; then
-	echo "error: development pi build not found; run \`npm run build\` in $repo_dir" >&2
+dev_qi="$repo_dir/packages/coding-agent/dist/cli.js"
+if [[ ! -x "$dev_qi" ]]; then
+	echo "error: development qi build not found; run \`npm run build\` in $repo_dir" >&2
 	exit 1
 fi
 
 export QI_EXPERIMENTAL="${QI_EXPERIMENTAL:-1}"
-exec "$dev_pi" ${args[@]+"${args[@]}"}
+exec "$dev_qi" ${args[@]+"${args[@]}"}

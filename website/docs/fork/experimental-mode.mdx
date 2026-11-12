@@ -13,7 +13,7 @@ approach, runs each in parallel, measures the result, and merges the
 winner back to the main branch.
 
 This page is the design reference. For install + verification, see
-[Experimental Mode in the subagent README](https://github.com/bramburn/pi/blob/main/packages/coding-agent/examples/extensions/subagent/README.md#experimental-mode).
+[Experimental Mode in the subagent README](https://github.com/bramburn/qi/blob/main/packages/coding-agent/examples/extensions/subagent/README.md#experimental-mode).
 
 ## The E.D.I.T. loop
 
@@ -41,7 +41,7 @@ on disk for archaeology.
 
 ## The 8 tools
 
-Each is a top-level `pi.registerTool` call inside the existing
+Each is a top-level `qi.registerTool` call inside the existing
 `subagent` extension. No new extension, no new package.
 
 | Tool | When |
@@ -69,11 +69,11 @@ dashboard`) when experimental mode is on.
 
 ## Worktree substrate
 
-Every worktree lives at `<repo>/.pi-experiments/<approach-slug>/`. One
+Every worktree lives at `<repo>/.qi-experiments/<approach-slug>/`. One
 branch per approach: `exp/<approach-slug>`. The registry at
-`.pi-experiments/registry.json` is the single source of truth, with
+`.qi-experiments/registry.json` is the single source of truth, with
 `registry.lock` (5-second retry) for multi-process safety. Per-experiment
-output streams to `.pi-experiments/<id>/log.jsonl` (append-only, one
+output streams to `.qi-experiments/<id>/log.jsonl` (append-only, one
 JSON event per line, 1 MB cap per line).
 
 ## Composing with the existing subagent tool
@@ -97,10 +97,10 @@ isolation, no API change to the existing subagent tool.
 
 ## Security model
 
-- **No remote.** Every worktree is at `<repo>/.pi-experiments/`. No
+- **No remote.** Every worktree is at `<repo>/.qi-experiments/`. No
   network calls, no telemetry, no external services.
 - **Registry is gitignored.** The agent's scratch space is never
-  committed. Add `<repo>/.pi-experiments/` to `.gitignore` to make
+  committed. Add `<repo>/.qi-experiments/` to `.gitignore` to make
   this explicit.
 - **Branch is kept after merge/discard.** The audit trail (branch +
   `WHY_IT_FAILED.md` for losers, `MERGED.md` note for winners) is
@@ -117,10 +117,10 @@ isolation, no API change to the existing subagent tool.
 | `git` not on PATH | `experiment_start` fails with "experimental mode requires git" |
 | Worktree path already exists | `experiment_start` returns the offending path; run `experiment_discard` first |
 | `git worktree remove` fails (Windows MAX_PATH, handle lock) | Error message includes the `Move-Item` command to move the build dir aside |
-| Lock contention (another pi process) | After 5s, surface a `notify()` and fall back to read-only |
+| Lock contention (another qi process) | After 5s, surface a `notify()` and fall back to read-only |
 | `experiment_run` hangs >10 min | `SIGTERM` at 10 min, `SIGKILL` at 10:05 min; registry marks `cancelled` |
 | Same tool fails 3x | Research Mode `notify()` + log event |
-| Pi crashes mid-experiment | On `session_start`, `running` rows whose pid is gone are flipped to `failed` |
+| Qi crashes mid-experiment | On `session_start`, `running` rows whose pid is gone are flipped to `failed` |
 
 ## Worked example
 
@@ -171,7 +171,7 @@ entry, and a `● 0 running` status pill.
 
 ## Phase ladder
 
-The skill behind this extension is `pi-experimental-mode`. It is
+The skill behind this extension is `qi-experimental-mode`. It is
 gated on Phase 1 (extension) → Phase 2 (background task registry in
 `packages/agent-core`) → Phase 3 (shared `SubagentSpec` primitive).
 This feature ships as Phase 1. The other phases are gated on

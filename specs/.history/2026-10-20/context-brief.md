@@ -28,7 +28,7 @@ Source: four exploration reports (2026-10-20), file:line cited.
 - Central hook `piConfig` (`coding-agent/package.json:6` → `config.ts:509-518`) drives `APP_NAME`/`CONFIG_DIR_NAME`/`ENV_AGENT_DIR`, but **bin name, package names, and literal `PI_*` env vars (~40) do not follow it**.
 - `FORK_NAME = "bramburn"`; existing publish-time rename machinery `scripts/fork-publish-rename.mjs`.
 - User state `~/.pi/agent/`, project `.pi/`; sessions `~/.pi/agent/sessions/<cwd>/*.jsonl`; share event type `pi.share`.
-- Remotes: `origin` → earendil-works/pi, `fork` → bramburn/pi. ~4604 `earendil` / ~2953 word-boundary `pi` occurrences.
+- Remotes: `origin` → earendil-works/pi, `fork` → bramburn/qi. ~4604 `earendil` / ~2953 word-boundary `pi` occurrences.
 - Upstream calls: `pi.dev/api/latest-version`, `pi.dev/api/report-install`, `pi.dev/api/installer/releases`, `pi.dev/changelog`, `pi.dev/session`, gallery `pi.dev/packages`.
 
 ### extensions
@@ -49,7 +49,7 @@ Source: four exploration reports (2026-10-20), file:line cited.
 ## Existing decisions inferred from code (marked inferred, not accepted)
 
 - Rebrand target name **qi** is a human decision (stated 2026-10-20), not inferred.
-- `[ASSUMPTION: fork-publish-rename.mjs is the intended mechanism for scope rename — rationale: it already rewrites @earendil-works/pi-* → @bramburn/pi-* at publish]`
+- `[ASSUMPTION: fork-publish-rename.mjs is the intended mechanism for scope rename — rationale: it already rewrites @earendil-works/pi-* → @bramburn/qi-* at publish]`
 - `[ASSUMPTION: upstream merge policy follows README.md:12-16 fork-tracking until an ADR cuts it — rationale: sync scripts still present]`
 
 ## Open questions (prioritised — Phase B)

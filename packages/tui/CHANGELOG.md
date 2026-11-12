@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Published to the public npm registry as `@bramburn/qi-tui` at `0.85.1`, the first release under the `@bramburn` scope.
+
 ### Added
 
 - Added video paste attachments: `PasteAttachment` now has a `video` variant and `Editor.pasteVideo()` inserts `[paste #N video: file]` markers.

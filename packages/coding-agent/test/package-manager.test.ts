@@ -5,8 +5,19 @@ import { join, relative } from "node:path";
 import { PassThrough } from "node:stream";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CONFIG_DIR_NAME } from "../src/config.ts";
+import { setExtensionCompatManifestForTests } from "../src/core/extension-compat.ts";
 import { DefaultPackageManager, type ProgressEvent, type ResolvedResource } from "../src/core/package-manager.ts";
 import { SettingsManager } from "../src/core/settings-manager.ts";
+
+function setCompatManifestForTest(packages: Record<string, { range: string }> = {}): void {
+	setExtensionCompatManifestForTests({
+		schemaVersion: 1,
+		forkBaseline: "0.85.0-b1",
+		upstreamCeiling: "0.85.1",
+		cutoffDate: "2026-09-05T23:59:59.999Z",
+		packages,
+	});
+}
 
 function normalizeForMatch(value: string): string {
 	return value.replace(/\\/g, "/");
@@ -91,6 +102,7 @@ describe("DefaultPackageManager", () => {
 	});
 
 	afterEach(() => {
+		setExtensionCompatManifestForTests(undefined);
 		if (previousOfflineEnv === undefined) {
 			delete process.env.QI_OFFLINE;
 		} else {
@@ -270,15 +282,15 @@ Content`,
 			expect(result.prompts.some((r) => r.path === promptPath && !r.enabled)).toBe(true);
 		});
 
-		it("should resolve directory with package.json pi.extensions in extensions setting", async () => {
-			// Create a package with pi.extensions in package.json
+		it("should resolve directory with package.json qi.extensions in extensions setting", async () => {
+			// Create a package with qi.extensions in package.json
 			const pkgDir = join(tempDir, "my-extensions-pkg");
 			mkdirSync(join(pkgDir, "extensions"), { recursive: true });
 			writeFileSync(
 				join(pkgDir, "package.json"),
 				JSON.stringify({
 					name: "my-extensions-pkg",
-					pi: {
+					qi: {
 						extensions: ["./extensions/clip.ts", "./extensions/cost.ts"],
 					},
 				}),
@@ -292,7 +304,7 @@ Content`,
 
 			const result = await packageManager.resolve();
 
-			// Should find the extensions declared in package.json pi.extensions
+			// Should find the extensions declared in package.json qi.extensions
 			expect(result.extensions.some((r) => r.path === join(pkgDir, "extensions", "clip.ts") && r.enabled)).toBe(
 				true,
 			);
@@ -585,14 +597,14 @@ Content`,
 			expect(result.extensions.some((r) => r.path === extPath && r.enabled)).toBe(true);
 		});
 
-		it("should handle directories with pi manifest", async () => {
+		it("should handle directories with qi manifest", async () => {
 			const pkgDir = join(tempDir, "my-package");
 			mkdirSync(pkgDir, { recursive: true });
 			writeFileSync(
 				join(pkgDir, "package.json"),
 				JSON.stringify({
 					name: "my-package",
-					pi: {
+					qi: {
 						extensions: ["./src/index.ts"],
 						skills: ["./skills"],
 					},
@@ -614,7 +626,7 @@ Content`,
 			);
 		});
 
-		it("should keep pi manifest entries with leading tilde package-relative", async () => {
+		it("should keep qi manifest entries with leading tilde package-relative", async () => {
 			const pkgDir = join(tempDir, "tilde-manifest-package");
 			const directExtensionPath = join(pkgDir, "~extensions", "main.ts");
 			const slashExtensionPath = join(pkgDir, "~", "extensions", "alt.ts");
@@ -633,7 +645,7 @@ Content`,
 				join(pkgDir, "package.json"),
 				JSON.stringify({
 					name: "tilde-manifest-package",
-					pi: {
+					qi: {
 						extensions: ["~extensions/main.ts", "~/extensions/alt.ts"],
 						skills: ["~skills", "~/skills"],
 					},
@@ -718,6 +730,8 @@ Content`,
 			});
 
 			const runCommandSpy = vi.spyOn(packageManager as any, "runCommand").mockResolvedValue(undefined);
+			vi.spyOn(packageManager as any, "runCommandCapture").mockResolvedValue('["1.0.0"]');
+			setCompatManifestForTest({ "@scope/pkg": { range: ">=1.0.0 <2.0.0" } });
 
 			await packageManager.install("npm:@scope/pkg");
 
@@ -729,7 +743,7 @@ Content`,
 					"--",
 					"npm",
 					"install",
-					"@scope/pkg",
+					"@scope/pkg@1.0.0",
 					"--prefix",
 					join(agentDir, "npm"),
 					"--legacy-peer-deps",
@@ -762,12 +776,24 @@ Content`,
 			});
 
 			const runCommandSpy = vi.spyOn(packageManager as any, "runCommand").mockResolvedValue(undefined);
+			vi.spyOn(packageManager as any, "runCommandCapture").mockResolvedValue('["1.0.0"]');
+			setCompatManifestForTest({ "@scope/pkg": { range: ">=1.0.0 <2.0.0" } });
 
 			await packageManager.install("npm:@scope/pkg");
 
 			expect(runCommandSpy).toHaveBeenCalledWith(
 				"mise",
-				["exec", "bun@1", "--", "bun", "install", "@scope/pkg", "--cwd", join(agentDir, "npm"), "--omit=peer"],
+				[
+					"exec",
+					"bun@1",
+					"--",
+					"bun",
+					"install",
+					"@scope/pkg@1.0.0",
+					"--cwd",
+					join(agentDir, "npm"),
+					"--omit=peer",
+				],
 				undefined,
 			);
 		});
@@ -1089,6 +1115,8 @@ Content`,
 			vi.spyOn(packageManager as any, "runCommandSync").mockImplementation(() => {
 				throw new Error("legacy lookup unavailable");
 			});
+			vi.spyOn(packageManager as any, "runCommandCapture").mockResolvedValue('["1.0.0"]');
+			setCompatManifestForTest({ "pnpm-pkg": { range: ">=1.0.0 <2.0.0" } });
 			const runCommandSpy = vi
 				.spyOn(packageManager as any, "runCommand")
 				.mockImplementation(async (...callArgs: unknown[]) => {
@@ -1096,7 +1124,7 @@ Content`,
 					expect(command).toBe("pnpm");
 					expect(args).toEqual([
 						"install",
-						"pnpm-pkg",
+						"pnpm-pkg@1.0.0",
 						"--prefix",
 						join(agentDir, "npm"),
 						"--config.auto-install-peers=false",
@@ -1578,7 +1606,7 @@ Content`,
 		});
 	});
 
-	describe("pattern filtering in pi manifest", () => {
+	describe("pattern filtering in qi manifest", () => {
 		it("should support glob patterns in manifest extensions", async () => {
 			const pkgDir = join(tempDir, "manifest-pkg");
 			mkdirSync(join(pkgDir, "extensions"), { recursive: true });
@@ -1590,7 +1618,7 @@ Content`,
 				join(pkgDir, "package.json"),
 				JSON.stringify({
 					name: "manifest-pkg",
-					pi: {
+					qi: {
 						extensions: ["extensions", "node_modules/dep/extensions", "!**/skip.ts"],
 					},
 				}),
@@ -1618,7 +1646,7 @@ Content`,
 				join(pkgDir, "package.json"),
 				JSON.stringify({
 					name: "skill-manifest-pkg",
-					pi: {
+					qi: {
 						skills: ["skills", "!**/bad-skill"],
 					},
 				}),
@@ -1645,7 +1673,7 @@ Content`,
 				join(pkgDir, "package.json"),
 				JSON.stringify({
 					name: "skill-manifest-glob-pkg",
-					pi: {
+					qi: {
 						skills: ["./plugins/*/skills"],
 					},
 				}),
@@ -1687,7 +1715,7 @@ Content`,
 				join(pkgDir, "package.json"),
 				JSON.stringify({
 					name: "manifest-glob-semantics-pkg",
-					pi: {
+					qi: {
 						extensions: [
 							"./extension-files/*.ts",
 							"./extension-files/**/.ignored.ts",
@@ -1724,7 +1752,7 @@ Content`,
 				join(pkgDir, "package.json"),
 				JSON.stringify({
 					name: "layered-pkg",
-					pi: {
+					qi: {
 						extensions: ["extensions", "!**/baz.ts"],
 					},
 				}),
@@ -1986,7 +2014,7 @@ Content`,
 				join(pkgDir, "package.json"),
 				JSON.stringify({
 					name: "manifest-force-pkg",
-					pi: {
+					qi: {
 						extensions: ["extensions", "!**/two.ts", "+extensions/two.ts"],
 					},
 				}),
@@ -2208,7 +2236,7 @@ export default function(api) { api.registerTool({ name: "test", description: "te
 			expect(result.extensions.some((r) => pathEndsWith(r.path, "agents.ts"))).toBe(false);
 		});
 
-		it("should respect package.json pi.extensions manifest in subdirectories", async () => {
+		it("should respect package.json qi.extensions manifest in subdirectories", async () => {
 			const pkgDir = join(tempDir, "manifest-subdir-pkg");
 			mkdirSync(join(pkgDir, "extensions", "custom"), { recursive: true });
 
@@ -2216,7 +2244,7 @@ export default function(api) { api.registerTool({ name: "test", description: "te
 			writeFileSync(
 				join(pkgDir, "extensions", "custom", "package.json"),
 				JSON.stringify({
-					pi: {
+					qi: {
 						extensions: ["./main.ts"],
 					},
 				}),
@@ -2282,11 +2310,12 @@ export default function(api) { api.registerTool({ name: "test", description: "te
 	});
 
 	describe("offline mode and network timeouts", () => {
-		it("should update npm range packages using the configured spec", async () => {
+		it("should update npm range packages to the resolved compatible version", async () => {
 			const installedPath = join(tempDir, CONFIG_DIR_NAME, "npm", "node_modules", "example");
 			mkdirSync(installedPath, { recursive: true });
 			writeFileSync(join(installedPath, "package.json"), JSON.stringify({ name: "example", version: "1.0.0" }));
 			settingsManager.setProjectPackages(["npm:example@^1.0.0"]);
+			setCompatManifestForTest({ example: { range: ">=1.0.0 <2.0.0" } });
 
 			const runCommandCaptureSpy = vi
 				.spyOn(packageManager as any, "runCommandCapture")
@@ -2297,21 +2326,23 @@ export default function(api) { api.registerTool({ name: "test", description: "te
 
 			expect(runCommandCaptureSpy).toHaveBeenCalledWith(
 				"npm",
-				["view", "example@^1.0.0", "version", "--json"],
+				["view", "example", "versions", "--json"],
 				expect.objectContaining({ cwd: tempDir, timeoutMs: expect.any(Number) }),
 			);
 			expect(runCommandSpy).toHaveBeenCalledWith(
 				"npm",
-				["install", "example@^1.0.0", "--prefix", join(tempDir, ".qi", "npm"), "--legacy-peer-deps"],
+				["install", "example@1.2.0", "--prefix", join(tempDir, ".qi", "npm"), "--legacy-peer-deps"],
 				undefined,
 			);
+			expect(settingsManager.getProjectSettings().packages).toEqual(["npm:example@1.2.0"]);
 		});
 
-		it("should skip project npm update when installed version matches latest", async () => {
+		it("should skip project npm update when installed version matches the compatible version", async () => {
 			const installedPath = join(tempDir, CONFIG_DIR_NAME, "npm", "node_modules", "example");
 			mkdirSync(installedPath, { recursive: true });
 			writeFileSync(join(installedPath, "package.json"), JSON.stringify({ name: "example", version: "1.3.1" }));
 			settingsManager.setProjectPackages(["npm:example@^1.0.0"]);
+			setCompatManifestForTest({ example: { range: ">=1.0.0 <2.0.0" } });
 
 			const runCommandCaptureSpy = vi
 				.spyOn(packageManager as any, "runCommandCapture")
@@ -2322,7 +2353,7 @@ export default function(api) { api.registerTool({ name: "test", description: "te
 
 			expect(runCommandCaptureSpy).toHaveBeenCalledWith(
 				"npm",
-				["view", "example@^1.0.0", "version", "--json"],
+				["view", "example", "versions", "--json"],
 				expect.objectContaining({ cwd: tempDir, timeoutMs: expect.any(Number) }),
 			);
 			expect(runCommandSpy).not.toHaveBeenCalled();
@@ -2333,6 +2364,7 @@ export default function(api) { api.registerTool({ name: "test", description: "te
 			mkdirSync(installedPath, { recursive: true });
 			writeFileSync(join(installedPath, "package.json"), JSON.stringify({ name: "example", version: "2.0.0" }));
 			settingsManager.setProjectPackages(["npm:example"]);
+			setCompatManifestForTest({ example: { range: ">=1.0.0" } });
 
 			const runCommandCaptureSpy = vi.spyOn(packageManager as any, "runCommandCapture").mockResolvedValue('"1.9.0"');
 			const runCommandSpy = vi.spyOn(packageManager as any, "runCommand").mockResolvedValue(undefined);
@@ -2341,7 +2373,7 @@ export default function(api) { api.registerTool({ name: "test", description: "te
 
 			expect(runCommandCaptureSpy).toHaveBeenCalledWith(
 				"npm",
-				["view", "example", "version", "--json"],
+				["view", "example", "versions", "--json"],
 				expect.objectContaining({ cwd: tempDir, timeoutMs: expect.any(Number) }),
 			);
 			expect(runCommandSpy).not.toHaveBeenCalled();
@@ -2354,6 +2386,7 @@ export default function(api) { api.registerTool({ name: "test", description: "te
 			mkdirSync(legacyPath, { recursive: true });
 			writeFileSync(join(legacyPath, "package.json"), JSON.stringify({ name: "legacy-pkg", version: "1.0.0" }));
 			settingsManager.setPackages(["npm:legacy-pkg"]);
+			setCompatManifestForTest({ "legacy-pkg": { range: ">=1.0.0 <2.0.0" } });
 
 			vi.spyOn(packageManager as any, "getGlobalNpmRoot").mockReturnValue(legacyRoot);
 			const runCommandCaptureSpy = vi.spyOn(packageManager as any, "runCommandCapture").mockResolvedValue('"1.0.0"');
@@ -2364,7 +2397,7 @@ export default function(api) { api.registerTool({ name: "test", description: "te
 					expect(command).toBe("npm");
 					expect(args).toEqual([
 						"install",
-						"legacy-pkg@latest",
+						"legacy-pkg@1.0.0",
 						"--prefix",
 						join(agentDir, "npm"),
 						"--legacy-peer-deps",
@@ -2380,9 +2413,10 @@ export default function(api) { api.registerTool({ name: "test", description: "te
 
 			await packageManager.update("npm:legacy-pkg");
 
-			expect(runCommandCaptureSpy).not.toHaveBeenCalled();
+			expect(runCommandCaptureSpy).toHaveBeenCalledTimes(1);
 			expect(runCommandSpy).toHaveBeenCalledTimes(1);
 			expect(packageManager.getInstalledPath("npm:legacy-pkg", "user")).toBe(managedPath);
+			expect(settingsManager.getGlobalSettings().packages).toEqual(["npm:legacy-pkg@1.0.0"]);
 		});
 
 		it("should batch npm updates per scope and run git updates in parallel while skipping pinned npm and current packages", async () => {
@@ -2430,22 +2464,30 @@ export default function(api) { api.registerTool({ name: "test", description: "te
 				.spyOn(packageManager as any, "runCommandCapture")
 				.mockImplementation(async (...callArgs: unknown[]) => {
 					const [_command, args] = callArgs as [string, string[]];
-					if (args[0] !== "view") {
+					if (args[0] !== "view" || args[2] !== "versions") {
 						throw new Error(`Unexpected runCommandCapture args: ${args.join(" ")}`);
 					}
 					switch (args[1]) {
 						case "user-old":
 						case "project-old":
-							return '"2.0.0"';
+							return '["1.0.0","2.0.0"]';
 						case "user-current":
 						case "project-current":
-							return '"1.0.0"';
+							return '["1.0.0"]';
 						case "user-unknown":
 							throw new Error("registry unavailable");
 						default:
 							throw new Error(`Unexpected package lookup: ${args[1]}`);
 					}
 				});
+			setCompatManifestForTest({
+				"user-old": { range: ">=1.0.0 <3.0.0" },
+				"user-current": { range: ">=1.0.0 <3.0.0" },
+				"user-unknown": { range: ">=1.0.0 <3.0.0" },
+				"project-old": { range: ">=1.0.0 <3.0.0" },
+				"project-current": { range: ">=1.0.0 <3.0.0" },
+				"project-missing": { range: ">=1.0.0 <3.0.0" },
+			});
 
 			let activeNpmUpdates = 0;
 			let maxConcurrentNpmUpdates = 0;
@@ -2473,37 +2515,190 @@ export default function(api) { api.registerTool({ name: "test", description: "te
 
 			await packageManager.update();
 
-			expect(runCommandCaptureSpy).toHaveBeenCalledTimes(5);
+			expect(runCommandCaptureSpy).toHaveBeenCalledTimes(6);
 			expect(runCommandSpy).toHaveBeenCalledTimes(2);
 			expect(runCommandSpy).toHaveBeenNthCalledWith(
 				1,
 				"npm",
-				[
-					"install",
-					"user-old@latest",
-					"user-unknown@latest",
-					"--prefix",
-					join(agentDir, "npm"),
-					"--legacy-peer-deps",
-				],
+				["install", "user-old@2.0.0", "--prefix", join(agentDir, "npm"), "--legacy-peer-deps"],
 				undefined,
 			);
 			expect(runCommandSpy).toHaveBeenNthCalledWith(
 				2,
 				"npm",
-				[
-					"install",
-					"project-old@latest",
-					"project-missing@latest",
-					"--prefix",
-					join(tempDir, ".qi", "npm"),
-					"--legacy-peer-deps",
-				],
+				["install", "project-old@2.0.0", "--prefix", join(tempDir, ".qi", "npm"), "--legacy-peer-deps"],
 				undefined,
 			);
 			expect(updateGitSpy).toHaveBeenCalledTimes(4);
 			expect(maxConcurrentNpmUpdates).toBeGreaterThan(1);
 			expect(maxConcurrentGitUpdates).toBeGreaterThan(1);
+		});
+
+		it("should update a listed package to the highest compatible version", async () => {
+			const installedPath = join(tempDir, ".qi", "npm", "node_modules", "pi-tools");
+			mkdirSync(installedPath, { recursive: true });
+			writeFileSync(join(installedPath, "package.json"), JSON.stringify({ name: "pi-tools", version: "1.0.0" }));
+			settingsManager.setProjectPackages(["npm:pi-tools"]);
+			setCompatManifestForTest({ "pi-tools": { range: ">=1.0.0 <2.0.0" } });
+
+			vi.spyOn(packageManager as any, "runCommandCapture").mockResolvedValue('["1.0.0","1.1.0","2.0.0"]');
+			const runCommandSpy = vi.spyOn(packageManager as any, "runCommand").mockResolvedValue(undefined);
+
+			await packageManager.update("npm:pi-tools");
+
+			expect(runCommandSpy).toHaveBeenCalledTimes(1);
+			expect(runCommandSpy).toHaveBeenCalledWith(
+				"npm",
+				["install", "pi-tools@1.1.0", "--prefix", join(tempDir, ".qi", "npm"), "--legacy-peer-deps"],
+				undefined,
+			);
+			expect(settingsManager.getProjectSettings().packages).toEqual(["npm:pi-tools@1.1.0"]);
+		});
+
+		it("should fail hard when a listed package has no compatible version", async () => {
+			settingsManager.setProjectPackages(["npm:pi-tools"]);
+			setCompatManifestForTest({ "pi-tools": { range: ">=2.0.0" } });
+
+			vi.spyOn(packageManager as any, "runCommandCapture").mockResolvedValue('["1.0.0","1.5.0"]');
+			const runCommandSpy = vi.spyOn(packageManager as any, "runCommand").mockResolvedValue(undefined);
+
+			await expect(packageManager.update("npm:pi-tools")).rejects.toThrow("E_EXT_NO_COMPATIBLE_VERSION");
+			expect(runCommandSpy).not.toHaveBeenCalled();
+			expect(settingsManager.getProjectSettings().packages).toEqual(["npm:pi-tools"]);
+		});
+
+		it("should cap an unlisted package at the cutoff date", async () => {
+			const installedPath = join(tempDir, ".qi", "npm", "node_modules", "pkg");
+			mkdirSync(installedPath, { recursive: true });
+			writeFileSync(join(installedPath, "package.json"), JSON.stringify({ name: "pkg", version: "1.0.0" }));
+			settingsManager.setProjectPackages(["npm:pkg"]);
+			setCompatManifestForTest();
+
+			vi.spyOn(packageManager as any, "runCommandCapture").mockImplementation(async (...callArgs: unknown[]) => {
+				const [_command, args] = callArgs as [string, string[]];
+				if (args[2] === "versions") return '["1.0.0","1.1.0","2.0.0"]';
+				return JSON.stringify({
+					"1.0.0": "2026-08-01T00:00:00.000Z",
+					"1.1.0": "2026-09-01T00:00:00.000Z",
+					"2.0.0": "2026-09-20T00:00:00.000Z",
+				});
+			});
+			const runCommandSpy = vi.spyOn(packageManager as any, "runCommand").mockResolvedValue(undefined);
+
+			await packageManager.update("npm:pkg");
+
+			expect(runCommandSpy).toHaveBeenCalledWith(
+				"npm",
+				["install", "pkg@1.1.0", "--prefix", join(tempDir, ".qi", "npm"), "--legacy-peer-deps"],
+				undefined,
+			);
+			expect(settingsManager.getProjectSettings().packages).toEqual(["npm:pkg@1.1.0"]);
+		});
+
+		it("should block and pin an unlisted package with no pre-cutoff release", async () => {
+			const installedPath = join(tempDir, ".qi", "npm", "node_modules", "pkg");
+			mkdirSync(installedPath, { recursive: true });
+			writeFileSync(join(installedPath, "package.json"), JSON.stringify({ name: "pkg", version: "1.0.0" }));
+			settingsManager.setProjectPackages(["npm:pkg"]);
+			setCompatManifestForTest();
+
+			vi.spyOn(packageManager as any, "runCommandCapture").mockImplementation(async (...callArgs: unknown[]) => {
+				const [_command, args] = callArgs as [string, string[]];
+				if (args[2] === "versions") return '["1.0.0","2.0.0"]';
+				return JSON.stringify({ "1.0.0": "2026-10-01T00:00:00.000Z", "2.0.0": "2026-10-02T00:00:00.000Z" });
+			});
+			const runCommandSpy = vi.spyOn(packageManager as any, "runCommand").mockResolvedValue(undefined);
+			const events: ProgressEvent[] = [];
+			packageManager.setProgressCallback((event) => events.push(event));
+
+			await packageManager.update("npm:pkg");
+
+			expect(runCommandSpy).not.toHaveBeenCalled();
+			expect(settingsManager.getProjectSettings().packages).toEqual(["npm:pkg@1.0.0"]);
+			expect(events.some((event) => event.type === "error" && event.action === "update")).toBe(true);
+		});
+
+		it("should not report a post-cutoff update for an unlisted package", async () => {
+			const installedPath = join(tempDir, ".qi", "npm", "node_modules", "pkg");
+			mkdirSync(installedPath, { recursive: true });
+			writeFileSync(join(installedPath, "package.json"), JSON.stringify({ name: "pkg", version: "1.0.0" }));
+			settingsManager.setProjectPackages(["npm:pkg"]);
+			setCompatManifestForTest();
+
+			vi.spyOn(packageManager as any, "runCommandCapture").mockImplementation(async (...callArgs: unknown[]) => {
+				const [_command, args] = callArgs as [string, string[]];
+				if (args[2] === "versions") return '["1.0.0","2.0.0"]';
+				return JSON.stringify({ "1.0.0": "2026-08-01T00:00:00.000Z", "2.0.0": "2026-09-20T00:00:00.000Z" });
+			});
+
+			await expect(packageManager.checkForAvailableUpdates()).resolves.toEqual([]);
+		});
+
+		it("should pin the exact compatible version when installing a listed package", async () => {
+			const installedPath = join(agentDir, "npm", "node_modules", "pi-tools");
+			setCompatManifestForTest({ "pi-tools": { range: ">=1.0.0 <2.0.0" } });
+
+			vi.spyOn(packageManager as any, "runCommandCapture").mockResolvedValue('["1.0.0","1.2.0","2.0.0"]');
+			const runCommandSpy = vi
+				.spyOn(packageManager as any, "runCommand")
+				.mockImplementation(async (...callArgs: unknown[]) => {
+					const [_command, args] = callArgs as [string, string[]];
+					expect(args).toEqual([
+						"install",
+						"pi-tools@1.2.0",
+						"--prefix",
+						join(agentDir, "npm"),
+						"--legacy-peer-deps",
+					]);
+					mkdirSync(installedPath, { recursive: true });
+					writeFileSync(
+						join(installedPath, "package.json"),
+						JSON.stringify({ name: "pi-tools", version: "1.2.0" }),
+					);
+				});
+
+			await packageManager.installAndPersist("npm:pi-tools");
+
+			expect(runCommandSpy).toHaveBeenCalledTimes(1);
+			expect(settingsManager.getGlobalSettings().packages).toEqual(["npm:pi-tools@1.2.0"]);
+		});
+
+		it("should install the newest release of an unlisted package when nothing predates the cutoff", async () => {
+			const installedPath = join(agentDir, "npm", "node_modules", "pkg");
+			setCompatManifestForTest();
+
+			vi.spyOn(packageManager as any, "runCommandCapture").mockImplementation(async (...callArgs: unknown[]) => {
+				const [_command, args] = callArgs as [string, string[]];
+				if (args[2] === "versions") return '["2.0.0"]';
+				return JSON.stringify({ "2.0.0": "2026-10-02T00:00:00.000Z" });
+			});
+			const runCommandSpy = vi
+				.spyOn(packageManager as any, "runCommand")
+				.mockImplementation(async (...callArgs: unknown[]) => {
+					const [_command, args] = callArgs as [string, string[]];
+					expect(args).toEqual(["install", "pkg@2.0.0", "--prefix", join(agentDir, "npm"), "--legacy-peer-deps"]);
+					mkdirSync(installedPath, { recursive: true });
+					writeFileSync(join(installedPath, "package.json"), JSON.stringify({ name: "pkg", version: "2.0.0" }));
+				});
+
+			await packageManager.installAndPersist("npm:pkg");
+
+			expect(runCommandSpy).toHaveBeenCalledTimes(1);
+			expect(settingsManager.getGlobalSettings().packages).toEqual(["npm:pkg@2.0.0"]);
+		});
+
+		it("should skip pinned packages during update even when a compatible update exists", async () => {
+			settingsManager.setProjectPackages(["npm:pi-tools@1.0.0"]);
+			setCompatManifestForTest({ "pi-tools": { range: ">=1.0.0 <2.0.0" } });
+
+			const runCommandCaptureSpy = vi.spyOn(packageManager as any, "runCommandCapture");
+			const runCommandSpy = vi.spyOn(packageManager as any, "runCommand").mockResolvedValue(undefined);
+
+			await packageManager.update("npm:pi-tools");
+
+			expect(runCommandCaptureSpy).not.toHaveBeenCalled();
+			expect(runCommandSpy).not.toHaveBeenCalled();
+			expect(settingsManager.getProjectSettings().packages).toEqual(["npm:pi-tools@1.0.0"]);
 		});
 
 		it("should suggest npm source prefixes for update lookups", async () => {
@@ -2593,6 +2788,7 @@ export default function(api) { api.registerTool({ name: "test", description: "te
 			mkdirSync(installedPath, { recursive: true });
 			writeFileSync(join(installedPath, "package.json"), JSON.stringify({ name: "example", version: "1.0.0" }));
 			settingsManager.setProjectPackages(["npm:example"]);
+			setCompatManifestForTest({ example: { range: ">=1.0.0" } });
 
 			vi.spyOn(packageManager as any, "runCommandCapture").mockResolvedValue('"1.2.3"');
 
@@ -2612,6 +2808,7 @@ export default function(api) { api.registerTool({ name: "test", description: "te
 			mkdirSync(installedPath, { recursive: true });
 			writeFileSync(join(installedPath, "package.json"), JSON.stringify({ name: "example", version: "2.0.0" }));
 			settingsManager.setProjectPackages(["npm:example"]);
+			setCompatManifestForTest({ example: { range: ">=1.0.0" } });
 
 			vi.spyOn(packageManager as any, "runCommandCapture").mockResolvedValue('"1.9.0"');
 
@@ -2638,17 +2835,34 @@ export default function(api) { api.registerTool({ name: "test", description: "te
 			expect(gitUpdateSpy).not.toHaveBeenCalled();
 		});
 
-		it("should use npm view to fetch latest version", async () => {
+		it("should list npm versions with a single-result response", async () => {
 			const runCommandCaptureSpy = vi.spyOn(packageManager as any, "runCommandCapture").mockResolvedValue('"1.2.3"');
 
-			const latest = await (packageManager as any).getLatestNpmVersion("example");
-			expect(latest).toBe("1.2.3");
+			const versions = await (packageManager as any).getNpmVersions("example");
+			expect(versions).toEqual(["1.2.3"]);
 			expect(runCommandCaptureSpy).toHaveBeenCalledTimes(1);
 			expect(runCommandCaptureSpy).toHaveBeenCalledWith(
 				"npm",
-				["view", "example", "version", "--json"],
+				["view", "example", "versions", "--json"],
 				expect.objectContaining({ cwd: tempDir, timeoutMs: expect.any(Number) }),
 			);
+		});
+
+		it("should read npm publish times and ignore non-version entries", async () => {
+			vi.spyOn(packageManager as any, "runCommandCapture").mockResolvedValue(
+				'{"created":"2026-01-01T00:00:00.000Z","1.0.0":"2026-02-01T00:00:00.000Z"}',
+			);
+
+			const times = await (packageManager as any).getNpmPublishTimes("example");
+			expect(times["1.0.0"]).toBe("2026-02-01T00:00:00.000Z");
+			expect(times.modified).toBeUndefined();
+		});
+
+		it("should treat empty npm responses as no versions and no publish times", async () => {
+			vi.spyOn(packageManager as any, "runCommandCapture").mockResolvedValue("");
+
+			await expect((packageManager as any).getNpmVersions("example")).resolves.toEqual([]);
+			await expect((packageManager as any).getNpmPublishTimes("example")).resolves.toEqual({});
 		});
 
 		it("should use npmCommand argv for npm update checks", async () => {
@@ -2663,11 +2877,11 @@ export default function(api) { api.registerTool({ name: "test", description: "te
 
 			const runCommandCaptureSpy = vi.spyOn(packageManager as any, "runCommandCapture").mockResolvedValue('"1.2.3"');
 
-			const latest = await (packageManager as any).getLatestNpmVersion("@scope/pkg");
-			expect(latest).toBe("1.2.3");
+			const latest = await (packageManager as any).getNpmVersions("@scope/pkg");
+			expect(latest).toEqual(["1.2.3"]);
 			expect(runCommandCaptureSpy).toHaveBeenCalledWith(
 				"mise",
-				["exec", "node@20", "--", "npm", "view", "@scope/pkg", "version", "--json"],
+				["exec", "node@20", "--", "npm", "view", "@scope/pkg", "versions", "--json"],
 				expect.objectContaining({ cwd: tempDir }),
 			);
 		});

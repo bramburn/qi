@@ -2,7 +2,7 @@
 
 ## Context
 
-Currently `defaultModel` is a global setting stored in `~/.pi/settings.json`. When a user starts a new session (or resumes one), the model is resolved from:
+Currently `defaultModel` is a global setting stored in `~/.qi/agent/settings.json`. When a user starts a new session (or resumes one), the model is resolved from:
 
 1. `--model` / `--models` CLI flags (most specific)
 2. Saved `defaultModel` from global/project settings (fallback)
@@ -12,7 +12,7 @@ There is no per-session model preference. If a user works on project A with `cla
 
 ## Goal
 
-Allow each `.pi-session` file to carry a `defaultModel` preference that overrides the global setting when that session is opened.
+Allow each `.qi-session` file to carry a `defaultModel` preference that overrides the global setting when that session is opened.
 
 ## Current Architecture
 
@@ -21,8 +21,8 @@ Allow each `.pi-session` file to carry a `defaultModel` preference that override
 `SettingsManager` (`settings-manager.ts`) maintains three settings layers:
 
 ```
-~/.pi/settings.json         → globalSettings  (globalDefaults: "regular")
-<cwd>/.pi/settings.json   → projectSettings  (projectDefaults: { "tuiMode": "fullscreen" })
+~/.qi/agent/settings.json         → globalSettings  (globalDefaults: "regular")
+<cwd>/.qi/settings.json   → projectSettings  (projectDefaults: { "tuiMode": "fullscreen" })
 merged: globalSettings + projectSettings → this.settings
 ```
 
@@ -46,7 +46,7 @@ else → sessionOptions.model = undefined → must be provided via --model
 
 ### Session file format
 
-Sessions are JSONL files (`.pi-session`). The first line is a `SessionHeader`:
+Sessions are JSONL files (`.qi-session`). The first line is a `SessionHeader`:
 
 ```typescript
 // session-manager.ts:32

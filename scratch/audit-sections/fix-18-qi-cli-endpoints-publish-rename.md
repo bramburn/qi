@@ -397,11 +397,11 @@ Update `scripts/fork-publish-rename.mjs:23-26,48-61,69-77` to target `@bramburn/
  }
  
 -const WORKSPACE_PREFIX = "@earendil-works/pi-";
--const FORK_PREFIX = "@bramburn/pi-";
+-const FORK_PREFIX = "@bramburn/qi-";
 +const WORKSPACE_PREFIX = "@earendil-works/pi-";
 +const FORK_PREFIX = "@bramburn/qi-";
  const UPSTREAM_REPO_URL = "git+https://github.com/earendil-works/pi.git";
- const FORK_REPO_URL = "git+https://github.com/bramburn/pi.git";
+ const FORK_REPO_URL = "git+https://github.com/bramburn/qi.git";
  
 @@ -45,12 +45,14 @@
  	process.exit(2);
@@ -423,7 +423,7 @@ Update `scripts/fork-publish-rename.mjs:23-26,48-61,69-77` to target `@bramburn/
  
  // Rewrite workspace deps in every dep section. Skips registry aliases
 ```
-Verify: `bun test scripts/*.test.mjs` and `grep -n '@bramburn/pi-' scripts/fork-publish-rename.mjs` (expect 0 matches).
+Verify: `bun test scripts/*.test.mjs` and `grep -n '@bramburn/qi-' scripts/fork-publish-rename.mjs` (expect 0 matches).
 
 Update `.github/workflows/publish.yml:69-133` step names and comments to `@bramburn/qi-*` per D2.
 
@@ -434,11 +434,11 @@ Update `.github/workflows/publish.yml:69-133` step names and comments to `@bramb
        # plus the `npm-publish` environment lets npm CLI auto-detect the OIDC
        # token from the GitHub Actions environment. Do NOT set NODE_AUTH_TOKEN
        # here — that would force the legacy token path and re-trigger 2FA.
--      - name: Publish @bramburn/pi-ai
+-      - name: Publish @bramburn/qi-ai
 +      - name: Publish @bramburn/qi-ai
          run: |
            # scripts/fork-publish-rename.mjs swaps the package name to
--          # @bramburn/pi-ai, runs the rest of the command line, then
+-          # @bramburn/qi-ai, runs the rest of the command line, then
 -          # restores the original @earendil-works/pi-ai name. This way
 +          # @bramburn/qi-ai, runs the rest of the command line, then
 +          # restores the original package.json on exit. This way
@@ -450,47 +450,47 @@ Update `.github/workflows/publish.yml:69-133` step names and comments to `@bramb
   # missing) surfaces as a step failure.
   node scripts/fork-publish-rename.mjs packages/ai node scripts/publish-with-skip.mjs packages/ai npm publish --access public --tag fork
  
--      - name: Publish @bramburn/pi-tui
+-      - name: Publish @bramburn/qi-tui
 +      - name: Publish @bramburn/qi-tui
          run: |
            node scripts/fork-publish-rename.mjs packages/tui node scripts/publish-with-skip.mjs packages/tui npm publish --access public --tag fork
  
--      - name: Publish @bramburn/pi-telemetry
+-      - name: Publish @bramburn/qi-telemetry
 +      - name: Publish @bramburn/qi-telemetry
          run: |
            node scripts/fork-publish-rename.mjs packages/telemetry node scripts/publish-with-skip.mjs packages/telemetry npm publish --access public --tag fork
  
--      - name: Publish @bramburn/pi-protocol
+-      - name: Publish @bramburn/qi-protocol
 +      - name: Publish @bramburn/qi-protocol
          run: |
            node scripts/fork-publish-rename.mjs packages/protocol node scripts/publish-with-skip.mjs packages/protocol npm publish --access public --tag fork
  
--      - name: Publish @bramburn/pi-client
+-      - name: Publish @bramburn/qi-client
 +      - name: Publish @bramburn/qi-client
          run: |
            node scripts/fork-publish-rename.mjs packages/client node scripts/publish-with-skip.mjs packages/client npm publish --access public --tag fork
  
--      - name: Publish @bramburn/pi-agent-core
+-      - name: Publish @bramburn/qi-agent-core
 +      - name: Publish @bramburn/qi-agent-core
          run: |
            node scripts/fork-publish-rename.mjs packages/agent node scripts/publish-with-skip.mjs packages/agent npm publish --access public --tag fork
  
--      - name: Publish @bramburn/pi-session-backend-sqlite-node
+-      - name: Publish @bramburn/qi-session-backend-sqlite-node
 +      - name: Publish @bramburn/qi-session-backend-sqlite-node
          run: |
            node scripts/fork-publish-rename.mjs packages/session-backends/sqlite-node node scripts/publish-with-skip.mjs packages/session-backends/sqlite-node npm publish --access public --tag fork
  
--      - name: Publish @bramburn/pi-coding-agent
+-      - name: Publish @bramburn/qi-coding-agent
 +      - name: Publish @bramburn/qi-coding-agent
          run: |
            node scripts/fork-publish-rename.mjs packages/coding-agent node scripts/publish-with-skip.mjs packages/coding-agent npm publish --access public --tag fork
  
--      - name: Publish @bramburn/pi-server
+-      - name: Publish @bramburn/qi-server
 +      - name: Publish @bramburn/qi-server
          run: |
            node scripts/fork-publish-rename.mjs packages/server node scripts/publish-with-skip.mjs packages/server npm publish --access public --tag fork
  
--      - name: Publish @bramburn/pi-clipboard-rs
+-      - name: Publish @bramburn/qi-clipboard-rs
 +      - name: Publish @bramburn/qi-clipboard-rs
          # Source name is already in the bramburn/ namespace (no fork-publish-rename needed).
          # The prebuilds/* dir is built by .github/workflows/clipboard-rs-build.yml on the
@@ -499,7 +499,7 @@ Update `.github/workflows/publish.yml:69-133` step names and comments to `@bramb
          run: |
            node scripts/publish-with-skip.mjs packages/clipboard-rs npm publish --access public --tag fork
 ```
-Verify: `grep -n '@bramburn/pi-' .github/workflows/publish.yml` (expect 0 matches).
+Verify: `grep -n '@bramburn/qi-' .github/workflows/publish.yml` (expect 0 matches).
 
 Add ADR-0002 banner note to `scripts/sync-versions.js:1-12` marking upstream sync disabled while preserving workspace lockstep version synchronization.
 
@@ -650,7 +650,7 @@ Update Docusaurus site title, navbar title, announcement bar, and footer in `web
      announcementBar: {
        id: 'v0842',
        content:
--        'You are reading the <strong>bramburn/pi</strong> fork docs. For the upstream project visit <a href="https://pi.dev/docs/latest" target="_blank" rel="noopener noreferrer">pi.dev/docs/latest</a>.',
+-        'You are reading the <strong>bramburn/qi</strong> fork docs. For the upstream project visit <a href="https://pi.dev/docs/latest" target="_blank" rel="noopener noreferrer">pi.dev/docs/latest</a>.',
 +        'You are reading the <strong>qi</strong> coding agent documentation.',
        backgroundColor: '#1a1f2e',
        textColor: '#e0e6f0',
@@ -669,7 +669,7 @@ Update Docusaurus site title, navbar title, announcement bar, and footer in `web
 @@ -145,15 +145,10 @@
            title: 'Community',
            items: [
-             {label: 'GitHub', href: 'https://github.com/bramburn/pi'},
+             {label: 'GitHub', href: 'https://github.com/bramburn/qi'},
 -            {
 -              label: 'Upstream (earendil-works/pi)',
 -              href: 'https://github.com/earendil-works/pi',
@@ -678,7 +678,7 @@ Update Docusaurus site title, navbar title, announcement bar, and footer in `web
            ],
          },
        ],
--      copyright: `Built with Docusaurus. pi is MIT-licensed. The bramburn/pi fork is MIT-licensed. Copyright ${new Date().getFullYear()} bramburn.`,
+-      copyright: `Built with Docusaurus. pi is MIT-licensed. The bramburn/qi fork is MIT-licensed. Copyright ${new Date().getFullYear()} bramburn.`,
 +      copyright: `Built with Docusaurus. qi is MIT-licensed. Copyright ${new Date().getFullYear()} bramburn.`,
      },
  
@@ -696,7 +696,7 @@ Update homepage install CTA and feature blurb in `website/src/pages/index.tsx:96
                />
                <Feature
 -                title="Fork of pi.dev"
--                description="This is the bramburn/pi fork. It diverges from upstream in build tooling, release process, and selected features."
+-                description="This is the bramburn/qi fork. It diverges from upstream in build tooling, release process, and selected features."
 +                title="Hardened fork"
 +                description="qi is a hardened, standalone fork with native Bun runtime support, native subagents, and pinned extension compatibility."
                  link="/docs/fork/why-fork"
@@ -706,7 +706,7 @@ Update homepage install CTA and feature blurb in `website/src/pages/index.tsx:96
                Quick install
              </Heading>
              <pre className={styles.installCode}>
--              <code>npm install -g @bramburn/pi-codes</code>
+-              <code>npm install -g @bramburn/qi-codes</code>
 +              <code>npm install -g @bramburn/qi-coding-agent</code>
              </pre>
              <p className={styles.installNote}>

@@ -8,7 +8,7 @@ sidebar_label: Configuration
 
 ## Settings file
 
-pi stores settings in `~/.pi/settings.json` (global) and `<cwd>/.pi/settings.json` (project-level). Project settings override global settings.
+qi stores settings in `~/.qi/agent/settings.json` (global) and `<cwd>/.qi/settings.json` (project-level). Project settings override global settings.
 
 ```json
 {
@@ -27,7 +27,7 @@ pi stores settings in `~/.pi/settings.json` (global) and `<cwd>/.pi/settings.jso
 
 ## Providers
 
-pi supports multiple LLM providers. Each provider has its own API key env var:
+qi supports multiple LLM providers. Each provider has its own API key env var:
 
 | Provider | Env var |
 |----------|---------|
@@ -52,7 +52,7 @@ To set the default model in `settings.json`:
 
 ## Tool permissions
 
-Control what pi can do by editing `toolPermissions` in settings:
+Control what qi can do by editing `toolPermissions` in settings:
 
 ```json
 {
@@ -68,9 +68,9 @@ Control what pi can do by editing `toolPermissions` in settings:
 ```
 
 :::warning Shell access
-When `allowShell` is `true`, pi can run any command in your `PATH`. Restrict `allowedCommands` to limit what it can execute.
+When `allowShell` is `true`, qi can run any command in your `PATH`. Restrict `allowedCommands` to limit what it can execute.
 :::
 
 ## Custom tools
 
-See the Extensions guide in the upstream docs at [pi.dev/docs/latest](https://pi.dev/docs/latest) for how to register custom tools.
+See the [Extensions guide](https://github.com/bramburn/qi/blob/main/packages/coding-agent/docs/extensions.md) for how to register custom tools.

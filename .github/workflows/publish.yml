@@ -1,18 +1,31 @@
-name: Publish npm packages
+name: Publish to npm
 
+# Manual / recovery entry point ONLY. Automatic publishing on a `v*` tag push
+# lives in `build-binaries.yml`'s `publish-npm` job, which is ordered with the
+# binaries, the GitHub release, and the release announcement. Adding a `push`
+# trigger here would create a second tag-driven publish path that races the
+# announcement.
 on:
-  push:
-    tags:
-      - 'v*'
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Tag to publish (e.g., v0.83.1)'
+        description: 'Tag to publish (e.g., v0.85.0)'
         required: true
         type: string
+      source_ref:
+        description: 'Source ref to publish from (defaults to tag)'
+        required: false
+        type: string
+      dry_run:
+        description: 'Dry run: list packages without publishing'
+        required: false
+        type: boolean
+        default: false
+
+permissions: {}
 
 concurrency:
-  group: publish-${{ github.ref }}
+  group: publish-npm-${{ github.event.inputs.tag }}
   cancel-in-progress: false
 
 jobs:
@@ -22,108 +35,74 @@ jobs:
     permissions:
       contents: read
       id-token: write
+    env:
+      RELEASE_TAG: ${{ github.event.inputs.tag }}
+      SOURCE_REF: ${{ github.event.inputs.source_ref || github.event.inputs.tag }}
+    strategy:
+      # One package missing its trusted-publisher entry must not stop the rest.
+      fail-fast: false
+      matrix:
+        package:
+          - { name: '@bramburn/qi-ai', dir: packages/ai }
+          - { name: '@bramburn/qi-tui', dir: packages/tui }
+          - { name: '@bramburn/qi-telemetry', dir: packages/telemetry }
+          - { name: '@bramburn/qi-protocol', dir: packages/protocol }
+          - { name: '@bramburn/qi-client', dir: packages/client }
+          - { name: '@bramburn/qi-agent-core', dir: packages/agent }
+          - { name: '@bramburn/qi-session-backend-sqlite-node', dir: packages/session-backends/sqlite-node }
+          - { name: '@bramburn/qi-coding-agent', dir: packages/coding-agent }
+          - { name: '@bramburn/qi-server', dir: packages/server }
+          - { name: '@bramburn/qi-clipboard-rs', dir: packages/clipboard-rs }
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.SOURCE_REF }}
+          persist-credentials: false
 
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: '22'
-          # No `registry-url` here: setup-node's `registry-url` writes
-          # NODE_AUTH_TOKEN=${{ secrets.GITHUB_TOKEN }} into the step env,
-          # which makes npm CLI use the GitHub token (no publish rights
-          # to npm) instead of the OIDC token trusted publishing relies on.
-          # We install the npm CLI v11.5.1+ explicitly below.
-          cache: npm
+          registry-url: 'https://registry.npmjs.org'
 
-      # Use Bun for the install step because npm ci is strict about
-      # platform-specific optional deps and refuses to install
-      # @mariozechner/clipboard-darwin-arm64 (a darwin-arm64-only optional)
-      # on the linux-x64 runner. Bun is lenient about optional deps and
-      # does not fail the install. The actual publish still uses `npm
-      # publish` (below) because OIDC trusted publishing requires the npm
-      # CLI 11.5.1+. Same pattern as .github/workflows/ci.yml.
       - name: Setup Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: 1.3.14
 
-      # npm CLI v11.5.1+ is required for OIDC trusted publishing; the
-      # version of npm bundled with Node 22.x is too old (npm 10.x).
-      # See https://docs.npmjs.com/trusted-publishers
-      - name: Install npm 11 for trusted publishing
-        run: npm install -g npm@^11.5.1
-        shell: bash
-
-      # Install all workspace dependencies (including tsgo at root devDeps)
-      # at the repo root. Using `bun install` (no --frozen-lockfile) is
-      # lenient about platform-specific optional deps that `npm ci` refuses
-      # to install. The test contract here is "deps install cleanly", not
-      # "deps install to exactly the same bytes as a previous run". Same
-      # pattern as .github/workflows/ci.yml.
       - name: Install dependencies
-        run: bun install --ignore-scripts
+        # Same rationale as ci.yml / build-binaries.yml: `bun install` (not
+        # `npm ci --ignore-scripts`) so platform-specific optional deps
+        # (e.g. `@mariozechner/clipboard-*`) install on linux-x64 runners.
+        # `--linker=hoisted` matches those workflows so transitive deps
+        # resolve at the conventional `node_modules/<scope>/<name>` paths.
+        run: bun install --ignore-scripts --linker=hoisted
 
-      # Build all packages in dependency order (no internal deps → leaf → dependent).
-      # ai, tui, telemetry, protocol: no internal dependencies
-      # agent: depends on ai
-      # session-backends/sqlite-node (renamed from storage/sqlite-node in v0.84.2)
-      # coding-agent: depends on agent, ai, tui
-      # server: depends on coding-agent
-      - name: Build all packages
-        run: npm run build
+      - name: Build
+        run: bun run build
 
-      # Per-package npm publish steps.
-      # Trusted publishing via OIDC: the workflow's `id-token: write` permission
-      # plus the `npm-publish` environment lets npm CLI auto-detect the OIDC
-      # token from the GitHub Actions environment. Do NOT set NODE_AUTH_TOKEN
-      # here — that would force the legacy token path and re-trigger 2FA.
-      - name: Publish @bramburn/qi-ai
+      - name: Upgrade npm for trusted publishing
+        # OIDC trusted publishing requires npm >= 11.5.1; pin the same version
+        # build-binaries.yml uses so provenance/auth behavior matches.
         run: |
-          # scripts/publish-with-skip.mjs makes the step idempotent: a version
-          # that's already on npm is treated as success, but any other failure
-          # (notably ENEEDAUTH when the trusted publisher config on npmjs.com is
-          # missing) surfaces as a step failure. Package names are already
-          # `@bramburn/qi-*` in-tree (ADR-0001), so no publish-time rename runs.
-          node scripts/publish-with-skip.mjs packages/ai npm publish --access public --tag fork
+          npm install -g npm@11.16.0 --ignore-scripts
+          npm --version
 
-      - name: Publish @bramburn/qi-tui
+      - name: List public workspace packages (dry run)
+        if: ${{ inputs.dry_run }}
         run: |
-          node scripts/publish-with-skip.mjs packages/tui npm publish --access public --tag fork
+          node --input-type=module -e "
+          import { getPublicWorkspacePackages } from './scripts/release-packages.mjs';
+          for (const pkg of getPublicWorkspacePackages()) {
+            console.log(pkg.name + '@' + pkg.version);
+          }
+          "
 
-      - name: Publish @bramburn/qi-telemetry
-        run: |
-          node scripts/publish-with-skip.mjs packages/telemetry npm publish --access public --tag fork
-
-      - name: Publish @bramburn/qi-protocol
-        run: |
-          node scripts/publish-with-skip.mjs packages/protocol npm publish --access public --tag fork
-
-      - name: Publish @bramburn/qi-client
-        run: |
-          node scripts/publish-with-skip.mjs packages/client npm publish --access public --tag fork
-
-      - name: Publish @bramburn/qi-agent-core
-        run: |
-          node scripts/publish-with-skip.mjs packages/agent npm publish --access public --tag fork
-
-      - name: Publish @bramburn/qi-session-backend-sqlite-node
-        run: |
-          node scripts/publish-with-skip.mjs packages/session-backends/sqlite-node npm publish --access public --tag fork
-
-      - name: Publish @bramburn/qi-coding-agent
-        run: |
-          node scripts/publish-with-skip.mjs packages/coding-agent npm publish --access public --tag fork
-
-      - name: Publish @bramburn/qi-server
-        run: |
-          node scripts/publish-with-skip.mjs packages/server npm publish --access public --tag fork
-
-      - name: Publish @bramburn/qi-clipboard-rs
-        # Source name is already in the bramburn/ namespace.
-        # The prebuilds/* dir is built by .github/workflows/clipboard-rs-build.yml on the
-        # same tag and committed to the repo before this step runs; if it's empty the
-        # published tarball is still valid JS metadata, just without per-platform binaries.
-        run: |
-          node scripts/publish-with-skip.mjs packages/clipboard-rs npm publish --access public --tag fork
+      - name: Publish ${{ matrix.package.name }}
+        # scripts/publish-with-skip.mjs is idempotent: a version already on npm
+        # logs 'version already on npm, treating as success (idempotent)' and
+        # exits 0. A missing trusted-publisher entry surfaces as ENEEDAUTH and
+        # fails this step. See AGENTS.md 'npm trusted publisher setup'.
+        if: ${{ !inputs.dry_run }}
+        run: node scripts/publish-with-skip.mjs ${{ matrix.package.dir }} npm publish --access public --tag fork

@@ -16,7 +16,7 @@ import { renderWorkspaceContext } from "./system-prompt-render.ts";
 export const SUBAGENT_USAGE = `- Delegate verbose, self-contained work to subagents: codebase-wide searches, test runs, multi-file reviews. Keep short or conversation-dependent work yourself.
 - A subagent runs with a fresh context and never sees this conversation. \`instructions\` must carry everything it needs: paths, constraints, and a clear definition of done.
 - Give each subagent a short \`role\` label (e.g. "code-reviewer", "scout") and the full task in \`instructions\`.
-- When a name is enough, pass \`agent: "<name>"\` with the task in \`instructions\`: an agent definition file (\`.pi/agents/<name>.md\`, project first) or a saved spec then supplies model, tools, thinking, and a standing prompt. \`agent\` replaces \`role\`.
+- When a name is enough, pass \`agent: "<name>"\` with the task in \`instructions\`: an agent definition file (\`.qi/agents/<name>.md\`, project first) or a saved spec then supplies model, tools, thinking, and a standing prompt. \`agent\` replaces \`role\`.
 - Use \`tasks: [...]\` for independent investigations that can run in parallel. Use \`chain: [...]\` for dependent steps: \`{previous}\` in a step's instructions is replaced with the previous step's output, and the chain stops at the first failure.
 - Omit \`model\` to inherit this session's model; choose a cheaper model for mechanical sweeps and a stronger one for review or reasoning-heavy work.
 - Pass \`background: true\` when the work should keep running while you stay responsive; the result is delivered when it settles.`;
@@ -171,7 +171,7 @@ Pi documentation (read only when the user asks about pi itself, its SDK, extensi
 - Additional docs: ${docsPath}
 - Examples: ${examplesPath} (extensions, custom tools, SDK)
 - When reading pi docs or examples, resolve docs/... under Additional docs and examples/... under Examples, not the current working directory
-- When asked about: extensions (docs/extensions.md, examples/extensions/), themes (docs/themes.md), skills (docs/skills.md), prompt templates (docs/prompt-templates.md), TUI components (docs/tui.md), keybindings (docs/keybindings.md), SDK integrations (docs/sdk.md), custom providers (docs/custom-provider.md), adding models (docs/models.md), pi packages (docs/packages.md), environment variables (docs/environment-variables.md)
+- When asked about: extensions (docs/extensions.md, examples/extensions/), themes (docs/themes.md), skills (docs/skills.md), prompt templates (docs/prompt-templates.md), TUI components (docs/tui.md), keybindings (docs/keybindings.md), SDK integrations (docs/sdk.md), custom providers (docs/custom-provider.md), adding models (docs/models.md), qi packages (docs/packages.md), environment variables (docs/environment-variables.md)
 - When working on pi topics, read the docs and examples, and follow .md cross-references before implementing
 - Always read pi .md files completely and follow links to related docs (e.g., tui.md for TUI API details)`;
 

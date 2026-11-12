@@ -71,8 +71,8 @@ const rules = [
 	},
 	{
 		id: "pi-package-scope",
-		description: "Legacy pi package scope (@earendil-works/pi-* or @bramburn/pi-*)",
-		pattern: /@(?:earendil-works|bramburn)\/pi-[a-z0-9-]+/,
+		description: "Legacy upstream package scope (@earendil-works/pi-*)",
+		pattern: /@earendil-works\/pi-[a-z0-9-]+/,
 	},
 	{
 		id: "pi-dev-endpoint",

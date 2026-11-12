@@ -2,15 +2,10 @@
 //
 // The shrinkwrap script regenerates packages/coding-agent/npm-shrinkwrap.json
 // from the root package-lock.json. It also runs as part of coding-agent's
-// `prepublishOnly` hook inside the fork publish workflow, which means it
-// has to keep working when a publishing package's name and workspace deps
-// use the @bramburn/* fork scope (historically rewritten at publish time
-// by the removed fork-publish-rename.mjs script; ADR-0001 now renames
-// in-tree) while the root lockfile and the other workspace package.json
-// files still use @bramburn/qi-*. Without the fork-scope swap in the
-// workspace index, `npm run shrinkwrap` aborts with:
-//   Cannot resolve @bramburn/pi-agent-core from root.
-//   No matching lockfile entry found.
+// `prepublishOnly` hook inside the fork publish workflow, so the lockfile and
+// every workspace package.json must agree on the `@bramburn/qi-*` scope
+// (ADR-0001 renamed the packages in-tree).
+
 //
 // Each test seeds a throwaway repo tree under the OS temp dir with a
 // minimal root package-lock.json plus per-workspace package.json files,
@@ -231,67 +226,43 @@ test("regenerates shrinkwrap with published-scope names when no fork rename happ
 	}
 });
 
-test("resolves @bramburn/* workspace deps when the publishing package.json uses the legacy fork scope", async () => {
-	const repoRoot = await makeRepo({
-		codingAgentPackage: {
-			name: "@bramburn/pi-coding-agent",
-			version: "0.85.0-b1",
-			license: "MIT",
-			dependencies: {
-				"@bramburn/pi-agent-core": "^0.85.0-b1",
-				"@bramburn/pi-ai": "^0.85.0-b1",
-				diff: "8.0.4",
-				"@google/genai": "1.52.0",
-				protobufjs: "7.6.5",
-				"better-sqlite3": "11.9.1",
-			},
-			optionalDependencies: {
-				"@mariozechner/clipboard-win32-x64-msvc": "0.3.9",
-			},
-		},
-	});
+// A dependency npm nests under the workspace ("packages/coding-agent/node_modules/x"
+// in the root lockfile) used to ship that repo-relative key verbatim inside the
+// published tarball's shrinkwrap, so npm installed nothing at node_modules/x and
+// the published CLI crashed on import. See @bramburn/qi-coding-agent@0.85.0.
+test("flattens dependencies nested inside the workspace to package-relative paths", async () => {
+	const base = buildRepoTree();
+	const nested = base.rootLock.packages["node_modules/better-sqlite3"];
+	delete base.rootLock.packages["node_modules/better-sqlite3"];
+	base.rootLock.packages["packages/coding-agent/node_modules/better-sqlite3"] = nested;
+
+	const repoRoot = await makeRepo({ rootLock: base.rootLock });
 	try {
 		const result = await runScript({ repoRoot });
 		assert.equal(result.status, 0, `script failed: ${result.stderr}\n${result.stdout}`);
-		assert.doesNotMatch(
-			result.stderr + result.stdout,
-			/Cannot resolve @bramburn\/pi-agent-core/,
-			"shrinkwrap must resolve the post-rename fork-scope dep name back to the @earendil-works/* workspace",
-		);
 
 		const shrinkwrap = JSON.parse(
 			await readFile(`${repoRoot}/packages/coding-agent/npm-shrinkwrap.json`, "utf8"),
 		);
-		// Top-level entry picks up the renamed package name.
-		assert.equal(shrinkwrap.name, "@bramburn/pi-coding-agent");
-		// Workspace deps land under the requested (fork-scope) name in the
-		// shrinkwrap output — that's what consumers of the published
-		// @bramburn/pi-coding-agent tarball will resolve.
-		const agentPath = "node_modules/@bramburn/pi-agent-core";
-		assert.ok(shrinkwrap.packages[agentPath], `missing ${agentPath}`);
-		assert.equal(
-			shrinkwrap.packages[agentPath].resolved,
-			"https://registry.npmjs.org/@bramburn/pi-agent-core/-/pi-agent-core-0.85.0-b1.tgz",
+		assert.equal(shrinkwrap.packages["node_modules/better-sqlite3"]?.version, "11.9.1");
+		assert.deepEqual(
+			Object.keys(shrinkwrap.packages).filter((key) => key.startsWith("packages/")),
+			[],
 		);
-		const aiPath = "node_modules/@bramburn/pi-ai";
-		assert.ok(shrinkwrap.packages[aiPath], `missing ${aiPath}`);
-		// The upstream-scope entries should NOT appear — they would be
-		// duplicates (same workspace, different scope).
-		assert.equal(shrinkwrap.packages["node_modules/@bramburn/qi-agent-core"], undefined);
 	} finally {
 		await rm(repoRoot, { recursive: true, force: true });
 	}
 });
 
-test("--check exits 0 when the on-disk shrinkwrap matches the regenerated one (post-rename)", async () => {
+test("--check exits 0 when the on-disk shrinkwrap matches the regenerated one", async () => {
 	const repoRoot = await makeRepo({
 		codingAgentPackage: {
-			name: "@bramburn/pi-coding-agent",
+			name: "@bramburn/qi-coding-agent",
 			version: "0.85.0-b1",
 			license: "MIT",
 			dependencies: {
-				"@bramburn/pi-agent-core": "^0.85.0-b1",
-				"@bramburn/pi-ai": "^0.85.0-b1",
+				"@bramburn/qi-agent-core": "^0.85.0-b1",
+				"@bramburn/qi-ai": "^0.85.0-b1",
 				diff: "8.0.4",
 				"@google/genai": "1.52.0",
 				protobufjs: "7.6.5",

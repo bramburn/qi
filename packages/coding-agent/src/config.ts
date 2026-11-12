@@ -347,7 +347,7 @@ export function getSelfUpdateUnavailableInstruction(
 	const method = detectInstallMethod();
 	const target = normalizeSelfUpdatePackageTarget(updatePackageTarget);
 	if (method === "bun-binary") {
-		return `Download from: https://github.com/bramburn/pi/releases/latest`;
+		return `Download from: https://github.com/bramburn/qi/releases/latest`;
 	}
 	const command = getSelfUpdateCommandForMethod(method, packageName, target, npmCommand);
 	if (command) {
@@ -486,13 +486,13 @@ export function getBundledInteractiveAssetPath(name: string): string {
 }
 
 // =============================================================================
-// App Config (from package.json piConfig)
+// App Config (from package.json qiConfig)
 // =============================================================================
 
 interface PackageJson {
 	name?: string;
 	version?: string;
-	piConfig?: {
+	qiConfig?: {
 		name?: string;
 		configDir?: string;
 	};
@@ -506,11 +506,11 @@ try {
 	if (err.code !== "ENOENT") throw e;
 }
 
-const piConfigName: string | undefined = pkg.piConfig?.name;
+const qiConfigName: string | undefined = pkg.qiConfig?.name;
 export const PACKAGE_NAME: string = pkg.name || "@bramburn/qi-coding-agent";
-export const APP_NAME: string = piConfigName || "qi";
-export const APP_TITLE: string = piConfigName ? APP_NAME : "qi";
-export const CONFIG_DIR_NAME: string = pkg.piConfig?.configDir || ".qi";
+export const APP_NAME: string = qiConfigName || "qi";
+export const APP_TITLE: string = qiConfigName ? APP_NAME : "qi";
+export const CONFIG_DIR_NAME: string = pkg.qiConfig?.configDir || ".qi";
 export const VERSION: string = pkg.version || "0.0.0";
 
 // Mark this build as the bramburn fork so `qi --version` and other surfaces

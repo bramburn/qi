@@ -1,14 +1,14 @@
-> pi can help you create pi packages. Ask it to bundle your extensions, skills, prompt templates, or themes.
+> qi can help you create qi packages. Ask it to bundle your extensions, skills, prompt templates, or themes.
 
-# Pi Packages
+# Qi Packages
 
-Pi packages bundle extensions, skills, prompt templates, and themes so you can share them through npm or git. A package can declare resources in `package.json` under the `pi` key, or use conventional directories.
+Qi packages bundle extensions, skills, prompt templates, and themes so you can share them through npm or git. A package can declare resources in `package.json` under the `qi` key, or use conventional directories.
 
 ## Table of Contents
 
 - [Install and Manage](#install-and-manage)
 - [Package Sources](#package-sources)
-- [Creating a Pi Package](#creating-a-pi-package)
+- [Creating a Qi Package](#creating-a-qi-package)
 - [Package Structure](#package-structure)
 - [Dependencies](#dependencies)
 - [Package Filtering](#package-filtering)
@@ -17,41 +17,41 @@ Pi packages bundle extensions, skills, prompt templates, and themes so you can s
 
 ## Install and Manage
 
-> **Security:** Pi packages run with full system access. Extensions execute arbitrary code, and skills can instruct the model to perform any action including running executables. Review source code before installing third-party packages.
+> **Security:** Qi packages run with full system access. Extensions execute arbitrary code, and skills can instruct the model to perform any action including running executables. Review source code before installing third-party packages.
 
 ```bash
-pi install npm:@foo/bar@1.0.0
-pi install git:github.com/user/repo@v1
-pi install https://github.com/user/repo  # raw URLs work too
-pi install /absolute/path/to/package
-pi install ./relative/path/to/package
+qi install npm:@foo/bar@1.0.0
+qi install git:github.com/user/repo@v1
+qi install https://github.com/user/repo  # raw URLs work too
+qi install /absolute/path/to/package
+qi install ./relative/path/to/package
 
-pi remove npm:@foo/bar
-pi list                     # show installed packages from settings
-pi update                   # update pi only
-pi update --all             # update pi, update packages, and reconcile pinned git refs
-pi update --extensions      # update packages and reconcile pinned git refs only
-pi update --models          # refresh model catalogs only
-pi update --self            # update pi only
-pi update --self --force    # reinstall pi even if current
-pi update npm:@foo/bar      # update one package
-pi update --extension npm:@foo/bar
+qi remove npm:@foo/bar
+qi list                     # show installed packages from settings
+qi update                   # update qi only
+qi update --all             # update qi, update packages, and reconcile pinned git refs
+qi update --extensions      # update packages and reconcile pinned git refs only
+qi update --models          # refresh model catalogs only
+qi update --self            # update qi only
+qi update --self --force    # reinstall qi even if current
+qi update npm:@foo/bar      # update one package
+qi update --extension npm:@foo/bar
 ```
 
-These commands manage pi packages and `pi update` can update the pi CLI installation. For experimental installer-managed installations, `pi update` installs the exact checked version into a staged, lockfile-backed release and activates it only after verification, leaving the current release intact if the update fails. Managed installations do not support `--force`; rerun the installer to repair one. To uninstall pi itself, see [Quickstart](quickstart.md#uninstall).
+These commands manage qi packages and `qi update` can update the qi CLI installation. For experimental installer-managed installations, `qi update` installs the exact checked version into a staged, lockfile-backed release and activates it only after verification, leaving the current release intact if the update fails. Managed installations do not support `--force`; rerun the installer to repair one. To uninstall qi itself, see [Quickstart](quickstart.md#uninstall).
 
-By default, `install` and `remove` write to user settings (`~/.pi/agent/settings.json`). Use `-l` to write to project settings (`.pi/settings.json`) instead. Project settings can be shared with your team, and pi installs any missing packages automatically on startup after the project is trusted.
+By default, `install` and `remove` write to user settings (`~/.qi/agent/settings.json`). Use `-l` to write to project settings (`.qi/settings.json`) instead. Project settings can be shared with your team, and qi installs any missing packages automatically on startup after the project is trusted.
 
 To try a package without installing it, use `--extension` or `-e`. This installs to a temporary directory for the current run only:
 
 ```bash
-pi -e npm:@foo/bar
-pi -e git:github.com/user/repo
+qi -e npm:@foo/bar
+qi -e git:github.com/user/repo
 ```
 
 ## Package Sources
 
-Pi accepts three source types in settings and `pi install`.
+Qi accepts three source types in settings and `qi install`.
 
 ### npm
 
@@ -60,9 +60,9 @@ npm:@scope/pkg@1.2.3
 npm:pkg
 ```
 
-- Versioned specs are pinned and skipped by package updates (`pi update --extensions`, `pi update --all`).
-- User installs go under `~/.pi/agent/npm/`.
-- Project installs go under `.pi/npm/`.
+- Versioned specs are pinned and skipped by package updates (`qi update --extensions`, `qi update --all`).
+- User installs go under `~/.qi/agent/npm/`.
+- Project installs go under `.qi/npm/`.
 - Set `npmCommand` in `settings.json` to pin npm package lookup and install operations to a specific wrapper command such as `mise` or `asdf`.
 
 Example:
@@ -87,21 +87,21 @@ ssh://git@github.com/user/repo@v1
 - HTTPS and SSH URLs are both supported.
 - SSH URLs use your configured SSH keys automatically (respects `~/.ssh/config`).
 - For non-interactive runs (for example CI), you can set `GIT_TERMINAL_PROMPT=0` to disable credential prompts and set `GIT_SSH_COMMAND` (for example `ssh -o BatchMode=yes -o ConnectTimeout=5`) to fail fast.
-- Refs are pinned tags or commits. `pi update --extensions` and `pi update --all` do not move them to newer refs, but they do reconcile an existing clone to the configured ref.
-- Use `pi install git:host/user/repo@new-ref` to update settings and move an existing package to a new pinned ref.
-- Cloned to `~/.pi/agent/git/<host>/<path>` (global) or `.pi/git/<host>/<path>` (project).
-- When reconciliation changes the checkout, pi resets and cleans the clone, then runs `npm install` if `package.json` exists.
+- Refs are pinned tags or commits. `qi update --extensions` and `qi update --all` do not move them to newer refs, but they do reconcile an existing clone to the configured ref.
+- Use `qi install git:host/user/repo@new-ref` to update settings and move an existing package to a new pinned ref.
+- Cloned to `~/.qi/agent/git/<host>/<path>` (global) or `.qi/git/<host>/<path>` (project).
+- When reconciliation changes the checkout, qi resets and cleans the clone, then runs `npm install` if `package.json` exists.
 
 **SSH examples:**
 ```bash
 # git@host:path shorthand (requires git: prefix)
-pi install git:git@github.com:user/repo
+qi install git:git@github.com:user/repo
 
 # ssh:// protocol format
-pi install ssh://git@github.com/user/repo
+qi install ssh://git@github.com/user/repo
 
 # With version ref
-pi install git:git@github.com:user/repo@v1.0.0
+qi install git:git@github.com:user/repo@v1.0.0
 ```
 
 ### Local Paths
@@ -111,17 +111,48 @@ pi install git:git@github.com:user/repo@v1.0.0
 ./relative/path/to/package
 ```
 
-Local paths point to files or directories on disk and are added to settings without copying. Relative paths are resolved against the settings file they appear in. If the path is a file, it loads as a single extension. If it is a directory, pi loads resources using package rules.
+Local paths point to files or directories on disk and are added to settings without copying. Relative paths are resolved against the settings file they appear in. If the path is a file, it loads as a single extension. If it is a directory, qi loads resources using package rules.
 
-## Creating a Pi Package
+## Fork compatibility (qi)
 
-Add a `pi` manifest to `package.json` or use conventional directories. Include the `pi-package` keyword for discoverability.
+qi is a hard fork of qi pinned to the qi 0.85 API surface. Extension packages published for later qi versions may not load, so qi gates npm extension resolution in two ways.
+
+### Checked-in compatibility manifest
+
+`packages/coding-agent/src/core/extension-compat-manifest.json` maps known packages to the semver range that has been tested against qi. A listed package is resolved with `maxSatisfying(versions, range)`. If no published version matches, install and update fail with `E_EXT_NO_COMPATIBLE_VERSION`.
+
+Add an entry only after testing the package against the fork:
+
+```json
+{
+ "packages": {
+  "pi-subagents": { "range": ">=0.5.0 <0.6.0" }
+ }
+}
+```
+
+### Unlisted packages
+
+An unlisted package is capped at the last version published on or before the manifest's `cutoffDate` (the upstream 0.85.1 release date). This prevents a post-0.85 release from being installed automatically without requiring a curated entry for every package.
+
+- `qi update --extensions` will not install a post-cutoff version. If no pre-cutoff version exists, the package is blocked and its currently installed version is pinned.
+- `qi install npm:<pkg>` prefers a pre-cutoff version. If the package has no pre-cutoff release, the explicit install falls back to the newest version with a warning and persists the exact version.
+
+Successful installs and updates persist `npm:<name>@<exact-version>` in `settings.json`. The exact version is pinned, so `qi update --extensions` will not move it again.
+
+### Git packages
+
+Git packages are pinned by tag or commit via `@ref` and are not subject to the npm publish-date cutoff. Use a pinned ref for reproducibility.
+
+## Creating a Qi Package
+
+Add a `qi` manifest to `package.json` or use conventional directories. Include the `qi-package` keyword for discoverability.
 
 ```json
 {
   "name": "my-package",
-  "keywords": ["pi-package"],
-  "pi": {
+  "keywords": ["qi-package"],
+  "qi": {
     "extensions": ["./extensions"],
     "skills": ["./skills"],
     "prompts": ["./prompts"],
@@ -139,8 +170,8 @@ Extensions and skills may carry gallery-style metadata. Add `video` or `image` f
 ```json
 {
   "name": "my-package",
-  "keywords": ["pi-package"],
-  "pi": {
+  "keywords": ["qi-package"],
+  "qi": {
     "extensions": ["./extensions"],
     "video": "https://example.com/demo.mp4",
     "image": "https://example.com/screenshot.png"
@@ -157,7 +188,7 @@ If both are set, video takes precedence.
 
 ### Convention Directories
 
-If no `pi` manifest is present, pi auto-discovers resources from these directories:
+If no `qi` manifest is present, qi auto-discovers resources from these directories:
 
 - `extensions/` loads `.ts` and `.js` files
 - `skills/` recursively finds `SKILL.md` folders and loads top-level `.md` files as skills
@@ -166,11 +197,11 @@ If no `pi` manifest is present, pi auto-discovers resources from these directori
 
 ## Dependencies
 
-Third party runtime dependencies belong in `dependencies` in `package.json`. Dependencies that do not register extensions, skills, prompt templates, or themes also belong in `dependencies`. When pi installs a package from npm or git, it runs `npm install`, so those dependencies are installed automatically.
+Third party runtime dependencies belong in `dependencies` in `package.json`. Dependencies that do not register extensions, skills, prompt templates, or themes also belong in `dependencies`. When qi installs a package from npm or git, it runs `npm install`, so those dependencies are installed automatically.
 
 Qi bundles core packages for extensions and skills. If you import any of these, list them in `peerDependencies` with a `"*"` range and do not bundle them: `@bramburn/qi-ai`, `@bramburn/qi-agent-core`, `@bramburn/qi-coding-agent`, `@bramburn/qi-tui`, `typebox`.
 
-Other pi packages must be bundled in your tarball. Add them to `dependencies` and `bundledDependencies`, then reference their resources through `node_modules/` paths. Pi loads packages with separate module roots, so separate installs do not collide or share modules.
+Other qi packages must be bundled in your tarball. Add them to `dependencies` and `bundledDependencies`, then reference their resources through `node_modules/` paths. Qi loads packages with separate module roots, so separate installs do not collide or share modules.
 
 Example:
 
@@ -180,7 +211,7 @@ Example:
     "shitty-extensions": "^1.0.1"
   },
   "bundledDependencies": ["shitty-extensions"],
-  "pi": {
+  "qi": {
     "extensions": ["extensions", "node_modules/shitty-extensions/extensions"],
     "skills": ["skills", "node_modules/shitty-extensions/skills"]
   }
@@ -217,7 +248,7 @@ Filter what a package loads using the object form in settings:
 
 ## Enable and Disable Resources
 
-Use `pi config` to enable or disable extensions, skills, prompt templates, and themes from installed packages and local directories. `pi config` starts in global settings (`~/.pi/agent/settings.json`); press Tab to switch between global and project-local modes. Use `pi config -l` to start in project overrides (`.pi/settings.json`) with inherited global resources dimmed.
+Use `qi config` to enable or disable extensions, skills, prompt templates, and themes from installed packages and local directories. `qi config` starts in global settings (`~/.qi/agent/settings.json`); press Tab to switch between global and project-local modes. Use `qi config -l` to start in project overrides (`.qi/settings.json`) with inherited global resources dimmed.
 
 ## Scope and Deduplication
 

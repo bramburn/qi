@@ -1,3 +1,4 @@
+import { createRequire } from "node:module";
 import { describe, expect, test, vi } from "vitest";
 import { type ClipboardModule, loadClipboardNative } from "../src/utils/clipboard-native.ts";
 
@@ -11,12 +12,12 @@ const fakeClipboard: ClipboardModule = {
 };
 
 describe("loadClipboardNative", () => {
-	test("loads @bramburn/clipboard-rs from the first require root", () => {
+	test("loads @bramburn/qi-clipboard-rs from the first require root", () => {
 		const primary = vi.fn<ClipboardRequire>(() => fakeClipboard);
 		const fallback = vi.fn<ClipboardRequire>(() => fakeClipboard);
 
 		expect(loadClipboardNative([primary, fallback])).toBe(fakeClipboard);
-		expect(primary).toHaveBeenCalledWith("@bramburn/clipboard-rs");
+		expect(primary).toHaveBeenCalledWith("@bramburn/qi-clipboard-rs");
 		expect(primary).toHaveBeenCalledTimes(1);
 		expect(fallback).not.toHaveBeenCalled();
 	});
@@ -30,8 +31,8 @@ describe("loadClipboardNative", () => {
 		const fallback = vi.fn<ClipboardRequire>(() => fakeClipboard);
 
 		expect(loadClipboardNative([primary, fallback])).toBe(fakeClipboard);
-		expect(primary).toHaveBeenCalledWith("@bramburn/clipboard-rs");
-		expect(fallback).toHaveBeenCalledWith("@bramburn/clipboard-rs");
+		expect(primary).toHaveBeenCalledWith("@bramburn/qi-clipboard-rs");
+		expect(fallback).toHaveBeenCalledWith("@bramburn/qi-clipboard-rs");
 	});
 
 	test("falls back to upstream when the fork loads but its prebuild is missing", () => {
@@ -40,7 +41,7 @@ describe("loadClipboardNative", () => {
 		// through the addonMarker() sentinel.
 		const brokenFork: ClipboardModule = {
 			...fakeClipboard,
-			addonMarker: () => "@bramburn/clipboard-rs: no prebuild for win32-x64",
+			addonMarker: () => "@bramburn/qi-clipboard-rs: no prebuild for win32-x64",
 		};
 		const upstream: ClipboardModule = {
 			getText: async () => "upstream",
@@ -48,14 +49,14 @@ describe("loadClipboardNative", () => {
 			hasImage: async () => false,
 			getImageBinary: async () => [7, 8, 9],
 		};
-		const primary = vi.fn<ClipboardRequire>((id) => (id === "@bramburn/clipboard-rs" ? brokenFork : upstream));
+		const primary = vi.fn<ClipboardRequire>((id) => (id === "@bramburn/qi-clipboard-rs" ? brokenFork : upstream));
 		const fallback = vi.fn<ClipboardRequire>(() => {
 			throw new Error("not installed");
 		});
 
 		const loaded = loadClipboardNative([primary, fallback]);
 		expect(loaded).toBe(upstream);
-		expect(primary).toHaveBeenNthCalledWith(1, "@bramburn/clipboard-rs");
+		expect(primary).toHaveBeenNthCalledWith(1, "@bramburn/qi-clipboard-rs");
 		expect(primary).toHaveBeenNthCalledWith(2, "@mariozechner/clipboard");
 		expect(fallback).not.toHaveBeenCalled();
 	});
@@ -91,8 +92,25 @@ describe("loadClipboardNative", () => {
 		});
 
 		expect(loadClipboardNative([missing])).toBeNull();
-		expect(missing).toHaveBeenCalledWith("@bramburn/clipboard-rs");
+		expect(missing).toHaveBeenCalledWith("@bramburn/qi-clipboard-rs");
 		expect(missing).toHaveBeenCalledWith("@mariozechner/clipboard");
 		expect(missing).toHaveBeenCalledTimes(2);
+	});
+});
+
+describe("published package manifest", () => {
+	// The loader resolves the fork addon with createRequire, so the package
+	// needs a `require` (or `default`) export condition. Without one,
+	// require() throws ERR_PACKAGE_PATH_NOT_EXPORTED and the loader silently
+	// falls back to @mariozechner/clipboard.
+	test("exposes @bramburn/qi-clipboard-rs through the CommonJS require condition", () => {
+		const requireFromHere = createRequire(import.meta.url);
+		try {
+			requireFromHere.resolve("@bramburn/qi-clipboard-rs");
+		} catch (error) {
+			// An unsupported platform may not have the optional dependency installed.
+			if ((error as NodeJS.ErrnoException).code === "MODULE_NOT_FOUND") return;
+			throw error;
+		}
 	});
 });

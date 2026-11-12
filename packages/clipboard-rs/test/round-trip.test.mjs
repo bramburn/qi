@@ -1,4 +1,4 @@
-// Round-trip test for @bramburn/clipboard-rs.
+// Round-trip test for @bramburn/qi-clipboard-rs.
 //
 // Three skip paths:
 //   1. Platform/arch not in the prebuilds/ matrix. Local dev only;
@@ -69,12 +69,12 @@ function skipOnHeadless(t) {
 }
 
 if (!platform || !arch || !existsSync(binaryPath)) {
-	test(`@bramburn/clipboard-rs on ${process.platform}-${process.arch}`, { skip: true }, () => {
+	test(`@bramburn/qi-clipboard-rs on ${process.platform}-${process.arch}`, { skip: true }, () => {
 		// Skip: no prebuild for this platform in the current checkout.
 		// The CI matrix builds all six targets.
 	});
 } else {
-	test(`@bramburn/clipboard-rs addon loads on ${platform}-${arch}`, () => {
+	test(`@bramburn/qi-clipboard-rs addon loads on ${platform}-${arch}`, () => {
 		// Confirm the right addon is loaded and exports the expected
 		// four-method surface. Runs on every platform including
 		// headless Linux — a corrupt .node would fail this test.
@@ -86,7 +86,7 @@ if (!platform || !arch || !existsSync(binaryPath)) {
 		assert.equal(typeof clipboard.getImageBinary, "function");
 	});
 
-	test(`@bramburn/clipboard-rs hasImage contract on ${platform}-${arch}`, async () => {
+	test(`@bramburn/qi-clipboard-rs hasImage contract on ${platform}-${arch}`, async () => {
 		// hasImage probes the clipboard and returns true only if the
 		// payload is a non-empty image. After setText (which the text
 		// round-trip test below performs), hasImage must still be false
@@ -106,7 +106,7 @@ if (!platform || !arch || !existsSync(binaryPath)) {
 		);
 	});
 
-	test(`@bramburn/clipboard-rs round-trip on ${platform}-${arch}`, async (t) => {
+	test(`@bramburn/qi-clipboard-rs round-trip on ${platform}-${arch}`, async (t) => {
 		// Skip the actual write/read on headless Linux — the JS layer
 		// falls back to wl-copy / xclip / OSC 52 there, and the CI
 		// runner has no display for arboard to talk to.
@@ -129,7 +129,7 @@ if (!platform || !arch || !existsSync(binaryPath)) {
 		);
 	});
 
-	test(`@bramburn/clipboard-rs image read on ${platform}-${arch}`, async (t) => {
+	test(`@bramburn/qi-clipboard-rs image read on ${platform}-${arch}`, async (t) => {
 		// arboard's image-read path is unreliable without a display
 		// server; skip headless Linux the same way the text round-trip
 		// does. We deliberately do NOT exercise the image-write path:

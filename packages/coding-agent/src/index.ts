@@ -412,6 +412,12 @@ export {
 	UserMessageSelectorComponent,
 	type VisualTruncateResult,
 } from "./modes/interactive/components/index.ts";
+// Model search ranking, shared by the /model selector and extensions
+export {
+	getModelSearchText,
+	getModelSelectorSearchText,
+	type ModelSearchItem,
+} from "./modes/interactive/model-search.ts";
 // Theme utilities for custom tools and extensions
 export {
 	getLanguageFromPath,

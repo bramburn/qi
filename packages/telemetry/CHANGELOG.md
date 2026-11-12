@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Published to the public npm registry as `@bramburn/qi-telemetry` at `0.85.1`, the first release under the `@bramburn` scope.
+
 ## [0.85.0-b1] - 2026-09-14
 
 ## [0.84.5] - 2026-08-30

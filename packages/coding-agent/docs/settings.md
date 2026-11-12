@@ -1,25 +1,25 @@
 # Settings
 
-Pi uses JSON settings files with project settings overriding global settings.
+Qi uses JSON settings files with project settings overriding global settings.
 
 | Location | Scope |
 |----------|-------|
-| `~/.pi/agent/settings.json` | Global (all projects) |
-| `.pi/settings.json` | Project (current directory) |
+| `~/.qi/agent/settings.json` | Global (all projects) |
+| `.qi/settings.json` | Project (current directory) |
 
 Edit directly or use `/settings` for common options. To save startup model defaults interactively, use `/model` and press Ctrl+S on the desired model. To save the startup thinking level, use `/thinking` and press Ctrl+S.
 
 ## Project Trust
 
-On interactive startup, pi asks before trusting a project folder that contains project-local settings, resources, or project `.agents/skills` and has no saved decision for the folder or a parent folder in `~/.pi/agent/trust.json`. Trusting a project allows pi to load `.pi/settings.json` and `.pi` resources, install missing project packages, and execute project extensions.
+On interactive startup, qi asks before trusting a project folder that contains project-local settings, resources, or project `.agents/skills` and has no saved decision for the folder or a parent folder in `~/.qi/agent/trust.json`. Trusting a project allows qi to load `.qi/settings.json` and `.qi` resources, install missing project packages, and execute project extensions.
 
 Non-interactive modes (`-p`, `--mode json`, and `--mode rpc`) do not show a trust prompt. Without an applicable saved trust decision, they use `defaultProjectTrust` from global settings: `ask` (default) and `never` ignore those project resources, while `always` trusts them. Pass `--approve`/`-a` or `--no-approve`/`-na` to override project trust for one run.
 
-If no extension or saved decision applies, `defaultProjectTrust` controls the fallback behavior. Set it to `"ask"`, `"always"`, or `"never"` in `~/.pi/agent/settings.json`, or change it with `/settings`.
+If no extension or saved decision applies, `defaultProjectTrust` controls the fallback behavior. Set it to `"ask"`, `"always"`, or `"never"` in `~/.qi/agent/settings.json`, or change it with `/settings`.
 
-`pi config` and package commands use the same project trust flow, except `pi update` never prompts. Pass `--approve` to trust project-local settings for one command or `--no-approve` to ignore them.
+`qi config` and package commands use the same project trust flow, except `qi update` never prompts. Pass `--approve` to trust project-local settings for one command or `--no-approve` to ignore them.
 
-Use `/trust` in interactive mode to save a project trust decision for future sessions, including trust for the immediate parent folder. It writes `~/.pi/agent/trust.json` only; the current session is not reloaded, so restart pi for changes to take effect.
+Use `/trust` in interactive mode to save a project trust decision for future sessions, including trust for the immediate parent folder. It writes `~/.qi/agent/trust.json` only; the current session is not reloaded, so restart qi for changes to take effect.
 
 ## All Settings
 
@@ -30,7 +30,7 @@ Use `/trust` in interactive mode to save a project trust decision for future ses
 | `defaultProvider` | string | - | Startup provider (e.g., `"anthropic"`, `"openai"`; saved with Ctrl+S in `/model`, or edited manually) |
 | `defaultModel` | string | - | Startup model ID (saved with Ctrl+S in `/model`, or edited manually) |
 | `defaultThinkingLevel` | string | - | Startup thinking level (saved with Ctrl+S in `/thinking`, or edited manually): `"off"`, `"minimal"`, `"low"`, `"medium"`, `"high"`, `"xhigh"`, `"max"` |
-| `modelThinkingLevels` | object | - | Per-model startup thinking levels keyed by `"provider/modelId"`; configure from `/settings` → Default thinking level per model or edit manually |
+| `modelThinkingLevels` | object | - | Remembered thinking level per model, keyed by `"provider/modelId"`; updated automatically when you change the level, or edit manually |
 | `hideThinkingBlock` | boolean | `false` | Hide thinking blocks in output |
 | `showCacheMissNotices` | boolean | `false` | Show transcript notices for significant prompt-cache misses and compaction or branch-summary usage |
 | `thinkingBudgets` | object | - | Custom token budgets per thinking level. Anthropic, Google, and Bedrock use these natively. OpenAI-compatible models use them when `compat.thinkingTokenBudgetField` (or `supportsThinkingTokenBudget`) is set. |
@@ -48,6 +48,31 @@ Use `/trust` in interactive mode to save a project trust decision for future ses
 }
 ```
 
+#### Per-model thinking level
+
+`modelThinkingLevels` remembers the thinking level you last chose for each model. Changing the level with `/thinking`, the thinking picker, Shift+Tab, or the RPC `set_thinking_level` / `cycle_thinking_level` commands writes the effective (clamped) level here, and it is restored when a session starts or the active model changes.
+
+```json
+{
+ "modelThinkingLevels": {
+ "anthropic/claude-opus-4-8": "high",
+ "openrouter/deepseek/deepseek-r1-0528": "medium",
+ "openai/gpt-5.5": "low"
+ }
+}
+```
+
+Keys are built as `${model.provider}/${model.id}` and are never parsed, so model IDs containing `/` are fine. Invalid or unknown stored values are ignored on read.
+
+When a thinking level is resolved for a model, the precedence is:
+
+1. The resumed/forked session's own `thinking_level_change` entry (session history wins).
+2. An explicit per-model level from `--models provider/id:level`.
+3. The remembered `modelThinkingLevels` entry for that model.
+4. The global `defaultThinkingLevel`, then the built-in default (`medium`).
+
+A remembered level the model does not support is clamped to a supported level for that session but is **not** overwritten; it is clamped again the next time the model becomes active. Only an explicit user change writes a new value. `--thinking <level>` and the SDK `thinkingLevel` option win for that session without being written to `modelThinkingLevels`.
+
 ### UI & Display
 
 | Setting | Type | Default | Description |
@@ -58,7 +83,7 @@ Use `/trust` in interactive mode to save a project trust decision for future ses
 | `defaultProjectTrust` | string | `"ask"` | Fallback project trust behavior: `"ask"`, `"always"`, or `"never"`. Global setting only |
 | `collapseChangelog` | boolean | `false` | Show condensed changelog after updates |
 | `enableInstallTelemetry` | boolean | `true` | Send an anonymous install/update version ping after first install or changelog-detected updates. This does not control update checks |
-| `enableAnalytics` | boolean | `false` | Opt-in analytics data sharing. Currently only asked for during the experimental first-time setup (`PI_EXPERIMENTAL=1`) |
+| `enableAnalytics` | boolean | `false` | Opt-in analytics data sharing. Currently only asked for during the experimental first-time setup (`QI_EXPERIMENTAL=1`) |
 | `trackingId` | string | - | Analytics tracking identifier, generated when `enableAnalytics` is turned on |
 | `doubleEscapeAction` | string | `"tree"` | Action for double-escape: `"tree"`, `"fork"`, or `"none"` |
 | `treeFilterMode` | string | `"default"` | Default filter for `/tree`: `"default"`, `"no-tools"`, `"user-only"`, `"labeled-only"`, `"all"` |
@@ -67,7 +92,7 @@ Use `/trust` in interactive mode to save a project trust decision for future ses
 | `autocompleteMaxVisible` | number | `5` | Max visible items in autocomplete dropdown (3-20) |
 | `showHardwareCursor` | boolean | `false` | Show the terminal cursor while TUI positions it for IME support |
 
-For VS Code, include `--wait` so pi resumes after the editor exits:
+For VS Code, include `--wait` so qi resumes after the editor exits:
 
 ```json
 {
@@ -151,7 +176,7 @@ Set `QI_SKIP_VERSION_CHECK=1` to disable the version check entirely. Use `--offl
 
 When a provider requests a retry delay longer than `retry.provider.maxRetryDelayMs`, the request fails immediately with an informative error instead of waiting silently. Set it to `0` to disable the limit.
 
-Keep `retry.provider.maxRetries` at `0` unless provider-level retries are explicitly needed. Setting it above `0` can make SDK/provider retries handle out-of-usage-limit errors before Pi sees them, which may block the agent until the provider quota resets in some circumstances.
+Keep `retry.provider.maxRetries` at `0` unless provider-level retries are explicitly needed. Setting it above `0` can make SDK/provider retries handle out-of-usage-limit errors before Qi sees them, which may block the agent until the provider quota resets in some circumstances.
 
 ```json
 {
@@ -219,13 +244,13 @@ Windows paths in JSON must use forward slashes or escaped backslashes:
 }
 ```
 
-`npmCommand` is used for all npm package-manager operations, including installs, uninstalls, and dependency installs inside git packages. User-scoped npm packages install under `~/.pi/agent/npm/`; project-scoped npm packages install under `.pi/npm/`. Use argv-style entries exactly as the process should be launched. When `npmCommand` is configured, git package dependency installs use plain `install` to avoid npm-specific flags in wrappers or alternate package managers.
+`npmCommand` is used for all npm package-manager operations, including installs, uninstalls, and dependency installs inside git packages. User-scoped npm packages install under `~/.qi/agent/npm/`; project-scoped npm packages install under `.qi/npm/`. Use argv-style entries exactly as the process should be launched. When `npmCommand` is configured, git package dependency installs use plain `install` to avoid npm-specific flags in wrappers or alternate package managers.
 
 ### Tools
 
 | Setting | Type | Default | Description |
 |---------|------|---------|-------------|
-| `defaultTools` | string[] | - | Built-in tools enabled initially. When omitted, Pi uses its standard defaults |
+| `defaultTools` | string[] | - | Built-in tools enabled initially. When omitted, Qi uses its standard defaults |
 
 `defaultTools` selects the built-in tools enabled at startup. Extension and SDK custom tools remain enabled. Available built-ins are `read`, `bash`, `powershell`, `edit`, `write`, `grep`, `find`, and `ls`:
 
@@ -252,12 +277,12 @@ See [Subagents](subagents.md) for the built-in delegation tool and the experimen
 | Setting | Type | Default | Description |
 |---------|------|---------|-------------|
 | `subagent.enabled` | boolean | `true` | Register the built-in `subagent` tool. Requires the Bun runtime |
-| `subagent.maxConcurrent` | number | `4` | Max subagent children running at once in this pi process, counted across every mode — inline `single`, `chain` and `parallel` batches, plus background dispatches. Inline calls beyond the limit wait; background dispatches beyond it are queued as `pending` rows and start in FIFO order as slots free. Two pi processes each get their own budget of 4 |
+| `subagent.maxConcurrent` | number | `4` | Max subagent children running at once in this qi process, counted across every mode — inline `single`, `chain` and `parallel` batches, plus background dispatches. Inline calls beyond the limit wait; background dispatches beyond it are queued as `pending` rows and start in FIFO order as slots free. Two qi processes each get their own budget of 4 |
 | `subagent.maxParallelTasks` | number | `8` | Max tasks accepted in one parallel `tasks: [...]` call |
 | `subagent.maxTurns` | number | `30` | Max assistant turns per child subagent; the parent stops an over-cap child and reports partial output with an explicit turn-cap notice (`[Stopped at turn cap ...]`) |
 | `subagent.maxDepth` | number | `1` | Deepest delegation level. `0` is a top-level session, so the default permits one level of subagents and refuses grandchildren. `0` forbids delegation entirely; raise it to allow nesting |
 | `subagent.worktreeBase` | string | `".worktrees"` | Directory for experiment worktrees (`<repo>/<worktreeBase>/<slug>`) |
-| `subagent.enableExperiments` | boolean | `false` | Experiments surface: the eight `experiment_*` tools, the `.pi-experiments/` registry, and worktrees |
+| `subagent.enableExperiments` | boolean | `false` | Experiments surface: the eight `experiment_*` tools, the `.qi-experiments/` registry, and worktrees |
 | `subagent.researchModeTriggerCount` | number | `3` | Consecutive same-error tool failures before the Research Mode suggestion fires (see [Subagents](subagents.md#research-mode)) |
 
 ```json
@@ -280,10 +305,10 @@ See [Subagents](subagents.md) for the built-in delegation tool and the experimen
 | `sessionDir` | string | - | Directory where session files are stored. Accepts absolute or relative paths, plus `~`. |
 
 ```json
-{ "sessionDir": ".pi/sessions" }
+{ "sessionDir": ".qi/sessions" }
 ```
 
-When multiple sources specify a session directory, precedence is `--session-dir`, `PI_CODING_AGENT_SESSION_DIR`, then `sessionDir` in settings.json.
+When multiple sources specify a session directory, precedence is `--session-dir`, `QI_CODING_AGENT_SESSION_DIR`, then `sessionDir` in settings.json.
 
 ### Model Cycling
 
@@ -308,7 +333,7 @@ When multiple sources specify a session directory, precedence is `--session-dir`
 
 These settings define where to load extensions, skills, prompts, and themes from.
 
-Paths in `~/.pi/agent/settings.json` resolve relative to `~/.pi/agent`. Paths in `.pi/settings.json` resolve relative to `.pi`. Absolute paths and `~` are supported.
+Paths in `~/.qi/agent/settings.json` resolve relative to `~/.qi/agent`. Paths in `.qi/settings.json` resolve relative to `.qi`. Absolute paths and `~` are supported.
 
 | Setting | Type | Default | Description |
 |---------|------|---------|-------------|
@@ -377,16 +402,16 @@ See [packages.md](packages.md) for package management details.
 
 ## Project Overrides
 
-Project settings (`.pi/settings.json`) override global settings. Nested objects are merged:
+Project settings (`.qi/settings.json`) override global settings. Nested objects are merged:
 
 ```json
-// ~/.pi/agent/settings.json (global)
+// ~/.qi/agent/settings.json (global)
 {
   "theme": "dark",
   "compaction": { "enabled": true, "reserveTokens": 16384 }
 }
 
-// .pi/settings.json (project)
+// .qi/settings.json (project)
 {
   "compaction": { "reserveTokens": 8192 }
 }

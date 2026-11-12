@@ -6,7 +6,7 @@
 
 ## Context
 
-The repository is permanently diverging from upstream `earendil-works/pi` (`0.85.0-b1`). Across the monorepo there are ~4,604 occurrences of `earendil`, ~2,953 word-boundary occurrences of `pi`, 11 workspace packages named `@earendil-works/pi-*` (`packages/coding-agent/package.json:2,51-56`) rewritten only at publish time to `@bramburn/pi-*` (`scripts/fork-publish-rename.mjs:21-22`), user/project state paths hardcoded to `~/.pi/agent/` and `.pi/` (`packages/coding-agent/src/config.ts:509-596`), and ~40 literal `PI_*` environment variables (`packages/coding-agent/docs/environment-variables.md:1-97`, `src/config.ts:440,529`, `src/main.ts:762-765,1095`, `src/core/settings-manager.ts:1079,1152`) that do not derive from `APP_NAME`. Human decisions `D1` and `D2` (`specs/batch/batch-context.md`) govern requirements `R-REBRAND-001` through `R-REBRAND-006`, `R-REBRAND-009`, and `R-REBRAND-012`.
+The repository is permanently diverging from upstream `earendil-works/pi` (`0.85.0-b1`). Across the monorepo there are ~4,604 occurrences of `earendil`, ~2,953 word-boundary occurrences of `pi`, 11 workspace packages named `@earendil-works/pi-*` (`packages/coding-agent/package.json:2,51-56`) rewritten only at publish time to `@bramburn/qi-*` (`scripts/fork-publish-rename.mjs:21-22`), user/project state paths hardcoded to `~/.pi/agent/` and `.pi/` (`packages/coding-agent/src/config.ts:509-596`), and ~40 literal `PI_*` environment variables (`packages/coding-agent/docs/environment-variables.md:1-97`, `src/config.ts:440,529`, `src/main.ts:762-765,1095`, `src/core/settings-manager.ts:1079,1152`) that do not derive from `APP_NAME`. Human decisions `D1` and `D2` (`specs/batch/batch-context.md`) govern requirements `R-REBRAND-001` through `R-REBRAND-006`, `R-REBRAND-009`, and `R-REBRAND-012`.
 
 ## Decision
 
@@ -35,7 +35,7 @@ We will execute a full hard-cut rename to `qi`—renaming the CLI binary to `qi`
 
 ## Compliance checklist
 
-- [ ] `package.json:2` has `"name": "qi-monorepo"` and `grep -rn '@earendil-works/pi-\|@bramburn/pi-' package.json packages/*/package.json` returns zero matches.
+- [ ] `package.json:2` has `"name": "qi-monorepo"` and `grep -rn '@earendil-works/pi-\|@bramburn/qi-' package.json packages/*/package.json` returns zero matches.
 - [ ] `packages/coding-agent/package.json:6-12` defines `"name": "@bramburn/qi-coding-agent"`, `"qiConfig": { "configDir": ".qi" }`, `"bin": { "qi": "dist/bundle/cli.js" }`, and `build:binary` outputs `dist/qi`.
 - [ ] `packages/coding-agent/src/config.ts:511-520` exports `PACKAGE_NAME = pkg.name || "@bramburn/qi-coding-agent"`, `APP_NAME = "qi"`, `APP_TITLE = "qi"`, `CONFIG_DIR_NAME = ".qi"`, `ENV_AGENT_DIR = "QI_CODING_AGENT_DIR"`, and `ENV_SESSION_DIR = "QI_CODING_AGENT_SESSION_DIR"`.
 - [ ] `grep -rn 'process\.env\.PI_\|PI_CODING_AGENT\|AI_AGENT=pi' packages/*/src/` returns zero matches.

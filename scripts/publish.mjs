@@ -25,6 +25,8 @@ function run(command, args, options = {}) {
 		cwd: options.cwd,
 		encoding: "utf8",
 		stdio: options.capture ? ["inherit", "pipe", "pipe"] : "inherit",
+		// Node 20+ refuses to spawn `.cmd` shims without a shell on Windows.
+		shell: process.platform === "win32",
 	});
 
 	if (result.status !== 0) {
@@ -35,9 +37,13 @@ function run(command, args, options = {}) {
 	return result;
 }
 
-function assertBuildOutputExists(directory) {
-	if (!existsSync(join(directory, "dist"))) {
-		throw new Error(`${directory}/dist does not exist. Run npm run build before publishing.`);
+function assertBuildOutputExists(pkg) {
+	// Not every public package ships a `dist`: native addons publish their
+	// prebuilt binaries from a tracked directory instead. Only require `dist`
+	// when the package's own `files` list ships it.
+	const shipsDist = (pkg.files ?? []).some((entry) => entry === "dist" || entry.startsWith("dist/"));
+	if (shipsDist && !existsSync(join(pkg.directory, "dist"))) {
+		throw new Error(`${pkg.directory}/dist does not exist. Run npm run build before publishing.`);
 	}
 }
 
@@ -51,6 +57,7 @@ function isPublished(name, version) {
 	const result = spawnSync(commandForPlatform("npm"), ["view", `${name}@${version}`, "version", "--json"], {
 		encoding: "utf8",
 		stdio: ["inherit", "pipe", "pipe"],
+		shell: process.platform === "win32",
 	});
 
 	if (result.status === 0 && result.stdout.trim()) {
@@ -81,7 +88,7 @@ const packageStates = packages.map((pkg) => ({
 }));
 
 for (const pkg of packageStates) {
-	assertBuildOutputExists(pkg.directory);
+	assertBuildOutputExists(pkg);
 	pkg.published = isPublished(pkg.name, pkg.version);
 
 	if (pkg.published) {
@@ -99,12 +106,17 @@ if (dryRun) {
 
 console.log("All packages validated; starting publication.\n");
 
+// npm can only attest provenance inside a supported CI provider (it reads the
+// provider's OIDC token). Local publishes have no provider and npm rejects
+// `--provenance` with EUSAGE, so ask for it only where it can be generated.
+const provenanceArgs = process.env.GITHUB_ACTIONS === "true" || process.env.GITLAB_CI === "true" ? ["--provenance"] : [];
+
 for (const pkg of packageStates) {
 	if (pkg.published) {
 		console.log(`Skipping ${pkg.name}@${pkg.version}: already published\n`);
 		continue;
 	}
 
-	run("npm", ["publish", "--access", "public", "--provenance", "--ignore-scripts"], { cwd: pkg.directory });
+	run("npm", ["publish", "--access", "public", ...provenanceArgs, "--ignore-scripts"], { cwd: pkg.directory });
 	console.log();
 }

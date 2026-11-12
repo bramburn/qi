@@ -141,20 +141,6 @@ function isInternalPackageName(name) {
 	return typeof name === "string" && name.startsWith(internalPackagePrefix);
 }
 
-function swapForkScope(name) {
-	// Map the upstream workspace scope to the fork scope (and back),
-	// preserving the `pi-` segment so `@bramburn/qi-agent-core`
-	// maps to `@bramburn/pi-agent-core` (not `@bramburn/agent-core`).
-	if (typeof name !== "string") return name;
-	if (name.startsWith(`${internalPackagePrefix}`)) {
-		return `@bramburn/pi-${name.slice(internalPackagePrefix.length)}`;
-	}
-	if (name.startsWith("@bramburn/pi-")) {
-		return `${internalPackagePrefix}${name.slice("@bramburn/pi-".length)}`;
-	}
-	return name;
-}
-
 function getInternalWorkspaces(lockPackages) {
 	const workspaces = new Map();
 
@@ -169,13 +155,9 @@ function getInternalWorkspaces(lockPackages) {
 			continue;
 		}
 		// Accept the workspace if either the lockfile's recorded name or the
-		// on-disk package.json's name is under the internal prefix. A
-		// publishing package.json may still list deps under the legacy fork
-		// scope `@bramburn/pi-*` (as produced by the removed publish-time
-		// rename script, ADR-0001) while the lockfile and other workspace
-		// package.json files use `@bramburn/qi-*`. The install
-		// lock must therefore resolve either spelling back to the same
-		// workspace directory.
+		// on-disk package.json's name is under the internal prefix. The
+		// lockfile and the workspace package.json files should agree on the
+		// `@bramburn/qi-*` scope after the in-tree rename (ADR-0001).
 		const lockName = isInternalPackageName(entry.name) ? entry.name : undefined;
 		const pkgName = isInternalPackageName(packageJson.name) ? packageJson.name : undefined;
 		if (!lockName && !pkgName) {
@@ -194,16 +176,14 @@ function getInternalWorkspaces(lockPackages) {
 }
 
 function buildInternalWorkspaceIndex(workspaces) {
-	// Index every workspace under its known names plus the swapped fork /
-	// upstream equivalent so lookups succeed regardless of which scope the
-	// caller requests.
+	// Index every workspace under its known names so lookups resolve to the
+	// workspace entry regardless of whether the lockfile or package.json
+	// supplied the name.
 	const index = new Map();
 	for (const workspace of workspaces.values()) {
 		for (const name of new Set([workspace.lockName, workspace.pkgName])) {
 			if (!name) continue;
 			index.set(name, workspace);
-			const swapped = swapForkScope(name);
-			if (swapped !== name) index.set(swapped, workspace);
 		}
 	}
 	return index;
@@ -288,9 +268,19 @@ function addExternalPackage(lockPackages, installLockPackages, addedPaths, queue
 		return;
 	}
 
+	// Dependencies npm nested inside a workspace resolve to repo-relative paths
+	// such as `packages/coding-agent/node_modules/better-sqlite3`. The install
+	// lockfile is consumed from the install-lock directory, so the repo prefix
+	// has to be flattened or the installer creates an unrelated nested tree.
+	const outputPath = publishedLockPath(lockPath);
+	if (addedPaths.has(outputPath)) {
+		return;
+	}
+
 	const entry = lockPackages[lockPath];
-	installLockPackages[lockPath] = copyLockEntry(entry);
+	installLockPackages[outputPath] = copyLockEntry(entry);
 	addedPaths.add(lockPath);
+	addedPaths.add(outputPath);
 
 	for (const dependencyName of Object.keys(packageDependencies(entry))) {
 		queue.push({ name: dependencyName, from: lockPath });
@@ -328,6 +318,19 @@ function createRootLockEntry(installerPackageJson) {
 	return sortedPackageEntry(entry);
 }
 
+function publishedLockPath(lockPath) {
+	if (lockPath === "" || lockPath.startsWith("node_modules/")) {
+		return lockPath;
+	}
+
+	const marker = "/node_modules/";
+	const index = lockPath.indexOf(marker);
+	if (index === -1) {
+		throw new Error(`Cannot map lockfile path ${lockPath} into the install lockfile`);
+	}
+	return lockPath.slice(index + 1);
+}
+
 function validateGeneratedFiles(installerPackageJson, installLock, internalNames, rootLockPackages) {
 	const errors = [];
 	const rootEntry = installLock.packages[""];
@@ -353,6 +356,9 @@ function validateGeneratedFiles(installerPackageJson, installLock, internalNames
 		const packageName = packageNameFromLockPath(lockPath);
 		if (packageName) {
 			includedPackageNames.add(packageName);
+		}
+		if (lockPath !== "" && !lockPath.startsWith("node_modules/")) {
+			errors.push(`${lockPath} is not a package-relative node_modules path`);
 		}
 		if (entry.link) {
 			errors.push(`${lockPath} is a link entry`);
@@ -403,7 +409,14 @@ function validateGeneratedFiles(installerPackageJson, installLock, internalNames
 					errors.push(`${lockPath || "root"} dependency ${dependencyName} is missing`);
 				continue;
 			}
-			const dependencyEntry = installLock.packages[dependencyLockPath];
+			// resolveExternalDependency returns root-lockfile paths, which can point at
+			// a workspace-nested install. Generated keys are flattened, so normalize
+			// before looking the entry up.
+			const dependencyEntry = installLock.packages[publishedLockPath(dependencyLockPath)];
+			if (!dependencyEntry) {
+				errors.push(`${lockPath || "root"} dependency ${dependencyName} is missing from the lockfile`);
+				continue;
+			}
 
 			if (isExactVersionSpec(dependencySpec) && dependencyEntry.version !== dependencySpec) {
 				errors.push(

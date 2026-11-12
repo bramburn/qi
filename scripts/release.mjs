@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * Release script for pi-mono
+ * Release script for qi-monorepo
  *
  * Usage:
  *   node scripts/release.mjs <major|minor|patch>
@@ -16,7 +16,7 @@
  * 7. Commit and tag the release
  * 8. Add new [Unreleased] section to changelogs
  * 9. Commit next-cycle changelog updates
- * 10. Push main and the tag to trigger CI publication and verified pi.dev announcement
+ * 10. Push main and the tag to trigger CI publication and the verified release announcement
  */
 
 import { execSync, spawnSync } from "node:child_process";
@@ -74,7 +74,8 @@ function assertPackagesAreRegisteredWithNpm() {
 		const result = spawnSync(process.platform === "win32" ? "npm.cmd" : "npm", ["view", packageName, "version", "--json"], {
 			encoding: "utf8",
 			stdio: ["ignore", "pipe", "pipe"],
-			shell: false,
+			// Node 20+ refuses to spawn `.cmd` shims without a shell on Windows.
+			shell: process.platform === "win32",
 		});
 
 		if (result.status === 0 && result.stdout.trim()) {
@@ -304,4 +305,4 @@ run("git push origin main");
 run(`git push origin v${version}`);
 console.log();
 
-console.log(`=== Prepared release v${version}; CI publication and pi.dev announcement start after the tag push ===`);
+console.log(`=== Prepared release v${version}; CI publication and the release announcement start after the tag push ===`);

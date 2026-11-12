@@ -9,7 +9,7 @@
  * orchestrator knows what needs doing and the file does not.
  *
  * Discovery reads exactly two scopes, first match wins:
- *   1. project — `<cwd>/.pi/agents/*.md` (the same project-dir primitive the
+ *   1. project — `<cwd>/.qi/agents/*.md` (the same project-dir primitive the
  *      skills and prompt-template loaders use: `join(cwd, CONFIG_DIR_NAME, …)`)
  *   2. user    — `<agentDir>/agents/*.md` (`getAgentDir()`, honouring
  *      `QI_CODING_AGENT_DIR`)

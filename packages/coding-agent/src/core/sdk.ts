@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import { Agent, type AgentMessage, setDefaultStreamFn, type ThinkingLevel } from "@bramburn/qi-agent-core";
-import { clampThinkingLevel, type Message, type Model, streamSimple } from "@bramburn/qi-ai/compat";
+import { clampThinkingLevel, type Message, type Model, modelsAreEqual, streamSimple } from "@bramburn/qi-ai/compat";
 import { getAgentDir } from "../config.ts";
 import { resolvePath } from "../utils/paths.ts";
 import { AgentSession } from "./agent-session.ts";
@@ -42,7 +42,7 @@ setDefaultStreamFn(streamSimple);
 export interface CreateAgentSessionOptions {
 	/** Working directory for project-local discovery. Default: process.cwd() */
 	cwd?: string;
-	/** Global config directory. Default: ~/.pi/agent */
+	/** Global config directory. Default: ~/.qi/agent */
 	agentDir?: string;
 
 	/** Canonical model/auth runtime. Defaults to a runtime using agentDir/auth.json and models.json. */
@@ -255,14 +255,27 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 
 	let thinkingLevel = options.thinkingLevel;
 
-	// If session has data, restore thinking level from it
-	if (thinkingLevel === undefined && hasExistingSession) {
-		thinkingLevel = hasThinkingEntry
-			? (existingSession.thinkingLevel as ThinkingLevel)
-			: (settingsManager.getDefaultThinkingLevel() ?? DEFAULT_THINKING_LEVEL);
+	// 1. Session history wins for a resumed/forked session: the recorded
+	//    `thinking_level_change` entry on the active branch is authoritative.
+	if (thinkingLevel === undefined && hasExistingSession && hasThinkingEntry) {
+		thinkingLevel = existingSession.thinkingLevel as ThinkingLevel;
 	}
 
-	// Fall back to settings default
+	// 2. Explicit scoped-model level for the resolved model (e.g.
+	//    `--models provider/id:level`).
+	if (thinkingLevel === undefined && model && options.scopedModels) {
+		const scoped = options.scopedModels.find((sm) => modelsAreEqual(sm.model, model));
+		if (scoped?.thinkingLevel !== undefined) {
+			thinkingLevel = scoped.thinkingLevel;
+		}
+	}
+
+	// 3. Remembered per-model level: what the user last chose for this model.
+	if (thinkingLevel === undefined && model) {
+		thinkingLevel = settingsManager.getModelThinkingLevel(model.provider, model.id);
+	}
+
+	// 4. Global default, then the built-in fallback.
 	if (thinkingLevel === undefined) {
 		thinkingLevel = settingsManager.getDefaultThinkingLevel() ?? DEFAULT_THINKING_LEVEL;
 	}

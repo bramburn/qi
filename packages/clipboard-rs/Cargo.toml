@@ -1,15 +1,18 @@
 [package]
 # Cargo's package name rules forbid `@` and `/`. The npm-distribution
-# name (`@bramburn/pi-clipboard-rs`) lives in `package.json`; the napi-rs
+# name (`@bramburn/qi-clipboard-rs`) lives in `package.json`; the napi-rs
 # CLI reads that field for the .node filename, not this one. Keep this
 # bare crate name.
 name        = "pi-clipboard-rs"
-version     = "0.0.1"
+# Crate version. This MUST match the `version` field in package.json;
+# build.rs fails the build when the two disagree. Automatic sync via the
+# release script is a pending, separate change.
+version = "0.85.2"
 edition     = "2021"
 rust-version = "1.77"
 description = "Fork-local cross-platform clipboard native addon for pi-coding-agent. Replaces @mariozechner/clipboard."
 license     = "MIT"
-repository  = "https://github.com/bramburn/pi"
+repository  = "https://github.com/bramburn/qi"
 publish     = false
 
 [lib]
@@ -41,11 +44,18 @@ napi-derive = "3.0"
 image = { version = "0.25", default-features = false, features = ["png"] }
 
 [build-dependencies]
-# napi build script generates the C headers napi-rs needs. The
-# 3.x line only has prereleases (1.1.0-beta.0); 2.x is the
-# stable line that pairs with napi 3.x runtime. See
-# https://docs.rs/napi-build for the version matrix.
-napi-build = "2.1"
+# napi-build generates the C headers napi-rs needs. The pairing here is
+# `napi 3.0` runtime + `napi-build 2.4+` build helper (Cargo.lock resolves
+# 2.6.0), matching the `@napi-rs/cli 3.5.0` devDependency in package.json
+# and the toolchain pinned in .github/workflows/clipboard-rs-build.yml.
+# See https://docs.rs/napi-build for the version matrix.
+napi-build = "2.4"
+
+# build.rs parses package.json to compare its `version` against the
+# Cargo package version. Desktop-only dependency; never linked into the
+# .node binary.
+serde_json = "1"
+
 
 [features]
 # Default build: link the dynamic libstd so the .node is small and uses the

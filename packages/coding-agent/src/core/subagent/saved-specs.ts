@@ -5,7 +5,7 @@
  * specialists (a code-reviewer, a test-runner) are worth keeping. This module
  * is the file-backed store for named templates, one small JSON file per spec:
  *
- * ~/.pi/agent/subagent-specs/<name>.json
+ * ~/.qi/agent/subagent-specs/<name>.json
  *
  * Each file is the persisted spec fields plus a `savedAt` stamp. The spec is
  * stored as a *template*, so the per-run `sessionFile` is intentionally not
