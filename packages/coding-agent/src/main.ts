@@ -1083,8 +1083,6 @@ async function runMainBody(
 			excludeTools: sessionOptions.excludeTools,
 			noTools: sessionOptions.noTools,
 			customTools: sessionOptions.customTools,
-			// Set by the subagent runner on the child's argv; undefined at top level.
-			subagentDepth: parsed.subagentDepth,
 		});
 		const cliThinkingOverride = parsed.thinking !== undefined || cliThinkingFromModel;
 		if (created.session.model && cliThinkingOverride) {

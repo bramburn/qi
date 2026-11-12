@@ -10,9 +10,9 @@
  *
  * Deliberately NOT gated on `isBunRuntime()`: CI runs vitest under node, and a
  * runtime gate is exactly why the existing kill tests never exercise real
- * processes. This file therefore mocks `runtime.ts` (the single place that
- * declares the Bun surface) with a fake whose `spawn` runs the SAME command
- * through `node:child_process.spawnSync` and returns a one-shot reader. The
+ * processes. This file therefore mocks `utils/runtime.ts` (the single place
+ * that declares the Bun surface) with a fake whose `spawn` runs the SAME
+ * command through `node:child_process.spawnSync` and returns a one-shot reader. The
  * production code under test — `parseProcessTable`, `snapshotDescendants`,
  * `killProcessTree` — runs unmodified, and the process table it reads is real.
  */
@@ -60,8 +60,8 @@ vi.mock("../src/utils/runtime.ts", () => ({
 	isBunRuntime: () => true,
 }));
 
-const { parseProcessTable, snapshotDescendants } = await import("../src/utils/win32-tree.ts");
-const { killProcessTree } = await import("../src/utils/shell.ts");
+import { killProcessTree } from "../src/utils/shell.ts";
+import { parseProcessTable, snapshotDescendants } from "../src/utils/win32-tree.ts";
 
 function delay(ms: number): Promise<void> {
 	return new Promise((resolve) => setTimeout(resolve, ms));

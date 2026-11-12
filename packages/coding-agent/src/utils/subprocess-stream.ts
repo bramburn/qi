@@ -1,7 +1,7 @@
 /**
  * Bounded stream reading for Bun subprocess pipes.
  *
- * A subagent is a `pi` process whose own tools spawn further processes. Those
+ * A `pi` child process spawns its own tools as further processes. Those
  * grandchildren inherit the child's stdout/stderr, so the pipe stays open
  * after the direct child has exited. Verified under Bun: after `exited`
  * resolves, `await new Response(proc.stdout).text()` never settles, and
@@ -72,9 +72,9 @@ export interface StreamPump {
  * Start consuming a pipe immediately, handing each chunk to `onChunk` as it
  * arrives.
  *
- * The runner needs this (not {@link collectStream}) because the JSONL parser
- * has to see events while the child is still alive: a subagent that runs for
- * minutes must emit `onUpdate` progress throughout, not after it exits.
+ * Use this (not {@link collectStream}) when the caller has to see events while
+ * the child is still alive: a run that lasts minutes must report progress
+ * throughout, not after it exits.
  */
 export function createStreamPump(
 	stream: { getReader(): ReaderLike } | null,

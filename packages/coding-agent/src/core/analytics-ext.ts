@@ -59,8 +59,8 @@ export function createAnalyticsExtension(
 	return (api: ExtensionAPI) => {
 		if (!_analyticsEnabled) return;
 
-		// Register an internal flag so other extensions (e.g. subagent) can guard
-		// their instrumentation with api.getFlag("pi:analytics").
+		// Register an internal flag so instrumentation extensions can guard their
+		// work with api.getFlag("pi:analytics").
 		api.registerFlag("pi:analytics", { type: "boolean", default: true });
 
 		api.on("agent_start", (_event: AgentStartEvent) => {

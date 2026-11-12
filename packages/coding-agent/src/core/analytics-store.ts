@@ -8,7 +8,6 @@
  *   pi_runs            – one row per run, keyed by runId
  *   pi_tool_invocations – one row per tool call within a run
  *   pi_compaction_events – one row per compaction within a run
- *   pi_subagent_tasks    – one row per sub-agent task span
  */
 
 import { mkdirSync } from "node:fs";
@@ -66,20 +65,6 @@ export interface CompactionEventRow {
 	durationMs: number;
 	success: boolean;
 	willRetry: boolean;
-}
-
-export interface SubagentTaskRow {
-	id: string;
-	runId: string;
-	spanId: string;
-	parentSpanId: string | null;
-	agentName: string;
-	taskLabel: string;
-	startTime: number; // Unix ms
-	endTime: number | null;
-	success: boolean | null;
-	errorMessage: string | null;
-	durationMs: number | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -156,26 +141,10 @@ class AnalyticsStore {
 				FOREIGN KEY (run_id) REFERENCES pi_runs(run_id)
 			);
 
-			CREATE TABLE IF NOT EXISTS pi_subagent_tasks (
-				id              TEXT PRIMARY KEY,
-				run_id          TEXT NOT NULL,
-				span_id         TEXT NOT NULL,
-				parent_span_id  TEXT,
-				agent_name      TEXT NOT NULL,
-				task_label      TEXT NOT NULL,
-				start_time       INTEGER NOT NULL,
-				end_time        INTEGER,
-				success         INTEGER,
-				error_message   TEXT,
-				duration_ms     INTEGER,
-				FOREIGN KEY (run_id) REFERENCES pi_runs(run_id)
-			);
-
 			CREATE INDEX IF NOT EXISTS idx_runs_session ON pi_runs(session_id);
 			CREATE INDEX IF NOT EXISTS idx_runs_tracking ON pi_runs(tracking_id);
 			CREATE INDEX IF NOT EXISTS idx_tools_run ON pi_tool_invocations(run_id);
 			CREATE INDEX IF NOT EXISTS idx_compaction_run ON pi_compaction_events(run_id);
-			CREATE INDEX IF NOT EXISTS idx_subagent_run ON pi_subagent_tasks(run_id);
 		`);
 	}
 
@@ -210,7 +179,6 @@ class AnalyticsStore {
 		this._ttftMs = null;
 		this._pendingToolInvocations = [];
 		this._pendingCompactionEvents = [];
-		this._pendingSubagentTasks = new Map();
 		return this._currentRunId;
 	}
 
@@ -350,107 +318,11 @@ class AnalyticsStore {
 		});
 		compInsertMany(this._pendingCompactionEvents);
 
-		// Sub-agent spans are inserted only here: pi_subagent_tasks.run_id
-		// references pi_runs(run_id), whose row is inserted above, so an INSERT
-		// from endSubagentTask during the run always violated the foreign key.
-		// Spans that settle after this flush are closed in place by
-		// endSubagentTask's UPDATE path below.
-		const insertSubagent = this.db!.prepare(`
-			INSERT INTO pi_subagent_tasks
-				(id, run_id, span_id, parent_span_id, agent_name, task_label,
-				 start_time, end_time, success, error_message, duration_ms)
-			VALUES
-				(@id, @runId, @spanId, @parentSpanId, @agentName, @taskLabel,
-				 @startTime, @endTime, @success, @errorMessage, @durationMs)
-		`);
-		const subagentInsertMany = this.db!.transaction((rows: SubagentTaskRow[]) => {
-			for (const row of rows) {
-				insertSubagent.run({
-					id: row.id,
-					runId: row.runId,
-					spanId: row.spanId,
-					parentSpanId: row.parentSpanId,
-					agentName: row.agentName,
-					taskLabel: row.taskLabel,
-					startTime: row.startTime,
-					endTime: row.endTime,
-					success: row.success === null ? null : row.success ? 1 : 0,
-					errorMessage: row.errorMessage,
-					durationMs: row.durationMs,
-				});
-			}
-		});
-		subagentInsertMany([...this._pendingSubagentTasks.values()]);
-
 		this._currentRunId = null;
 		this._currentSessionId = null;
 		this._currentTrackingId = null;
 		this._pendingToolInvocations = [];
 		this._pendingCompactionEvents = [];
-		this._pendingSubagentTasks = new Map();
-	}
-
-	// -------------------------------------------------------------------------
-	// Sub-agent task spans
-	// -------------------------------------------------------------------------
-
-	private _pendingSubagentTasks = new Map<string, SubagentTaskRow>();
-
-	startSubagentTask(params: { spanId: string; parentSpanId?: string; agentName: string; taskLabel: string }): void {
-		if (!this._currentRunId) return;
-		const row: SubagentTaskRow = {
-			id: randomUUID(),
-			runId: this._currentRunId,
-			spanId: params.spanId,
-			parentSpanId: params.parentSpanId ?? null,
-			agentName: params.agentName,
-			taskLabel: params.taskLabel,
-			startTime: Date.now(),
-			endTime: null,
-			success: null,
-			errorMessage: null,
-			durationMs: null,
-		};
-		this._pendingSubagentTasks.set(params.spanId, row);
-	}
-
-	endSubagentTask(spanId: string, success: boolean, errorMessage?: string): void {
-		const endTime = Date.now();
-		const row = this._pendingSubagentTasks.get(spanId);
-		if (row) {
-			// First settle wins: a double settle must not rewrite the outcome or
-			// extend the duration.
-			if (row.endTime !== null) return;
-			// Fast path: no DB write here — the row is inserted by flushRun together
-			// with its pi_runs parent (see the foreign-key note there).
-			this._pendingSubagentTasks.set(spanId, {
-				...row,
-				endTime,
-				success: !!success,
-				errorMessage: errorMessage ?? null,
-				durationMs: endTime - row.startTime,
-			});
-			return;
-		}
-		// The span was already flushed (e.g. a background task settling after
-		// flushRun): close its row in place so the outcome is not lost.
-		if (!this.db) return;
-		// First settle wins here too: `AND end_time IS NULL` makes a late double
-		// settle a no-op instead of inflating the duration with a new timestamp.
-		const update = this.db.prepare(`
-			UPDATE pi_subagent_tasks
-			SET end_time = @endTime,
-				success = @success,
-				error_message = @errorMessage,
-				duration_ms = @endTime - start_time
-			WHERE span_id = @spanId AND end_time IS NULL
-		`);
-		update.run({
-			spanId,
-			endTime,
-			success: success ? 1 : 0,
-			errorMessage: errorMessage ?? null,
-		});
 	}
 
 	close(): void {
@@ -468,43 +340,4 @@ let _store: AnalyticsStore | null = null;
 export function getAnalyticsStore(): AnalyticsStore {
 	if (!_store) _store = new AnalyticsStore();
 	return _store;
-}
-
-/**
- * Generate a new task span ID for sub-agent instrumentation.
- * Call startSubagentTask when the subprocess spawns, endSubagentTask when it exits.
- */
-export function newTaskSpanId(): string {
-	return randomUUID();
-}
-
-/**
- * Start a sub-agent task span.
- * Idempotent — safe to call multiple times with the same spanId.
- * Best-effort telemetry — never throws, so analytics I/O cannot fail a run.
- */
-export function startSubagentTask(params: {
-	spanId: string;
-	parentSpanId?: string;
-	agentName: string;
-	taskLabel: string;
-}): void {
-	try {
-		getAnalyticsStore().startSubagentTask(params);
-	} catch {
-		// telemetry only — ignore
-	}
-}
-
-/**
- * End a sub-agent task span.
- * Idempotent — safe to call multiple times with the same spanId.
- * Best-effort telemetry — never throws, so analytics I/O cannot fail a run.
- */
-export function endSubagentTask(spanId: string, success: boolean, errorMessage?: string): void {
-	try {
-		getAnalyticsStore().endSubagentTask(spanId, success, errorMessage);
-	} catch {
-		// telemetry only — ignore
-	}
 }
