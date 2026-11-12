@@ -136,13 +136,24 @@
 			"verifies": []
 		},
 		{
+			"id": "ADR-0004",
+			"type": "adr",
+			"domain": "subagents",
+			"path": "adr/0004-native-subagent-self-sufficiency.md",
+			"title": "Native subagent subsystem is the only subagent implementation",
+			"status": "superseded",
+			"depends_on": [],
+			"governs": [],
+			"verifies": []
+		},
+		{
 			"id": "ADR-0007",
 			"type": "adr",
 			"domain": "subagents",
 			"path": "adr/0007-remove-native-subagent.md",
 			"title": "Remove the native subagent subsystem",
 			"status": "accepted",
-			"depends_on": [],
+			"depends_on": ["ADR-0004"],
 			"governs": ["packages/coding-agent/src/**", "packages/coding-agent/docs/**", "packages/coding-agent/test/**"],
 			"verifies": []
 		},

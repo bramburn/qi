@@ -10,7 +10,7 @@ Single entry point for the qi spec set (Universal Spec Guidance, `specs/GUIDE.md
 
 - **`rebrand`** — Hard-cut rename from `pi` to `qi` (`@bramburn/qi-*`, `qi` binary, `QI_*` environment variables, `~/.qi/` and `.qi/` state directories) and complete severance of upstream `earendil-works`/`pi.dev` endpoints and sync tooling.
 - **`extensions`** — Checked-in 0.85 compatibility manifest resolved at extension install time, persisting exact pinned versions in settings and warning while installing `latest` for unlisted packages.
-- **`subagents`** — Retirement of the native subagent subsystem (ADR-0007); the domain is kept for that decision record only.
+- **`subagents`** — Retirement of the native subagent subsystem (ADR-0007), which superseded ADR-0004 (the earlier decision to make that subsystem the only implementation). The domain is kept for those two decision records only.
 - **`compaction`** — Typed skip outcomes and threshold skip-latching so compaction no-ops ("already compacted", "nothing to summarise") never surface as repeated red TUI errors or error telemetry.
 
 ## Spec count per type
@@ -18,12 +18,12 @@ Single entry point for the qi spec set (Universal Spec Guidance, `specs/GUIDE.md
 | Type | Count |
 |---|---|
 | requirements | 3 |
-| adr | 6 |
+| adr | 7 (6 `accepted` + ADR-0004 `superseded`) |
 | contract | 2 |
 | behavior | 1 |
 | impl | 2 |
 | ux | 0 (`not_applicable`) |
-| **Total** | **14** (all `accepted`) |
+| **Total** | **15** (14 `accepted`, 1 `superseded`) |
 
 ## The 5 most recently accepted ADRs
 
@@ -51,6 +51,7 @@ Single entry point for the qi spec set (Universal Spec Guidance, `specs/GUIDE.md
 | CONTRACT-EXT-COMPAT-MANIFEST-EXAMPLES | contract | extensions | accepted | [contracts/json-schema/extension-compat-manifest.examples.md](contracts/json-schema/extension-compat-manifest.examples.md) |
 | BEHAV-EXT-INSTALL-PINNING | behavior | extensions | accepted | [features/extensions/install-pinning.feature](features/extensions/install-pinning.feature) |
 | IMPL-EXTENSIONS | impl | extensions | accepted | [impl/extensions-phase.md](impl/extensions-phase.md) |
+| ADR-0004 | adr | subagents | superseded | [adr/0004-native-subagent-self-sufficiency.md](adr/0004-native-subagent-self-sufficiency.md) |
 | ADR-0007 | adr | subagents | accepted | [adr/0007-remove-native-subagent.md](adr/0007-remove-native-subagent.md) |
 | REQ-COMPACTION | requirements | compaction | accepted | [00-requirements/features/compaction-requirements.md](00-requirements/features/compaction-requirements.md) |
 | ADR-0005 | adr | compaction | accepted | [adr/0005-compaction-skip-not-error.md](adr/0005-compaction-skip-not-error.md) |
@@ -63,7 +64,7 @@ Every batch task's context is derived **mechanically** from `specs/manifest.json
 - **Review this code** (`specs_for(P)`): take every spec whose `governs` glob matches the code path `P`, then close over `depends_on` transitively. Example: a change in `packages/coding-agent/src/core/package-manager.ts` pulls `REQ-EXT`, `ADR-0003`, `CONTRACT-EXT-COMPAT-MANIFEST`, `CONTRACT-EXT-COMPAT-MANIFEST-EXAMPLES`, `IMPL-EXTENSIONS`, plus `ADR-0002` (via `governs: packages/coding-agent/src/**`) and its dependency `ADR-0001`.
 - **Review this domain** (`specs_for(D)`): take every spec with `domain == D`; its code context is the union of those specs' `governs` globs. Example: domain `compaction` → `REQ-COMPACTION`, `ADR-0005`, `IMPL-COMPACTION` → `agent-session.ts`, `compaction/compaction.ts`, `interactive-mode.ts`.
 - **Truth in advertising:** behavior specs carry `verifies` (test bindings) or `aspirational: true` (`BEHAV-EXT-INSTALL-PINNING` is aspirational until `IMPL-EXTENSIONS` wires the step definitions).
-- **Status:** only `accepted` (or `superseded`) specs may appear in `depends_on`; all 14 entries are `accepted` as of 2026-10-26 (ADR-0007 retired the subagent requirements and implementation specs).
+- **Status:** only `accepted` (or `superseded`) specs may appear in `depends_on`; 14 of the 15 entries are `accepted` and ADR-0004 is `superseded` (ADR-0007 retired the subagent requirements and implementation specs and supersedes ADR-0004).
 
 ---
 
