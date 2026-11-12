@@ -1,6 +1,6 @@
 # ADR-0004: Native subagent subsystem is the only subagent implementation
 
-**Status:** accepted
+**Status:** superseded by [ADR-0007](0007-remove-native-subagent.md)
 **Date:** 2026-10-20
 **Domain:** subagents
 
