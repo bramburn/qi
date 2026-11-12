@@ -1,3 +1,10 @@
+> **Historical design — subsystem removed.** This document designs features for
+> the native subagent subsystem, which was removed by
+> [ADR-0007](../specs/adr/0007-remove-native-subagent.md) on 2026-10-26.
+> Every `path:line` citation and `subagent-tool.ts` reference below is dead.
+> The designs in this document are **not actionable** — there is no subsystem
+> left to implement them in. Retained for architectural rationale only.
+
 # Native Subagent — Missing Management Features
 
 ## Context
