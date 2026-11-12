@@ -26,20 +26,25 @@ import {
 	createTestResourceLoader,
 } from "../utilities.ts";
 
-// Ambient `PI_*` variables leak in from whatever shell runs the suite — often a pi
+// Ambient app-env variables leak in from whatever shell runs the suite — often a qi
 // session itself, which exports `QI_MODEL` and `QI_PROVIDER`. They change model
 // routing, so `test/suite/` could reach a real API (and spend money) instead of
 // the faux provider its canned-response assertions expect. Scrub the whole
 // family before each test so a run behaves the same on every machine and only
 // sees the env a test sets itself.
 //
+// Both prefixes are scrubbed: the fork renamed the family from `PI_` to `QI_`, so
+// a machine that has also run upstream pi carries `PI_*` routing variables that
+// would otherwise leak in the same way.
+//
 // `QI_OFFLINE` is the one keeper: the vitest config sets it (test.env) to keep
 // tests off the network, so dropping it would be a safety regression.
-const SCRUBBED_PI_ENV_KEPT = new Set(["QI_OFFLINE"]);
+const SCRUBBED_ENV_PREFIXES = ["QI_", "PI_"];
+const SCRUBBED_ENV_KEPT = new Set(["QI_OFFLINE"]);
 
-export function scrubAmbientPiEnv(): void {
+export function scrubAmbientAppEnv(): void {
 	for (const name of Object.keys(process.env)) {
-		if (name.startsWith("PI_") && !SCRUBBED_PI_ENV_KEPT.has(name)) {
+		if (SCRUBBED_ENV_PREFIXES.some((prefix) => name.startsWith(prefix)) && !SCRUBBED_ENV_KEPT.has(name)) {
 			delete process.env[name];
 		}
 	}
@@ -48,7 +53,7 @@ export function scrubAmbientPiEnv(): void {
 // Registered at import time, which puts it ahead of the hooks each test file
 // declares for itself (vitest runs `beforeEach` hooks in registration order), so
 // a test's own env setup wins over the scrub.
-beforeEach(scrubAmbientPiEnv);
+beforeEach(scrubAmbientAppEnv);
 
 type MessageTextPart = { type: "text"; text: string };
 

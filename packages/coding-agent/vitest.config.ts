@@ -16,8 +16,13 @@ export default mergeConfig(
 			silent: "passed-only",
 			// Exclude dist/ so vitest doesn't run copied .test.ts files that
 			// ship in the build output (e.g. examples/extensions/background-tasks).
-			// node_modules and .git are vitest defaults and don't need to be listed.
-			exclude: ["**/dist/**"],
+			// Setting `exclude` replaces vitest's defaults instead of extending them,
+			// so node_modules has to be listed here: on Windows vitest follows the
+			// workspace symlink at node_modules/@bramburn/qi-tui and would otherwise
+			// pick up packages/tui's node:test suites and fail them with
+			// "No test suite found" (vitest doesn't recognize describe/it from
+			// node:test). Linux leaves the symlink alone, which is why CI never hits it.
+			exclude: ["**/node_modules/**", "**/dist/**"],
 			server: {
 				deps: {
 					// photon-node is a native WASM binding (better-sqlite3-style); vite's SSR
@@ -28,6 +33,13 @@ export default mergeConfig(
 			},
 		},
 		resolve: {
+			// Windows installs keep a real directory at node_modules/openai and a nested
+			// symlink at packages/ai/node_modules/openai, so the aliased @bramburn/qi-ai
+			// source and a test's `vi.mock("openai")` resolve two distinct copies and the
+			// mock never fires (the test then talks to the live endpoint). dedupe forces
+			// one copy. Linux realpath's both to the same directory, which is why CI
+			// passes without it.
+			dedupe: ["openai"],
 			alias: [
 				{
 					find: /^@earendil-works\/pi-client$/,

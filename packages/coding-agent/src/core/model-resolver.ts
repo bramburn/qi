@@ -10,7 +10,15 @@ import { isValidThinkingLevel } from "../cli/args.ts";
 import { DEFAULT_THINKING_LEVEL } from "./defaults.ts";
 import type { ModelRuntime } from "./model-runtime.ts";
 
-/** Default model IDs for each known provider */
+/**
+ * Default model IDs for each known provider.
+ *
+ * Provider catalogs are regenerated from live provider metadata by `bun run
+ * build`, and generations get retired upstream. The `built-in defaults exist in
+ * generated provider catalogs` test in test/model-resolver.test.ts fails when a
+ * default points at an id the regenerated catalog no longer lists, so those
+ * defaults move to the shipped successor (noted inline where it is not obvious).
+ */
 export const defaultModelPerProvider: Record<KnownProvider, string> = {
 	"amazon-bedrock": "us.anthropic.claude-opus-4-6-v1",
 	"ant-ling": "Ring-2.6-1T",
@@ -19,11 +27,13 @@ export const defaultModelPerProvider: Record<KnownProvider, string> = {
 	"azure-openai-responses": "gpt-5.4",
 	"openai-codex": "gpt-5.5",
 	radius: "auto",
-	nvidia: "nvidia/nemotron-3-super-120b-a12b",
+	nvidia: "nvidia/nemotron-3.5-super-vl-120b-a12b",
 	deepseek: "deepseek-v4-pro",
 	google: "gemini-3.1-pro-preview",
 	"google-vertex": "gemini-3.1-pro-preview",
-	"github-copilot": "gpt-5.4",
+	// `gpt-5.4` is no longer in Copilot's catalog, so the default is the codex model
+	// the catalog does ship.
+	"github-copilot": "gpt-5.3-codex",
 	openrouter: "moonshotai/kimi-k2.6",
 	"vercel-ai-gateway": "zai/glm-5.1",
 	xai: "grok-4.6",
@@ -48,10 +58,12 @@ export const defaultModelPerProvider: Record<KnownProvider, string> = {
 	"qwen-token-plan": "qwen3.7-max",
 	"qwen-token-plan-cn": "qwen3.7-max",
 	"qwen-token-plan-individual": "qwen3.8-max",
-	xiaomi: "mimo-v2.5-pro",
-	"xiaomi-token-plan-cn": "mimo-v2.5-pro",
-	"xiaomi-token-plan-ams": "mimo-v2.5-pro",
-	"xiaomi-token-plan-sgp": "mimo-v2.5-pro",
+	// `mimo-v2.5-pro` is gone from all four Xiaomi catalogs; `mimo-v2.6-pro` is the
+	// successor they all still list.
+	xiaomi: "mimo-v2.6-pro",
+	"xiaomi-token-plan-cn": "mimo-v2.6-pro",
+	"xiaomi-token-plan-ams": "mimo-v2.6-pro",
+	"xiaomi-token-plan-sgp": "mimo-v2.6-pro",
 };
 
 export interface ScopedModel {

@@ -114,9 +114,14 @@ describe("AuthStorage", () => {
 	});
 
 	test("keeps a coalesced reload alive while another credential reader is waiting", async () => {
+		// The two payloads deliberately differ in length. AuthStorage decides whether a
+		// reload is needed from getFileRevision (dev/inode/size/mtimeNs/ctimeNs), and
+		// Windows filesystem timestamps only tick every ~15ms, so equal-length writes
+		// can share a revision and the read then returns the cached snapshot instead of
+		// reloading. That made this test flaky on Windows (~2 of 3 runs).
 		writeAuthJson({ anthropic: { type: "api_key", key: "old" } });
 		const storage = AuthStorage.create(authJsonPath);
-		writeAuthJson({ anthropic: { type: "api_key", key: "new" } });
+		writeAuthJson({ anthropic: { type: "api_key", key: "replaced" } });
 		let grantLock: (() => void) | undefined;
 		const lockGranted = new Promise<void>((resolve) => {
 			grantLock = resolve;
@@ -134,7 +139,7 @@ describe("AuthStorage", () => {
 		firstController.abort();
 		await expect(first).rejects.toMatchObject({ name: "AbortError" });
 		grantLock?.();
-		await expect(second).resolves.toEqual({ type: "api_key", key: "new" });
+		await expect(second).resolves.toEqual({ type: "api_key", key: "replaced" });
 		expect(lockSpy).toHaveBeenCalledTimes(1);
 		expect(release).toHaveBeenCalledTimes(1);
 	});
