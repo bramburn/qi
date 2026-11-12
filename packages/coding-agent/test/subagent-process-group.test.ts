@@ -34,8 +34,8 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import type { BunSubprocess } from "../src/core/subagent/runtime.ts";
 import { createKillController } from "../src/core/subagent/shell.ts";
+import type { BunSubprocess } from "../src/utils/runtime.ts";
 import { killProcessTree } from "../src/utils/shell.ts";
 
 /**

@@ -17,6 +17,17 @@
  * package-level API yet.
  */
 
+export type {
+	BunApi,
+	BunReadableStream,
+	BunShell,
+	BunShellResult,
+	BunSpawnOptions,
+	BunSubprocess,
+} from "../../utils/runtime.ts";
+export { getBun, isBunRuntime } from "../../utils/runtime.ts";
+export type { CollectedStream, StreamPump } from "../../utils/subprocess-stream.ts";
+export { collectStream, createStreamPump } from "../../utils/subprocess-stream.ts";
 export type { AgentDefinition, AgentScope, AgentsDir } from "./agents.ts";
 export { AGENTS_DIR_NAME, agentsDirs, listAgents, parseAgentFile, resolveAgent } from "./agents.ts";
 export type {
@@ -87,14 +98,10 @@ export {
 export type { DisplayItem } from "./render.ts";
 export { formatTokens, formatUsageStats, getDisplayItems, renderSubagentCall, renderSubagentResult } from "./render.ts";
 export { type ResearchModeOptions, ResearchModeTracker } from "./research-mode.ts";
-export type { BunApi, BunReadableStream, BunShell, BunShellResult, BunSpawnOptions, BunSubprocess } from "./runtime.ts";
-export { getBun, isBunRuntime } from "./runtime.ts";
 export type { SavedSpec } from "./saved-specs.ts";
 export { deleteSpec, listSpecs, loadSpec, saveSpec } from "./saved-specs.ts";
 export type { ShellOptions, ShellResult } from "./shell.ts";
 export { runGit, runShell, runShellLine } from "./shell.ts";
-export type { CollectedStream, StreamPump } from "./stream.ts";
-export { collectStream, createStreamPump } from "./stream.ts";
 export {
 	createSubagentTool,
 	createSubagentToolDefinition,

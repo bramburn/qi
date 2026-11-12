@@ -12,8 +12,8 @@ import { constants } from "node:os";
 import type { Readable } from "node:stream";
 import { describe, expect, it } from "vitest";
 import { createBunProcessRunner } from "../src/core/subagent/bun-process-runner.ts";
-import { type BunApi, type BunReadableStream, type BunSubprocess, isBunRuntime } from "../src/core/subagent/runtime.ts";
 import { HARD_KILL_EXIT_CODE } from "../src/core/subagent/shell.ts";
+import { type BunApi, type BunReadableStream, type BunSubprocess, isBunRuntime } from "../src/utils/runtime.ts";
 
 function signalNumber(signal: NodeJS.Signals): number {
 	return constants.signals[signal] ?? 9;

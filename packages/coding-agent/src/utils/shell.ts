@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { delimiter, join } from "node:path";
 import { spawn, spawnSync } from "child_process";
 import { getBinDir } from "../config.ts";
-import { snapshotDescendants } from "../core/subagent/win32-tree.ts";
+import { snapshotDescendants } from "./win32-tree.ts";
 
 export interface ShellConfig {
 	shell: string;

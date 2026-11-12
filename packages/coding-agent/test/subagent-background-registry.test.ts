@@ -48,7 +48,7 @@ const bunRef = vi.hoisted(() => ({ current: undefined as unknown }));
 // runner is Node (no `Bun` global), so swap in a node:fs-backed reader — the
 // same injection seam bun-process-runner's tests use. Hermetic: it reads only
 // real files inside the temp agent dir.
-vi.mock("../src/core/subagent/runtime.ts", () => ({
+vi.mock("../src/utils/runtime.ts", () => ({
 	getBun: () => bunRef.current,
 	isBunRuntime: () => true,
 }));

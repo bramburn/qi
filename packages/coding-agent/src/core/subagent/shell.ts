@@ -58,7 +58,6 @@
  * implements them and there is no replacement; that is not a Node fallback.
  */
 
-import { killProcessTree, trackDetachedChildPid, untrackDetachedChildPid } from "../../utils/shell.ts";
 import {
 	type BunApi,
 	type BunShell,
@@ -66,8 +65,9 @@ import {
 	type BunSpawnOptions,
 	type BunSubprocess,
 	getBun,
-} from "./runtime.ts";
-import { createStreamPump } from "./stream.ts";
+} from "../../utils/runtime.ts";
+import { killProcessTree, trackDetachedChildPid, untrackDetachedChildPid } from "../../utils/shell.ts";
+import { createStreamPump } from "../../utils/subprocess-stream.ts";
 
 export interface ShellResult {
 	exitCode: number;

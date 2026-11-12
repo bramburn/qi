@@ -23,11 +23,11 @@ import { closeSync, openSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import type { Message } from "@bramburn/qi-ai";
+import { type BunApi, type BunSpawnOptions, getBun } from "../../utils/runtime.ts";
 import { trackDetachedChildPid, untrackDetachedChildPid } from "../../utils/shell.ts";
+import { createStreamPump } from "../../utils/subprocess-stream.ts";
 import { CONTROL_DIR_ENV, controlDirFor } from "./control.ts";
-import { type BunApi, type BunSpawnOptions, getBun } from "./runtime.ts";
 import { createKillController, HARD_KILL_EXIT_CODE } from "./shell.ts";
-import { createStreamPump } from "./stream.ts";
 import { SUPERVISOR_DIR_ENV, supervisorDirFor } from "./supervisor-channel.ts";
 import {
 	createEmptyUsage,

@@ -25,7 +25,7 @@
  */
 
 import { getBun, isBunRuntime } from "./runtime.ts";
-import { collectStream } from "./stream.ts";
+import { collectStream } from "./subprocess-stream.ts";
 
 /** One row of the OS process table. `createdMs` is NaN when unavailable. */
 export interface ProcessRow {

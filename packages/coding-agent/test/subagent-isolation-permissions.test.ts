@@ -18,7 +18,6 @@ import { Type } from "typebox";
 import { Value } from "typebox/value";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { _resetBackgroundRegistryForTests } from "../src/core/subagent/background.ts";
-import type { BunApi, BunShell, BunShellCommand } from "../src/core/subagent/runtime.ts";
 import {
 	checkDetachedAdmission,
 	createSubagentToolDefinition,
@@ -33,6 +32,7 @@ import {
 	type SubagentRunner,
 	type SubagentRunRequest,
 } from "../src/core/subagent/types.ts";
+import type { BunApi, BunShell, BunShellCommand } from "../src/utils/runtime.ts";
 
 type SyncSpawn = typeof spawnSync;
 
@@ -103,7 +103,7 @@ const fakeRuntime = vi.hoisted((): { bridge: { spawnSync?: SyncSpawn }; api: Bun
 	return { bridge, api };
 });
 
-vi.mock("../src/core/subagent/runtime.ts", () => ({
+vi.mock("../src/utils/runtime.ts", () => ({
 	getBun: () => fakeRuntime.api,
 	isBunRuntime: () => true,
 }));

@@ -7,8 +7,8 @@
  */
 import { describe, expect, it } from "vitest";
 import { createBunProcessRunner } from "../src/core/subagent/bun-process-runner.ts";
-import { isBunRuntime } from "../src/core/subagent/runtime.ts";
 import { createSubagentToolDefinition } from "../src/core/subagent/subagent-tool.ts";
+import { isBunRuntime } from "../src/utils/runtime.ts";
 
 const CHILD_OK = [
 	'const msg = { role: "assistant", content: [{ type: "text", text: "integrated child summary" }],',

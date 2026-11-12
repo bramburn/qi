@@ -29,9 +29,9 @@ import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join, resolve as resolvePath } from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import type { BunApi, BunShell, BunShellCommand } from "../src/core/subagent/runtime.ts";
 import { createWorktree, listWorktrees, pruneWorktrees, removeWorktree } from "../src/core/subagent/worktree.ts";
 import { resolveWorktreeLockPath, WorktreeLockError, withWorktreeLock } from "../src/core/subagent/worktree-lock.ts";
+import type { BunApi, BunShell, BunShellCommand } from "../src/utils/runtime.ts";
 
 type SyncSpawn = typeof spawnSync;
 
@@ -111,7 +111,7 @@ const fakeRuntime = vi.hoisted((): { bridge: { spawnSync?: SyncSpawn }; api: Bun
 	return { bridge, api };
 });
 
-vi.mock("../src/core/subagent/runtime.ts", () => ({
+vi.mock("../src/utils/runtime.ts", () => ({
 	getBun: () => fakeRuntime.api,
 	isBunRuntime: () => true,
 }));

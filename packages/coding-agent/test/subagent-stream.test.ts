@@ -15,8 +15,8 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { getBun, isBunRuntime } from "../src/core/subagent/runtime.ts";
-import { collectStream, createStreamPump } from "../src/core/subagent/stream.ts";
+import { getBun, isBunRuntime } from "../src/utils/runtime.ts";
+import { collectStream, createStreamPump } from "../src/utils/subprocess-stream.ts";
 
 /**
  * A stand-in for a subprocess pipe. `close: false` models a surviving
