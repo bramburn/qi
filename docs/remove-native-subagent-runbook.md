@@ -63,3 +63,23 @@ entries at their convenience.
 Revert the removal commit and reinstall. Nothing in the removal deleted user
 data: `subagent` settings keys, `~/.qi/agent/subagent-bg/`, and experiment
 registries are all left in place until step 3.
+
+## 7. Tear down the removal worktree
+
+Only after the branch is merged. The worktree must be clean first: an untracked
+file in it blocks `git worktree remove`, and that leftover is the usual cause of
+"the removal was never finished" confusion when a later audit packs the wrong
+tree.
+
+```bash
+cd "$(git rev-parse --show-toplevel)"
+git status --short # expect empty
+```
+
+Do not proceed if that prints anything; commit or delete the leftover first.
+Then, from the main checkout:
+
+```bash
+git worktree remove <worktree path> # e.g. C:/dev/worktrees_tmp/qi-remove-native-subagent
+git worktree list # expect the removal worktree to be gone
+```
