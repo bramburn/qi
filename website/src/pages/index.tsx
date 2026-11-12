@@ -94,7 +94,7 @@ export default function Home(): ReactNode {
               />
               <Feature
                 title="Hardened fork"
-                description="qi is a hardened, standalone fork with native Bun runtime support, native subagents, and pinned extension compatibility."
+                description="qi is a hardened, standalone fork with native Bun runtime support and pinned extension compatibility."
                 link="/docs/fork/why-fork"
                 linkLabel="See what's different"
               />

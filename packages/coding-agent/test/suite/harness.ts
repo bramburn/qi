@@ -126,11 +126,8 @@ function createTempDir(): string {
 
 export async function createHarness(options: HarnessOptions = {}): Promise<Harness> {
 	const tempDir = createTempDir();
-	// AgentSession's constructor runs background-registry hygiene
-	// (markAllRunningAsCrashed + prune) against getAgentDir(); without this seam
-	// every harness run mutates the developer's real agent dir (prune deletes
-	// terminal rows in <agentDir>/subagent-bg). The registry resolves
-	// getAgentDir() per operation, so the override takes effect immediately.
+	// Keep the session's agent directory inside the harness temp dir so a test
+	// run never reads or writes the developer's real agent config.
 	const previousAgentDir = process.env[ENV_AGENT_DIR];
 	process.env[ENV_AGENT_DIR] = join(tempDir, "agent");
 	const fauxProvider: FauxProviderRegistration = registerFauxProvider({

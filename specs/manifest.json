@@ -136,51 +136,25 @@
 			"verifies": []
 		},
 		{
-			"id": "REQ-SUBAG",
-			"type": "requirements",
-			"domain": "subagents",
-			"path": "00-requirements/features/subagents-requirements.md",
-			"title": "Native subagent self-sufficiency and defect-closure requirements",
-			"status": "accepted",
-			"depends_on": [],
-			"governs": [
-				"packages/coding-agent/src/core/subagent/**",
-				"packages/coding-agent/docs/subagents.md",
-				"specs/subagent/**"
-			],
-			"verifies": []
-		},
-		{
-			"id": "REQ-SUBAG-REGISTER",
-			"type": "requirements",
-			"domain": "subagents",
-			"path": "subagent/requirements.md",
-			"title": "Pre-existing subagent requirements register (status vocabulary: EXISTING/GAP/DEFECT)",
-			"status": "accepted",
-			"depends_on": [],
-			"governs": ["packages/coding-agent/src/core/subagent/**"],
-			"verifies": []
-		},
-		{
 			"id": "ADR-0004",
 			"type": "adr",
 			"domain": "subagents",
 			"path": "adr/0004-native-subagent-self-sufficiency.md",
 			"title": "Native subagent subsystem is the only subagent implementation",
-			"status": "accepted",
+			"status": "superseded",
 			"depends_on": [],
-			"governs": ["packages/coding-agent/src/core/subagent/**", "packages/coding-agent/docs/subagents.md"],
+			"governs": [],
 			"verifies": []
 		},
 		{
-			"id": "IMPL-SUBAGENTS",
-			"type": "impl",
+			"id": "ADR-0007",
+			"type": "adr",
 			"domain": "subagents",
-			"path": "impl/subagents-phase.md",
-			"title": "Subagent defect-closure implementation phase",
+			"path": "adr/0007-remove-native-subagent.md",
+			"title": "Remove the native subagent subsystem",
 			"status": "accepted",
-			"depends_on": ["REQ-SUBAG", "ADR-0004"],
-			"governs": ["packages/coding-agent/src/core/subagent/**"],
+			"depends_on": ["ADR-0004"],
+			"governs": ["packages/coding-agent/src/**", "packages/coding-agent/docs/**", "packages/coding-agent/test/**"],
 			"verifies": []
 		},
 		{

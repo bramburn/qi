@@ -24,9 +24,9 @@ Node fallback.
 - Use `Bun.spawn` for subprocesses. Never import `node:child_process` in new code; use `Bun.spawn` and do not rely on a `spawn` re-export from the `"bun"` import path; there is no dual-backend runner.
 - Use `Bun.write` / `Bun.file(...)` for file IO in new code, not `node:fs` or `node:fs/promises`. `Bun.file(p).exists()`, `.text()`, `.delete()` cover the common cases.
 - `node:path` and `node:os` are fine and are not a Node fallback — Bun implements them and there is no replacement for POSIX path primitives.
-- Do not gate new code on `typeof Bun === "undefined"` unless it is a registration-time capability check that prevents registering a tool which cannot run (see `isBunRuntime()` in `src/core/subagent/runtime.ts`).
+- Do not gate new code on `typeof Bun === "undefined"` unless it is a registration-time capability check that prevents registering a tool which cannot run (see `isBunRuntime()` in `src/utils/runtime.ts`).
 - Declare the Bun surface you use in a local module and read it from `globalThis`; do not add `bun-types` as a dependency and do not rely on a `Bun` global being typed. The root tsconfig pins `"types": ["node"]` and `lib: ["ES2024"]` (no DOM), so `Bun` and `ReadableStream` are both untyped by default.
-- `node:fs` stays allowed where Bun has no equivalent primitive: atomic rename (`renameSync`) and exclusive-create locking (`openSync(path, "wx")`). `src/core/subagent/experiment-registry.ts` is the worked example — `Bun.write` is neither atomic nor lockable.
+- `node:fs` stays allowed where Bun has no equivalent primitive: atomic rename (`renameSync`) and exclusive-create locking (`openSync(path, "wx")`). `packages/coding-agent/src/core/session-manager.ts` (`openSync(path, "wx")`) and `packages/coding-agent/src/migrations.ts` (`renameSync`) are the worked examples — `Bun.write` is neither atomic nor lockable.
 - Verify Bun behaviour with a throwaway script run under `bun`, not from docs or memory. Concrete cases already disproven in this repo: `Bun.$` keeps stdout and stderr separate and does not need `.nothrow()` (use `.quiet()`, which also stops the child writing to the parent's terminal); `subprocess.signalCode` resolves to a signal *name* string, not a number; `exited` is `128 + signal`, not null, when the child is signalled.
 
 ### Subprocess pipes
@@ -46,11 +46,10 @@ await Promise.race([finished, deadline]);
 await reader.cancel(); // safe: we own the lock
 ```
 
-`src/core/subagent/stream.ts` implements this (`createStreamPump`,
+`src/utils/subprocess-stream.ts` implements this (`createStreamPump`,
 `collectStream`). Reuse it rather than re-deriving the pattern.
-`test/subagent-stream.test.ts` covers it, with a fake never-closing pipe so the
-assertion runs in the Node-based vitest suite, plus real-process cases that run
-only under Bun.
+`test/win32-tree.test.ts` exercises `collectStream` through a faked Bun spawn
+that runs under the Node-based vitest suite.
 
 ### `Bun.$` vs `Bun.spawn`
 
@@ -78,7 +77,6 @@ A dynamic command *line* is not expressible in `Bun.$`:
 `$\`${"echo dynamic-line-works"}\`` fails with `command not found`, because an
 interpolated value is escaped into one quoted word. Lines with pipes, redirects
 or quoting are shell source, so they need `Bun.spawn` with `sh -c` / `cmd /c`.
-See `src/core/subagent/shell.ts` for the split contract.
 
 ## Code Quality
 
@@ -193,16 +191,14 @@ If rebase conflicts occur:
   belongs to another repository is invisible to `git worktree list` in this repo
   (its record lives in the other repo's `<common dir>/worktrees/`) but every
   recursive grep, build and editor scan reads it as a second source tree.
-- Subagent and ad-hoc worktrees go under `.worktrees/` in the repo root, which is
-  what `subagent.worktreeBase` defaults to (`DEFAULT_SUBAGENT_SETTINGS` in
-  `packages/coding-agent/src/core/defaults.ts`). Anything else is outside the
-  contract that creates and discards them, so nothing will ever clean it up.
+- Ad-hoc worktrees go under `.worktrees/` in the repo root. Anything else is
+ outside the contract that creates and discards them, so nothing will ever
+ clean it up.
 - Copying a `.git` directory copies `<common dir>/worktrees/` with it, i.e. the
   worktree registry. `git worktree prune` cannot undo that: it validates a record
   only by checking that its `gitdir` pointer names an existing git file, which it
-  does - in the other repository. `listWorktrees()`/`pruneWorktrees()` in
-  `packages/coding-agent/src/core/subagent/worktree.ts` filter and drop those
-  records; deleting them by hand is never the right first move.
+ does - in the other repository. Filter those records out when enumerating
+ worktrees; deleting them by hand is never the right first move.
 
 ## Fork vs Upstream Remotes
 
