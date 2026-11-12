@@ -40,6 +40,7 @@ Remove the native subagent subsystem completely, with no shim and no deprecation
 
 **Neutral:**
 - `packages/agent/src` was already free of subagent code and stays that way.
+- The `pi.agent.task` span type in `HARNESS_TELEMETRY_SCHEMA` (`packages/agent/src/harness/telemetry.ts`, documented in `packages/agent/docs/telemetry-schema.md`) keeps its schema but lost its only producers: `startSubagentTask`, `endSubagentTask`, and `newTaskSpanId` in `packages/coding-agent` were the sole emitters. Telemetry consumers reading that span type will now receive nothing. Removing or renaming the schema entry is deliberately out of scope for this coding-agent branch.
 - No dependency is removed: every package the subsystem used (`proper-lockfile`, `better-sqlite3`, `cross-spawn`, `diff`, `hosted-git-info`, `ignore`, `jiti`, `minimatch`, `semver`, `typebox`, `yaml`) has other consumers.
 
 ## Alternatives considered
