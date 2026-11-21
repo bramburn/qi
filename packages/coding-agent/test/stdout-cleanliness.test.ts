@@ -49,7 +49,10 @@ async function runCli(args: string[]): Promise<{ stdout: string; stderr: string;
 		join(projectConfigDir, "settings.json"),
 		JSON.stringify(
 			{
-				packages: ["npm:fake-package"],
+				// Pin an exact version (#15 / PR #17) so resolveCompatibleNpmVersion() takes its
+				// exact-version early return instead of shelling `npm view fake-package versions --json`
+				// against fake-npm.mjs (whose non-JSON stdout would fail JSON.parse in getNpmVersions).
+				packages: ["npm:fake-package@1.0.0"],
 				npmCommand: [process.execPath, fakeNpmPath],
 			},
 			null,
