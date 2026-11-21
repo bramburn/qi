@@ -573,6 +573,8 @@ Detection runs on the finalized assistant message:
 - `stopReason === "error"`
 - `errorMessage` matches one of qi's known overflow patterns (see [`packages/ai/src/utils/overflow.ts`](https://github.com/bramburn/qi/blob/main/packages/ai/src/utils/overflow.ts))
 
+HTTP 429 / rate-limit errors are **never** treated as context overflow, even when the payload mentions token counts (e.g. `"429 Rate limit reached ... on tokens per min (TPM): Limit 30000, Requested 8000"` or `"429 Request too large ... tokens per minute"`). `@bramburn/qi-ai` checks for 429 / TPM / RPM / throttling signals first (see `isRateLimitErrorMessage` in `packages/ai/src/utils/retry.ts`) and excludes them from `isContextOverflow`, so rate-limit responses never trigger overflow compaction — they back off and retry instead.
+
 If your provider returns overflow errors with a message qi does not recognize, normalize the error from the same extension that registers the provider. Use a `message_end` handler to rewrite the assistant message so its `errorMessage` starts with a phrase qi recognizes. The generic fallback `context_length_exceeded` is the safest choice.
 
 ```typescript
