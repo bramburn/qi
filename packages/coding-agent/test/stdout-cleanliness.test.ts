@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { ENV_AGENT_DIR } from "../src/config.ts";
+import { CONFIG_DIR_NAME, ENV_AGENT_DIR } from "../src/config.ts";
 import { allowNetwork } from "./test-network-env.ts";
 
 const cliPath = resolve(__dirname, "../src/cli.ts");
@@ -30,7 +30,7 @@ async function runCli(args: string[]): Promise<{ stdout: string; stderr: string;
 	const tempRoot = createTempDir();
 	const agentDir = join(tempRoot, "agent");
 	const projectDir = join(tempRoot, "project");
-	const projectConfigDir = join(projectDir, ".pi");
+	const projectConfigDir = join(projectDir, CONFIG_DIR_NAME);
 	mkdirSync(agentDir, { recursive: true });
 	mkdirSync(projectConfigDir, { recursive: true });
 
@@ -49,7 +49,10 @@ async function runCli(args: string[]): Promise<{ stdout: string; stderr: string;
 		join(projectConfigDir, "settings.json"),
 		JSON.stringify(
 			{
-				packages: ["npm:fake-package"],
+				// Pin an exact version (#15 / PR #17) so resolveCompatibleNpmVersion() takes its
+				// exact-version early return instead of shelling `npm view fake-package versions --json`
+				// against fake-npm.mjs (whose non-JSON stdout would fail JSON.parse in getNpmVersions).
+				packages: ["npm:fake-package@1.0.0"],
 				npmCommand: [process.execPath, fakeNpmPath],
 			},
 			null,
