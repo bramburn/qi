@@ -68,12 +68,27 @@ describe("provider retry classification", () => {
 		).toBe(true);
 	});
 
-	it("keeps provider limit errors non-retryable", () => {
-		expect(
-			isRetryableAssistantError(
-				fauxAssistantMessage("", { stopReason: "error", errorMessage: "429 quota exceeded" }),
-			),
-		).toBe(false);
+	it("keeps permanent quota/billing exhaustion non-retryable", () => {
+		for (const errorMessage of [
+			"insufficient_quota: you exceeded your current quota",
+			"billing_hard_limit_reached: billing hard limit has been reached",
+			"Your credit balance is too low to complete this request",
+			"Please check your plan and billing details to continue",
+			"Your account has been suspended for non-payment",
+		]) {
+			expect(isRetryableAssistantError(fauxAssistantMessage("", { stopReason: "error", errorMessage }))).toBe(false);
+		}
+	});
+
+	it("retries 429 rate-limit errors even when they mention quota or token counts", () => {
+		for (const errorMessage of [
+			"429 quota exceeded",
+			"429 Rate limit reached for gpt-4o on tokens per min (TPM): Limit 30000, Requested 8000",
+			"429 Request too large for model on tokens per minute",
+			"RESOURCE_EXHAUSTED: quota exceeded for tokens per minute",
+		]) {
+			expect(isRetryableAssistantError(fauxAssistantMessage("", { stopReason: "error", errorMessage }))).toBe(true);
+		}
 	});
 
 	it("classifies assistant error messages", () => {

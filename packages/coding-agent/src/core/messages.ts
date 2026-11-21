@@ -7,6 +7,7 @@
 
 import type { AgentMessage } from "@bramburn/qi-agent-core";
 import type { ImageContent, Message, TextContent, UserMessage } from "@bramburn/qi-ai";
+import { isRateLimitAssistantError } from "@bramburn/qi-ai/compat";
 
 export const COMPACTION_SUMMARY_PREFIX = `The conversation history before this point was compacted into the following summary:
 
@@ -266,8 +267,15 @@ export function convertToLlm(messages: AgentMessage[]): Message[] {
 						timestamp: m.timestamp,
 					};
 				case "user":
-				case "assistant":
 				case "toolResult":
+					return m;
+				case "assistant":
+					// Historical 429 / rate-limit failures that issued no tool calls
+					// are never serialized into provider payloads. Messages that
+					// issued tool calls are kept so executed results stay paired.
+					if (isRateLimitAssistantError(m) && !m.content.some((block) => block.type === "toolCall")) {
+						return undefined;
+					}
 					return m;
 				default:
 					// biome-ignore lint/correctness/noSwitchDeclarations: fine

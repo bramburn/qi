@@ -176,6 +176,8 @@ Set `QI_SKIP_VERSION_CHECK=1` to disable the version check entirely. Use `--offl
 
 When a provider requests a retry delay longer than `retry.provider.maxRetryDelayMs`, the request fails immediately with an informative error instead of waiting silently. Set it to `0` to disable the limit.
 
+HTTP 429 / rate-limit failures (including TPM/RPM token-limit wording) are always retryable at the agent level unless they signal permanent billing/account exhaustion (`insufficient_quota`, hard billing limits, depleted credit balance, suspended accounts). Agent-level retries of 429s use exponential backoff with a 2000 ms minimum floor and honor the server's `Retry-After` response (header or `retry in Ns` message text) when it asks for a longer wait; a per-provider cooldown then holds all further requests to that endpoint until the window elapses. Failed 429 turns are excluded from context history and never trigger auto-compaction or threshold background compaction.
+
 Keep `retry.provider.maxRetries` at `0` unless provider-level retries are explicitly needed. Setting it above `0` can make SDK/provider retries handle out-of-usage-limit errors before Qi sees them, which may block the agent until the provider quota resets in some circumstances.
 
 ```json

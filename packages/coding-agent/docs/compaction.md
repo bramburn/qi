@@ -50,6 +50,16 @@ If the session changed underneath the snapshot (tree navigation, `/new`, or a bl
 
 **Overflow recovery is the exception**: when the provider reports context overflow (or a response is truncated by the output cap), compaction must finish before the turn can be retried, so it aborts the turn and blocks as before, superseding any background compaction in flight.
 
+### Rate Limits (HTTP 429) Never Trigger Compaction
+
+Turns that fail with a 429 / rate-limit error (TPM/RPM/token-limit throttling) are excluded from context history and never trigger compaction:
+
+- The failed 429 assistant message is not persisted to the session tree (the leaf id does not advance) and is stripped from in-memory context, so 429 payloads add no tokens and never invalidate the threshold-compaction skip latch.
+- Overflow auto-compaction and post-turn threshold background compaction are both skipped while the last turn is rate-limited, including the custom compaction model.
+- Historical 429 error messages (e.g. from sessions persisted before this filtering existed) are excluded from provider payloads (`convertToLlm`), session context (`buildSessionContext`), token estimation (`getContextUsage`), and compaction cut-point search (`prepareCompactionResult`).
+
+Instead, 429 failures retry with exponential backoff: `computeExponentialBackoffMs` doubles `retry.baseDelayMs` per attempt (with a 2000 ms minimum floor for rate limits), honors the server's `Retry-After` / `retry-after-ms` / `retry in Ns` delay when it asks for longer, and records a per-provider cooldown so neither user prompts nor background summarization hit that endpoint again until the window elapses. Compaction summarization shares the same retry policy, so a 429 during summarization reschedules with backoff rather than failing the compaction.
+
 The blocking abort-first behavior remains available to RPC clients (`compact` command) and extensions (`ctx.compact()` without the `background` option).
 
 ### How It Works

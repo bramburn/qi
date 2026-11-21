@@ -8,7 +8,7 @@
 import type { AgentMessage, StreamFn, ThinkingLevel } from "@bramburn/qi-agent-core";
 import { contentText, type RetryCallbacks, type RetryPolicy, retryAssistantCall, uuidv7 } from "@bramburn/qi-ai";
 import type { AssistantMessage, Context, Model, SimpleStreamOptions, Usage } from "@bramburn/qi-ai/compat";
-import { completeSimple } from "@bramburn/qi-ai/compat";
+import { completeSimple, isRateLimitAssistantError } from "@bramburn/qi-ai/compat";
 import { convertToLlm } from "../messages.ts";
 import {
 	buildSessionContext,
@@ -962,7 +962,14 @@ export function prepareCompactionResult(
 	pathEntries: SessionEntry[],
 	settings: CompactionSettings,
 ): CompactionPreparationOutcome {
-	if (pathEntries.length > 0 && pathEntries[pathEntries.length - 1].type === "compaction") {
+	// Failed 429 turns are not history: exclude them before the
+	// already-compacted check and cut-point search, so a branch whose only
+	// new entries are 429 errors reports "already-compacted".
+	const entries = pathEntries.filter(
+		(entry) =>
+			!(entry.type === "message" && entry.message.role === "assistant" && isRateLimitAssistantError(entry.message)),
+	);
+	if (entries.length > 0 && entries[entries.length - 1].type === "compaction") {
 		return {
 			skipped: true,
 			skipReason: "already-compacted",
@@ -971,8 +978,8 @@ export function prepareCompactionResult(
 	}
 
 	let prevCompactionIndex = -1;
-	for (let i = pathEntries.length - 1; i >= 0; i--) {
-		if (pathEntries[i].type === "compaction") {
+	for (let i = entries.length - 1; i >= 0; i--) {
+		if (entries[i].type === "compaction") {
 			prevCompactionIndex = i;
 			break;
 		}
@@ -981,19 +988,19 @@ export function prepareCompactionResult(
 	let previousSummary: string | undefined;
 	let boundaryStart = 0;
 	if (prevCompactionIndex >= 0) {
-		const prevCompaction = pathEntries[prevCompactionIndex] as CompactionEntry;
+		const prevCompaction = entries[prevCompactionIndex] as CompactionEntry;
 		previousSummary = prevCompaction.summary;
-		const firstKeptEntryIndex = pathEntries.findIndex((entry) => entry.id === prevCompaction.firstKeptEntryId);
+		const firstKeptEntryIndex = entries.findIndex((entry) => entry.id === prevCompaction.firstKeptEntryId);
 		boundaryStart = firstKeptEntryIndex >= 0 ? firstKeptEntryIndex : prevCompactionIndex + 1;
 	}
-	const boundaryEnd = pathEntries.length;
+	const boundaryEnd = entries.length;
 
-	const tokensBefore = estimateContextTokens(buildSessionContext(pathEntries).messages).tokens;
+	const tokensBefore = estimateContextTokens(buildSessionContext(entries).messages).tokens;
 
-	const cutPoint = findCutPoint(pathEntries, boundaryStart, boundaryEnd, settings.keepRecentTokens);
+	const cutPoint = findCutPoint(entries, boundaryStart, boundaryEnd, settings.keepRecentTokens);
 
 	// Get UUID of first kept entry
-	const firstKeptEntry = pathEntries[cutPoint.firstKeptEntryIndex];
+	const firstKeptEntry = entries[cutPoint.firstKeptEntryIndex];
 	if (!firstKeptEntry?.id) {
 		return {
 			skipped: true,
@@ -1008,7 +1015,7 @@ export function prepareCompactionResult(
 	// Messages to summarize (will be discarded after summary)
 	const messagesToSummarize: AgentMessage[] = [];
 	for (let i = boundaryStart; i < historyEnd; i++) {
-		const msg = getMessageFromEntryForCompaction(pathEntries[i]);
+		const msg = getMessageFromEntryForCompaction(entries[i]);
 		if (msg) messagesToSummarize.push(msg);
 	}
 
@@ -1016,7 +1023,7 @@ export function prepareCompactionResult(
 	const turnPrefixMessages: AgentMessage[] = [];
 	if (cutPoint.isSplitTurn) {
 		for (let i = cutPoint.turnStartIndex; i < cutPoint.firstKeptEntryIndex; i++) {
-			const msg = getMessageFromEntryForCompaction(pathEntries[i]);
+			const msg = getMessageFromEntryForCompaction(entries[i]);
 			if (msg) turnPrefixMessages.push(msg);
 		}
 	}
@@ -1030,7 +1037,7 @@ export function prepareCompactionResult(
 	}
 
 	// Extract file operations from messages and previous compaction
-	const fileOps = extractFileOperations(messagesToSummarize, pathEntries, prevCompactionIndex);
+	const fileOps = extractFileOperations(messagesToSummarize, entries, prevCompactionIndex);
 
 	// Also extract file ops from turn prefix if splitting
 	if (cutPoint.isSplitTurn) {

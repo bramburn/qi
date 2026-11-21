@@ -38,11 +38,16 @@ import type {
 import {
 	clampThinkingLevel,
 	cleanupSessionResources,
+	computeExponentialBackoffMs,
+	DEFAULT_MAX_BACKOFF_DELAY_MS,
 	getSupportedThinkingLevels,
 	isContextOverflow,
+	isRateLimitAssistantError,
+	isRateLimitErrorMessage,
 	isRecoverableLength,
 	isRetryableAssistantError,
 	modelsAreEqual,
+	parseRetryAfterMs,
 	type RetryCallbacks,
 	resetApiProviders,
 	streamSimple,
@@ -116,6 +121,9 @@ import { type BashOperations, createLocalBashOperations } from "./tools/bash.ts"
 import { createAllToolDefinitions } from "./tools/index.ts";
 import { createToolDefinitionFromAgentTool } from "./tools/tool-definition-wrapper.ts";
 import { addUsageToTotals, createUsageTotals } from "./usage-totals.ts";
+
+/** Property tag holding the pre-gate stream function on the 429 cooldown wrapper. */
+const WRAPPED_STREAM_FUNCTION_INNER = "__qiInnerStreamFunction";
 
 // ============================================================================
 // Skill Block Parsing
@@ -401,6 +409,41 @@ export class AgentSession {
 	private _retryAbortController: AbortController | undefined = undefined;
 	private _retryAttempt = 0;
 
+	/** Per-provider rate-limit cooldown deadline (epoch ms). Prevents hitting the endpoint during active 429 backoff. */
+	private readonly _rateLimitCooldownUntil = new Map<string, number>();
+	/** True when the most recent assistant response failed with a 429 / rate-limit error and no later turn has succeeded. */
+	private _lastTurnWasRateLimited = false;
+
+	/** Record a per-provider cooldown so no request hits the endpoint before `delayMs` elapses. */
+	private _recordRateLimitCooldown(provider: string, delayMs: number): void {
+		if (!provider || delayMs <= 0) return;
+		const until = Date.now() + delayMs;
+		const existing = this._rateLimitCooldownUntil.get(provider) ?? 0;
+		if (until > existing) {
+			this._rateLimitCooldownUntil.set(provider, until);
+		}
+	}
+
+	/** Remaining cooldown for a provider in ms, or 0 when no cooldown is active. */
+	private _getRemainingRateLimitCooldownMs(provider: string | undefined): number {
+		if (!provider) return 0;
+		const until = this._rateLimitCooldownUntil.get(provider);
+		if (!until) return 0;
+		const remaining = until - Date.now();
+		if (remaining <= 0) {
+			this._rateLimitCooldownUntil.delete(provider);
+			return 0;
+		}
+		return remaining;
+	}
+
+	/** Wait out an active per-provider 429 cooldown (abortable). Resolves immediately when none applies. */
+	private async _waitForRateLimitCooldown(provider: string | undefined, signal?: AbortSignal): Promise<void> {
+		const remainingMs = this._getRemainingRateLimitCooldownMs(provider);
+		if (remainingMs <= 0) return;
+		await sleep(remainingMs, signal);
+	}
+
 	// Bash execution state
 	private readonly _bashAbortControllers = new Set<AbortController>();
 	private _pendingBashMessages: BashExecutionMessage[] = [];
@@ -465,6 +508,7 @@ export class AgentSession {
 		this._unsubscribeAgent = this.agent.subscribe(this._handleAgentEvent);
 		this._installAgentToolHooks();
 		this._installAgentNextTurnRefresh();
+		this._installRateLimitCooldownGate();
 
 		this._buildRuntime({
 			activeToolNames: this._initialActiveToolNames,
@@ -550,7 +594,15 @@ export class AgentSession {
 				);
 			}
 		}
-		if (this.agent.streamFunction === streamSimple) {
+		// Unwrap the 429 cooldown gate (installed in the constructor) so this
+		// identity check sees the same stream function the session was built with.
+		const currentStreamFunction = this.agent.streamFunction;
+		const innerStreamFunction = (currentStreamFunction as unknown as Record<string, unknown>)[
+			WRAPPED_STREAM_FUNCTION_INNER
+		];
+		const effectiveStreamFunction =
+			typeof innerStreamFunction === "function" ? innerStreamFunction : currentStreamFunction;
+		if (effectiveStreamFunction === streamSimple) {
 			return await this._getRequiredRequestAuth(effectiveModel);
 		}
 
@@ -691,6 +743,25 @@ export class AgentSession {
 		};
 	}
 
+	/**
+	 * Gate every outbound model request on the per-provider 429 cooldown.
+	 * User prompts, queued messages, and compaction summarization share the
+	 * agent stream function, so a single wrapper keeps all of them from
+	 * hitting a rate-limited endpoint during the backoff window. The wrapped
+	 * (inner) function is tagged so identity checks against well-known stream
+	 * functions (e.g. `streamSimple`) keep working through the wrapper.
+	 */
+	private _installRateLimitCooldownGate(): void {
+		const innerStreamFunction = this.agent.streamFunction;
+		const boundInnerStreamFunction = innerStreamFunction.bind(this.agent);
+		const gatedStreamFunction = (async (model, context, options) => {
+			await this._waitForRateLimitCooldown(model?.provider, options?.signal);
+			return boundInnerStreamFunction(model, context, options);
+		}) as typeof this.agent.streamFunction;
+		(gatedStreamFunction as unknown as Record<string, unknown>)[WRAPPED_STREAM_FUNCTION_INNER] = innerStreamFunction;
+		this.agent.streamFunction = gatedStreamFunction;
+	}
+
 	// =========================================================================
 	// Event Subscription
 	// =========================================================================
@@ -791,8 +862,36 @@ export class AgentSession {
 				event.message.role === "assistant" ||
 				event.message.role === "toolResult"
 			) {
-				// Regular LLM message - persist as SessionMessageEntry
-				this.sessionManager.appendMessage(event.message);
+				// Failed 429 / rate-limit turns carry no usable content: never persist
+				// them to the session tree (keeps leaf id, context history, and the
+				// threshold-compaction skip latch untouched). The in-memory message
+				// is stripped from agent state on agent_end / before retry instead.
+				if (event.message.role === "assistant" && isRateLimitAssistantError(event.message)) {
+					this._lastTurnWasRateLimited = true;
+					const baseDelayMs = this.settingsManager.getRetrySettings().baseDelayMs;
+					const retryAfterMs = parseRetryAfterMs(event.message.errorMessage);
+					this._recordRateLimitCooldown(
+						event.message.provider || this.model?.provider || "",
+						computeExponentialBackoffMs({
+							attempt: this._retryAttempt + 1,
+							baseDelayMs,
+							maxDelayMs: DEFAULT_MAX_BACKOFF_DELAY_MS,
+							retryAfterMs,
+							isRateLimit: true,
+							jitterRatio: baseDelayMs > 0 ? 0.2 : 0,
+						}),
+					);
+				} else {
+					// Regular LLM message - persist as SessionMessageEntry
+					this.sessionManager.appendMessage(event.message);
+					if (event.message.role === "assistant") {
+						const assistantMessage = event.message as AssistantMessage;
+						if (assistantMessage.stopReason !== "error" && assistantMessage.stopReason !== "aborted") {
+							this._lastTurnWasRateLimited = false;
+							this._rateLimitCooldownUntil.delete(assistantMessage.provider);
+						}
+					}
+				}
 			}
 			// Other message types (bashExecution, compactionSummary, branchSummary) are persisted elsewhere
 
@@ -1242,6 +1341,18 @@ export class AgentSession {
 
 		if (this._isRetryableError(msg) && (await this._prepareRetry(msg))) {
 			return true;
+		}
+
+		// Retries are disabled or exhausted and the turn ended on a 429: drop
+		// the failed rate-limit message from in-memory context so it never
+		// occupies the window, retriggers compaction, or duplicates on the
+		// next turn. (Session persistence already skipped it on message_end.)
+		if (isRateLimitAssistantError(msg)) {
+			const messages = this.agent.state.messages;
+			const lastMessage = messages.length > 0 ? messages[messages.length - 1] : undefined;
+			if (lastMessage?.role === "assistant" && isRateLimitAssistantError(lastMessage as AssistantMessage)) {
+				this.agent.state.messages = messages.slice(0, -1);
+			}
 		}
 
 		if (msg.stopReason === "error" && this._retryAttempt > 0) {
@@ -2358,6 +2469,19 @@ export class AgentSession {
 	 * compaction is active. Never throws.
 	 */
 	private _startThresholdBackgroundCompaction(): void {
+		// Never compact off a failed 429 turn or while a retry/backoff is in
+		// flight, and never summarize against an endpoint in its 429 cooldown
+		// window (main or custom compaction model).
+		if (this._lastTurnWasRateLimited || this._retryAbortController !== undefined) {
+			return;
+		}
+		if (this._getRemainingRateLimitCooldownMs(this.model?.provider) > 0) {
+			return;
+		}
+		const compactionModelPref = this.settingsManager.getCompactionModel();
+		if (compactionModelPref?.provider && this._getRemainingRateLimitCooldownMs(compactionModelPref.provider) > 0) {
+			return;
+		}
 		if (
 			this._backgroundCompaction !== undefined ||
 			// A completed-but-not-yet-applied result is still in flight. Launching
@@ -2676,6 +2800,13 @@ export class AgentSession {
 	 * @param skipAbortedCheck If false, include aborted messages (for pre-prompt check). Default: true
 	 */
 	private async _checkCompaction(assistantMessage: AssistantMessage, skipAbortedCheck = true): Promise<boolean> {
+		// A 429 / rate-limit failure is a backoff-and-retry signal, never a
+		// compaction signal: token-limit wording in 429 payloads must not be
+		// mistaken for context overflow, and threshold accounting must not run
+		// on failed turns.
+		if (isRateLimitAssistantError(assistantMessage) || this._lastTurnWasRateLimited) {
+			return false;
+		}
 		// Effective settings (legacy + DeepSeek Harness ratio policy). Reading the
 		// legacy settings here would ignore `thresholdRatio`, so a session
 		// configured with a ratio would never pass the `shouldCompact` check at
@@ -2760,7 +2891,11 @@ export class AgentSession {
 		let contextTokens: number;
 		const directContextTokens = assistantMessage.usage ? calculateContextTokens(assistantMessage.usage) : 0;
 		if (assistantMessage.stopReason === "error" || directContextTokens === 0) {
-			const messages = this.agent.state.messages;
+			// Exclude failed 429 turns (including historical ones) so error
+			// payloads never inflate the threshold estimate.
+			const messages = this.agent.state.messages.filter(
+				(m) => !(m.role === "assistant" && isRateLimitAssistantError(m as AssistantMessage)),
+			);
 			const estimate = estimateContextTokens(messages);
 			if (estimate.lastUsageIndex === null) {
 				// No usage data at all — fall back to the pure chars/4 estimate.
@@ -3489,17 +3624,31 @@ export class AgentSession {
 			return false;
 		}
 
-		const delayMs = settings.baseDelayMs * 2 ** (this._retryAttempt - 1);
+		const errorMessage = message.errorMessage || "Unknown error";
+		const isRateLimit = isRateLimitErrorMessage(message.errorMessage);
+		const retryAfterMs = parseRetryAfterMs(message.errorMessage);
+		const delayMs = computeExponentialBackoffMs({
+			attempt: this._retryAttempt,
+			baseDelayMs: settings.baseDelayMs,
+			maxDelayMs: DEFAULT_MAX_BACKOFF_DELAY_MS,
+			retryAfterMs,
+			isRateLimit,
+			jitterRatio: settings.baseDelayMs > 0 ? 0.2 : 0,
+		});
+		// Keep every retry (not just 429s) from hitting the endpoint early:
+		// the stream gate waits out this cooldown before the next attempt.
+		this._recordRateLimitCooldown(message.provider || this.model?.provider || "", delayMs);
 
 		this._emit({
 			type: "auto_retry_start",
 			attempt: this._retryAttempt,
 			maxAttempts: settings.maxRetries,
 			delayMs,
-			errorMessage: message.errorMessage || "Unknown error",
+			errorMessage,
 		});
 
-		// Remove error message from agent state (keep in session for history)
+		// Remove error message from agent state (non-429 errors stay in session
+		// history; 429 / rate-limit errors were never persisted on message_end).
 		const messages = this.agent.state.messages;
 		if (messages.length > 0 && messages[messages.length - 1].role === "assistant") {
 			this.agent.state.messages = messages.slice(0, -1);
@@ -3999,7 +4148,12 @@ export class AgentSession {
 			}
 		}
 
-		const estimate = estimateContextTokens(this.messages);
+		// Failed 429 turns carry no usable usage (totalTokens 0) and must not
+		// inflate trailing estimates after the last valid usage entry.
+		const messages = this.messages.filter(
+			(m) => !(m.role === "assistant" && isRateLimitAssistantError(m as AssistantMessage)),
+		);
+		const estimate = estimateContextTokens(messages);
 		const percent = (estimate.tokens / contextWindow) * 100;
 
 		return {

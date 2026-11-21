@@ -1,4 +1,5 @@
 import type { AssistantMessage } from "../types.ts";
+import { isRateLimitErrorMessage } from "./retry.ts";
 
 /**
  * Regex patterns to detect context overflow errors from different providers.
@@ -134,6 +135,11 @@ const NON_OVERFLOW_PATTERNS = [
 export function isContextOverflow(message: AssistantMessage, contextWindow?: number): boolean {
 	// Case 1: Check error message patterns
 	if (message.stopReason === "error" && message.errorMessage) {
+		// HTTP 429 / rate-limit errors (including TPM/RPM token-limit wording)
+		// are never context overflow: they must back off and retry, not compact.
+		if (isRateLimitErrorMessage(message.errorMessage)) {
+			return false;
+		}
 		// Skip messages matching known non-overflow patterns (e.g. throttling / rate-limit)
 		const isNonOverflow = NON_OVERFLOW_PATTERNS.some((p) => p.test(message.errorMessage!));
 		if (!isNonOverflow && OVERFLOW_PATTERNS.some((p) => p.test(message.errorMessage!))) {

@@ -1,5 +1,6 @@
 import type { AgentMessage, ThinkingLevel } from "@bramburn/qi-agent-core";
 import { type ImageContent, type Message, type TextContent, type Usage, uuidv7 } from "@bramburn/qi-ai";
+import { isRateLimitAssistantError } from "@bramburn/qi-ai/compat";
 import { randomUUID } from "crypto";
 import {
 	appendFileSync,
@@ -407,6 +408,12 @@ function getSessionContextSettings(path: SessionEntry[]): Pick<SessionContext, "
 export function sessionEntryToContextMessages(entry: SessionEntry): AgentMessage[] {
 	if (entry.type === "message") {
 		const message = entry.message;
+		// Historical 429 / rate-limit failures carry no usable content and must
+		// never reach provider payloads (including sessions persisted before
+		// 429 filtering existed).
+		if (message.role === "assistant" && isRateLimitAssistantError(message)) {
+			return [];
+		}
 		// Session files are parsed without validation; old versions, forks, or
 		// hand-edited files can contain messages with null/missing content.
 		if (
