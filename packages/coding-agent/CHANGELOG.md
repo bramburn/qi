@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [0.85.3] - 2026-11-21
 
 ### Breaking Changes
 
@@ -58,6 +58,8 @@
 - Worktree records copied along with a `.git` directory no longer show up as this repository's worktrees. `git worktree list` reads `<common dir>/worktrees/` and `git worktree prune` validates only that a record's `gitdir` pointer names an existing git file, so a registry inherited from another repository passes both checks forever and reports that repo's checkouts as isolation targets. `listWorktrees()` now drops a record whose worktree `.git` file points back outside this repo's registry, and `pruneWorktrees()` deletes those admin directories (logging each by name) after git's own prune. Records whose pointers cannot be read are left untouched, so a deleted worktree is still handled by git ([#2](https://github.com/bramburn/qi/issues/2)).
 
 - Fixed the published `npm-shrinkwrap.json`, which shipped a repo-relative `packages/coding-agent/node_modules/better-sqlite3` key. npm installed nothing at `node_modules/better-sqlite3`, so `node node_modules/@bramburn/qi-coding-agent/dist/cli.js` failed with `ERR_MODULE_NOT_FOUND`. Both lockfile generators now flatten workspace-nested paths and reject keys outside `node_modules/`. Regression test: `scripts/generate-coding-agent-shrinkwrap.test.mjs`.
+- Failed HTTP 429 (rate-limit) turns no longer pollute the session: they are stripped from in-memory state, never persisted to the session tree, excluded from LLM payloads and compaction cut points, and skipped by threshold/background compaction gates, with a per-provider cooldown backing off before the endpoint is hit again ([#20](https://github.com/bramburn/qi/pull/20)).
+- Default model IDs repointed at catalog entries that still exist after upstream retirements (github-copilot gpt-5.4 to gpt-5.3-codex, the nvidia nemotron rename, xiaomi mimo-2.5 to 2.6 variants), so those providers resolve a working default again ([#17](https://github.com/bramburn/qi/pull/17)).
 
 ## [0.85.0-b1] - 2026-09-14
 

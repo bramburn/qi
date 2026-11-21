@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [0.85.3] - 2026-11-21
 
 ### Fork-local (bramburn)
 
@@ -17,6 +17,7 @@
 ### Fixed
 
 - The OpenRouter model generator now filters catalog entries through `shouldIncludeOpenRouterModel()` (`scripts/openrouter-model-filter.ts`), adding an explicit allowlist for tool-capable models whose live `supported_parameters` metadata does not advertise `tools`. Previously only the hardcoded `auto`/`openrouter/fusion` blocks bypassed the filter, so any other model with lagging metadata was silently dropped from the generated catalog.
+- HTTP 429 / rate-limit payloads are no longer misclassified as context-window overflow: `isContextOverflow()` returns `false` for rate-limit errors (including payloads that mention token limits), so rate limits no longer trigger overflow auto-compaction. New `isRateLimitErrorMessage()`, `parseRetryAfterMs()`, and `computeExponentialBackoffMs()` helpers back Retry-After-aware exponential backoff with jitter for retryable 429s; permanent quota exhaustion stays terminal ([#20](https://github.com/bramburn/qi/pull/20)).
 
 ## [0.85.0-b1] - 2026-09-14
 
