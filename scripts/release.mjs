@@ -182,7 +182,7 @@ function bumpOrSetVersion(target) {
 		}
 
 		console.log(`Setting explicit version (${target})...`);
-		run(`bun scripts/bump-version.mjs ${target} && bun scripts/sync-versions.js && bun install --no-save --ignore-scripts && bun scripts/format-package-lock.mjs`);
+		run(`bun scripts/bump-version.mjs ${target} && bun scripts/sync-versions.js && bun install --ignore-scripts && bun scripts/format-package-lock.mjs`);
 	}
 
 	// npm version can temporarily install the previous workspace versions before
