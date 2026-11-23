@@ -62,11 +62,27 @@ I regularly publish my own `pi-mono` work sessions here:
 
 ## Quick Start
 
+Qi is built for Bun. Install Bun first from <https://bun.sh/docs/installation>.
+
+Install the `qi` command globally:
+
 ```bash
-npm install -g --ignore-scripts @bramburn/qi-coding-agent
+bun add -g @bramburn/qi-coding-agent
+qi
 ```
 
-`--ignore-scripts` disables dependency lifecycle scripts during install. Qi does not require install scripts for normal npm installs.
+Or add Qi to an existing project and run it locally:
+
+```bash
+bun add @bramburn/qi-coding-agent
+bunx qi
+```
+
+To try Qi without installing it:
+
+```bash
+bunx @bramburn/qi-coding-agent
+```
 
 Prebuilt binaries are published per release:
 
@@ -78,6 +94,13 @@ Authenticate with an API key:
 
 ```bash
 export ANTHROPIC_API_KEY=sk-ant-...
+qi
+```
+
+On Windows PowerShell:
+
+```powershell
+$env:ANTHROPIC_API_KEY = "sk-ant-..."
 qi
 ```
 

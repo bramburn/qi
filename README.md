@@ -22,6 +22,69 @@ Current release: **v0.85.0-b1**.
 > (npm registry trusted publishing via OIDC), but Node is being phased
 > out. See *Runtime support* below.
 
+## Quick start with Bun
+
+Qi is designed to run on Bun. Install Bun once from
+<https://bun.sh/docs/installation>, then choose one of the install styles below.
+
+### Install the `qi` command globally
+
+```bash
+bun add -g @bramburn/qi-coding-agent
+qi
+```
+
+### Add Qi to an existing project
+
+```bash
+bun add @bramburn/qi-coding-agent
+bunx qi
+```
+
+This adds `@bramburn/qi-coding-agent` to your `package.json` and runs the local
+`qi` binary with Bun. To run it without adding a dependency:
+
+```bash
+bunx @bramburn/qi-coding-agent
+```
+
+### Authenticate and start your first session
+
+Use an API key:
+
+```bash
+export ANTHROPIC_API_KEY=sk-ant-...
+qi
+```
+
+On Windows PowerShell:
+
+```powershell
+$env:ANTHROPIC_API_KEY = "sk-ant-..."
+qi
+```
+
+Or start `qi` and use your existing subscription:
+
+```text
+qi
+/login
+```
+
+Then describe what you want to build or change. Qi starts in your current
+directory, reads project context such as `AGENTS.md`, and gives the model the
+`read`, `write`, `edit`, and `bash` tools by default.
+
+### Run Qi from this checkout
+
+```bash
+git clone https://github.com/bramburn/qi.git
+cd qi
+bun install --ignore-scripts
+bun run build
+./qi-test.sh
+```
+
 ## Runtime support
 
 The fork runs on **Bun** (1.3.14+). Bun is the default for installs,
