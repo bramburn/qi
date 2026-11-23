@@ -357,6 +357,7 @@ jobs:
         run: node scripts/publish.mjs
 
   announce-pi-dev-release:
+    if: ${{ vars.QI_PI_DEV_ANNOUNCE == 'true' }}
     runs-on: ubuntu-latest
     needs: publish-npm
     environment: pi-model-upload
@@ -398,6 +399,7 @@ jobs:
             --installer-package-lock packages/coding-agent/install-lock/package-lock.json
 
   publish-github-release:
+    if: ${{ always() && needs.stage-github-release.result == 'success' && needs.publish-npm.result == 'success' && needs.announce-pi-dev-release.result != 'failure' }}
     runs-on: ubuntu-latest
     needs:
       - stage-github-release
@@ -435,7 +437,7 @@ jobs:
       - publish-npm
       - announce-pi-dev-release
       - publish-github-release
-    if: ${{ always() && needs.stage-github-release.result != 'skipped' && (needs.stage-github-release.result != 'success' || needs.publish-npm.result != 'success' || needs.announce-pi-dev-release.result != 'success' || needs.publish-github-release.result != 'success') }}
+    if: ${{ always() && needs.stage-github-release.result != 'skipped' && (needs.stage-github-release.result != 'success' || needs.publish-npm.result != 'success' || (needs.announce-pi-dev-release.result != 'success' && needs.announce-pi-dev-release.result != 'skipped') || needs.publish-github-release.result != 'success') }}
     permissions:
       contents: write
     env:
