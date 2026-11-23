@@ -41,7 +41,9 @@ export const defaultModelPerProvider: Record<KnownProvider, string> = {
 	cerebras: "gpt-oss-120b",
 	zai: "glm-5.3",
 	"zai-coding-cn": "glm-5.3",
-	mistral: "devstral-medium-latest",
+	// `devstral-medium-latest` was retired from the Mistral catalog; the current
+	// general-purpose alias is `mistral-medium-latest`.
+	mistral: "mistral-medium-latest",
 	minimax: "MiniMax-M2.7",
 	"minimax-cn": "MiniMax-M2.7",
 	moonshotai: "kimi-k2.6",

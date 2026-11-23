@@ -6,6 +6,9 @@
 
 ### Fixed
 
+- The built-in default model for the `mistral` provider is `mistral-medium-latest`. `devstral-medium-latest` was retired from the Mistral catalog, so the default pointed at a model that no longer existed and `test/model-resolver.test.ts` failed. The Mistral fixtures in `packages/ai` that pinned `devstral-medium-latest` / `pixtral-12b` now use `mistral-medium-latest`.
+- The release workflow builds from the model catalog committed in the tag (`bun run build:offline`) instead of refreshing it from models.dev first. A live refresh drops models retired after tagging, which then fails `bun run check` on every test pinning them.
+
 - Packages that declare their resources under the legacy `pi` manifest key load their declared entries again. `readPiManifest` only read `qi`, so a package published for the upstream pi agent fell back to convention-directory auto-discovery, which loaded every helper module under `extensions/` as an extension and failed on all but the real entrypoint. `qi` is still read first and wins per field; `pi` is the fallback. Regression test: `test/package-manager.test.ts`.
 
 ### Changed

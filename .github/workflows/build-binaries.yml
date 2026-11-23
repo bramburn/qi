@@ -336,6 +336,9 @@ jobs:
         # `tsgo` and downstream scripts that read from the tree directly).
         run: bun install --ignore-scripts --linker=hoisted
 
+      - name: Hydrate model data
+        run: bun run hydrate:model-data
+
       - name: Build
         run: bun run build:offline
 
