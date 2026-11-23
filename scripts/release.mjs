@@ -281,7 +281,9 @@ run("bun --bun run build:offline");
 console.log();
 
 console.log("Running tests...");
-run("./test.sh");
+// cmd.exe cannot execute the POSIX-style "./test.sh" path, so shell scripts run
+// through bash explicitly on Windows, matching local-release.mjs.
+run(process.platform === "win32" ? "bash ./test.sh" : "./test.sh");
 console.log();
 
 // 7. Commit and tag
