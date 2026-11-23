@@ -57,6 +57,7 @@ const DEFAULT_PROJECT_TRUST_BY_LABEL = new Map(
 export interface SettingsConfig {
 	autoCompact: boolean;
 	deepseekHarness: boolean;
+	filterBannedWords: boolean;
 	showImages: boolean;
 	imageWidthCells: number;
 	autoResizeImages: boolean;
@@ -118,6 +119,7 @@ export interface NewSessionModelSubmenuCallbacks {
 export interface SettingsCallbacks {
 	onAutoCompactChange: (enabled: boolean) => void;
 	onDeepseekHarnessChange: (enabled: boolean) => void;
+	onFilterBannedWordsChange: (enabled: boolean) => void;
 	onShowImagesChange: (enabled: boolean) => void;
 	onImageWidthCellsChange: (width: number) => void;
 	onAutoResizeImagesChange: (enabled: boolean) => void;
@@ -771,6 +773,15 @@ export class SettingsSelectorComponent extends Container {
 				values: ["true", "false"],
 			},
 			{
+				id: "filter-banned-words",
+				label: "Banned words filter",
+				description:
+					"Mask banned/restricted words with asterisks (keeping first and last character) " +
+					"before sending context to LLM providers. On by default.",
+				currentValue: config.filterBannedWords ? "true" : "false",
+				values: ["true", "false"],
+			},
+			{
 				id: "autocompact",
 				label: "Auto-compact",
 				description: "Automatically compact context when it gets too large",
@@ -1113,6 +1124,9 @@ export class SettingsSelectorComponent extends Container {
 				switch (id) {
 					case "deepseek-harness":
 						callbacks.onDeepseekHarnessChange(newValue === "true");
+						break;
+					case "filter-banned-words":
+						callbacks.onFilterBannedWordsChange(newValue === "true");
 						break;
 					case "autocompact":
 						callbacks.onAutoCompactChange(newValue === "true");

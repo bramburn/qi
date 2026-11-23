@@ -4795,6 +4795,7 @@ export class InteractiveMode {
 				{
 					autoCompact: this.session.autoCompactionEnabled,
 					deepseekHarness: this.settingsManager.getDeepseekHarnessEnabled(),
+					filterBannedWords: this.settingsManager.getFilterBannedWords(),
 					showImages: this.settingsManager.getShowImages(),
 					imageWidthCells: this.settingsManager.getImageWidthCells(),
 					autoResizeImages: this.settingsManager.getImageAutoResize(),
@@ -4849,6 +4850,18 @@ export class InteractiveMode {
 							enabled
 								? "DeepSeek Harness: on. Long sessions will compact more often."
 								: "DeepSeek Harness: off. Compaction uses the default schedule.",
+						);
+					},
+					onFilterBannedWordsChange: (enabled) => {
+						this.settingsManager.setFilterBannedWords(enabled);
+						this.session.refreshBannedWordsFilter();
+						// QI_FILTER_BANNED_WORDS overrides the persisted setting;
+						// report the effective state, not the requested one.
+						const effective = this.settingsManager.getFilterBannedWords();
+						this.showStatus(
+							effective
+								? "Banned words filter: on. Restricted words are masked before LLM requests."
+								: "Banned words filter: off. Context is sent unmasked.",
 						);
 					},
 					onShowImagesChange: (enabled) => {
