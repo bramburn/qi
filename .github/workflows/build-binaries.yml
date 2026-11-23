@@ -337,11 +337,7 @@ jobs:
         run: bun install --ignore-scripts --linker=hoisted
 
       - name: Build
-        # Build from the model catalog committed in the tag, not from a live refresh:
- # `bun run build` rewrites src/providers/data/*.json from models.dev, so a
- # model retired upstream between tagging and publishing drops out of the
- # generated types and every test that pins it fails the Check step.
- run: bun run build:offline
+        run: bun run build:offline
 
       - name: Check
         run: bun run check
