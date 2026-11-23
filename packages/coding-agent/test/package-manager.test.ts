@@ -315,6 +315,56 @@ Content`,
 			// Should NOT find helper.ts (not declared in manifest)
 			expect(result.extensions.some((r) => pathEndsWith(r.path, "helper.ts"))).toBe(false);
 		});
+
+		it("should honor the legacy pi.extensions manifest key", async () => {
+			// Packages published for the upstream pi agent declare `pi`, not `qi`.
+			// Reading only `qi` made them fall back to scanning extensions/ and
+			// loading every helper module as an extension.
+			const pkgDir = join(tempDir, "legacy-pi-pkg");
+			mkdirSync(join(pkgDir, "extensions"), { recursive: true });
+			writeFileSync(
+				join(pkgDir, "package.json"),
+				JSON.stringify({
+					name: "legacy-pi-pkg",
+					pi: {
+						extensions: ["./extensions/goal.ts"],
+					},
+				}),
+			);
+			writeFileSync(join(pkgDir, "extensions", "goal.ts"), "export default function() {}");
+			writeFileSync(join(pkgDir, "extensions", "helper.ts"), "export const x = 1;");
+
+			settingsManager.setPackages([pkgDir]);
+
+			const result = await packageManager.resolve();
+
+			expect(result.extensions.some((r) => r.path === join(pkgDir, "extensions", "goal.ts") && r.enabled)).toBe(
+				true,
+			);
+			expect(result.extensions.some((r) => pathEndsWith(r.path, "helper.ts"))).toBe(false);
+		});
+
+		it("should prefer qi manifest entries over legacy pi entries", async () => {
+			const pkgDir = join(tempDir, "dual-manifest-pkg");
+			mkdirSync(join(pkgDir, "extensions"), { recursive: true });
+			writeFileSync(
+				join(pkgDir, "package.json"),
+				JSON.stringify({
+					name: "dual-manifest-pkg",
+					qi: { extensions: ["./extensions/qi-entry.ts"] },
+					pi: { extensions: ["./extensions/pi-entry.ts"] },
+				}),
+			);
+			writeFileSync(join(pkgDir, "extensions", "qi-entry.ts"), "export default function() {}");
+			writeFileSync(join(pkgDir, "extensions", "pi-entry.ts"), "export default function() {}");
+
+			settingsManager.setPackages([pkgDir]);
+
+			const result = await packageManager.resolve();
+
+			expect(result.extensions.some((r) => pathEndsWith(r.path, "qi-entry.ts"))).toBe(true);
+			expect(result.extensions.some((r) => pathEndsWith(r.path, "pi-entry.ts"))).toBe(false);
+		});
 	});
 
 	describe("auto-discovered skill metadata", () => {
