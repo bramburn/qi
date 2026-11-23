@@ -28,6 +28,9 @@ import { getPublicWorkspacePackages } from "./release-packages.mjs";
 const RELEASE_TARGET = process.argv[2];
 const BUMP_TYPES = new Set(["major", "minor", "patch"]);
 const SEMVER_RE = /^\d+\.\d+\.\d+$/;
+// This checkout is severed from upstream `earendil-works/pi` (ADR-0002), so
+// `origin` is read-only. Releases are pushed to `fork` only.
+const RELEASE_REMOTE = process.env.QI_RELEASE_REMOTE ?? "fork";
 
 if (!RELEASE_TARGET || (!BUMP_TYPES.has(RELEASE_TARGET) && !SEMVER_RE.test(RELEASE_TARGET))) {
 	console.error("Usage: node scripts/release.mjs <major|minor|patch|x.y.z>");
@@ -301,8 +304,8 @@ console.log();
 
 // 10. Push
 console.log("Pushing to remote...");
-run("git push origin main");
-run(`git push origin v${version}`);
+run(`git push ${RELEASE_REMOTE} main`);
+run(`git push ${RELEASE_REMOTE} v${version}`);
 console.log();
 
 console.log(`=== Prepared release v${version}; CI publication and the release announcement start after the tag push ===`);
