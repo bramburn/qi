@@ -33,7 +33,7 @@
 				"yaml": "2.9.0"
 			},
 			"optionalDependencies": {
-				"@bramburn/qi-clipboard-rs": "^0.85.2",
+				"@bramburn/qi-clipboard-rs": "^0.86.0",
 				"@mariozechner/clipboard": "0.3.9"
 			},
 			"bin": {

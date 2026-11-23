@@ -190,6 +190,11 @@ function bumpOrSetVersion(target) {
 	// resolved from the package under test stops intercepting the real import.
 	removeStaleWorkspaceLockEntries();
 	run("bun install --frozen-lockfile --ignore-scripts --linker=hoisted");
+	// `bun install` only refreshes bun.lock. package-lock.json is what `npm ci`
+	// validates in CI, and it still carries the previous workspace versions and
+	// inter-package ranges, so `npm ci` fails with "Missing: <pkg>@<old> from lock
+	// file" until npm regenerates it from the bumped package manifests.
+	run("npm install --package-lock-only --ignore-scripts");
 	run("bun scripts/format-package-lock.mjs");
 	return getVersion();
 }

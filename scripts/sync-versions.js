@@ -49,7 +49,7 @@ console.log("\nAll non-private packages are at the same version (lockstep).");
 let totalUpdates = 0;
 const updatedPackages = new Set();
 for (const pkg of workspacePackages) {
-	for (const dependencyType of ["dependencies", "devDependencies"]) {
+	for (const dependencyType of ["dependencies", "devDependencies", "optionalDependencies", "peerDependencies"]) {
 		const dependencies = pkg.data[dependencyType];
 		if (!dependencies) {
 			continue;
