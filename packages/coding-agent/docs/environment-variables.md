@@ -87,6 +87,8 @@ These variables are read by Qi itself:
 | `QI_CACHE_RETENTION` | Set to `long` for extended provider prompt caching where supported |
 | `QI_SHARE_VIEWER_URL` | Override the base URL used by `/share` |
 | `QI_HARDWARE_CURSOR` | Set to `1` to show the hardware cursor; see [Terminal setup](terminal-setup.md) |
+| `QI_FILTER_BANNED_WORDS` | Override `filterBannedWords`: `1`/`true`/`yes` enables, `0`/`false`/`no` disables banned-word masking before LLM requests |
+| `QI_BANNED_WORDS_PATH` | Extra banned-words source path(s); `;`-separated on Windows, `:`-separated on POSIX; merged with `bannedWordsPath` |
 | `QI_HYPERLINKS` | Override OSC 8 hyperlink detection with `1`, `0`, or `auto` |
 | `QI_IMAGE_PROTOCOL` | Override inline image detection with `kitty`, `iterm2`, `none`, or `auto` |
 | `QI_TRUE_COLOR` | Override truecolor detection with `1`, `0`, or `auto` |

@@ -10,6 +10,7 @@ import {
 	type ToolCall,
 	type ToolResultMessage,
 } from "../types.ts";
+import { censorMessagesForLlm, censorSystemPromptForLlm } from "../utils/banned-words.ts";
 import { sanitizeRequestText } from "../utils/sanitize-text.ts";
 
 type MediaBlockKind = "image" | "video" | "pdf";
@@ -190,7 +191,14 @@ export function transformMessages<TApi extends Api>(
 	// unpaired UTF-16 surrogates and the U+FFFD replacement character. Runs before
 	// media downgrade so all downstream text is provider-safe.
 	const sanitizedMessages = normalizedMessages.map(sanitizeMessageText);
-	const mediaAwareMessages = downgradeUnsupportedMedia(sanitizedMessages, model);
+	// Mask banned/restricted words with asterisks (keeping first and last
+	// character) so providers with input content inspection (e.g. DashScope
+	// data_inspection_failed 400s) accept the request. Runs before media
+	// downgrade so every provider adapter receives censored messages plus the
+	// one-line history notice. Returns the same references when nothing
+	// matches, preserving the no-clone guarantee for clean histories.
+	const censoredMessages = censorMessagesForLlm(sanitizedMessages);
+	const mediaAwareMessages = downgradeUnsupportedMedia(censoredMessages, model);
 
 	// First pass: transform messages (unsupported media downgrade, thinking blocks, tool call ID normalization)
 	const transformed = mediaAwareMessages.map((msg) => {
@@ -408,9 +416,10 @@ export function sanitizeMessages(messages: Message[]): Message[] {
 export function sanitizeContext(context: Context): Context {
 	const cleanedPrompt =
 		typeof context.systemPrompt === "string" ? sanitizeRequestText(context.systemPrompt) : context.systemPrompt;
-	const cleanedMessages = sanitizeMessages(context.messages);
-	if (cleanedPrompt === context.systemPrompt && cleanedMessages === context.messages) {
+	const censoredPrompt = typeof cleanedPrompt === "string" ? censorSystemPromptForLlm(cleanedPrompt) : cleanedPrompt;
+	const cleanedMessages = censorMessagesForLlm(sanitizeMessages(context.messages));
+	if (censoredPrompt === context.systemPrompt && cleanedMessages === context.messages) {
 		return context;
 	}
-	return { ...context, systemPrompt: cleanedPrompt, messages: cleanedMessages };
+	return { ...context, systemPrompt: censoredPrompt, messages: cleanedMessages };
 }

@@ -521,6 +521,9 @@ export const FORK_NAME: string = "bramburn";
 export const ENV_AGENT_DIR = `${APP_NAME.toUpperCase()}_CODING_AGENT_DIR`;
 export const ENV_SESSION_DIR = `${APP_NAME.toUpperCase()}_CODING_AGENT_SESSION_DIR`;
 
+export const ENV_FILTER_BANNED_WORDS = "QI_FILTER_BANNED_WORDS";
+export const ENV_BANNED_WORDS_PATH = "QI_BANNED_WORDS_PATH";
+
 export function expandTildePath(path: string): string {
 	return normalizePath(path);
 }
