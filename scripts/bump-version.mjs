@@ -7,7 +7,7 @@
  * does not (bun has no `--workspaces` flag for `bun pm pkg version`).
  *
  * Strategy: walk every package directory via findPackageDirectories, then for
- * each one invoke `npm.cmd version <target> --no-git-tag-version
+ * each one invoke `npm version <target> --no-git-tag-version
  * --no-workspaces-update` with the per-workspace cwd. We keep the underlying
  * version bump on npm CLI because npm is the only tool that owns the
  * package-lock.json regeneration semantics required by downstream
@@ -26,6 +26,7 @@
  */
 
 import { spawnSync } from "node:child_process";
+import { resolveSpawnCommand } from "./local-release.mjs";
 import { findPackageDirectories } from "./package-workspaces.mjs";
 
 const target = process.argv[2];
@@ -35,12 +36,19 @@ if (!target || (target !== "patch" && target !== "minor" && target !== "major" &
 }
 
 const dirs = findPackageDirectories("packages");
-const npmCmd = process.platform === "win32" ? "npm.cmd" : "npm";
 const args = ["version", target, "--no-git-tag-version", "--no-workspaces-update"];
+// Windows cannot spawn the `npm` .cmd shim directly (EINVAL), so it runs through
+// cmd.exe with the npm.cmd shim named explicitly, matching local-release.mjs.
+const resolved = resolveSpawnCommand("npm", args);
 
 let updated = 0;
 for (const dir of dirs) {
-	const result = spawnSync(npmCmd, args, { cwd: dir, shell: false, stdio: "inherit" });
+	const result = spawnSync(resolved.command, resolved.args, {
+		cwd: dir,
+		shell: resolved.shell,
+		stdio: "inherit",
+		windowsHide: true,
+	});
 	if (result.status !== 0) {
 		console.error(`bump-version: ${dir} exited with status ${result.status}`);
 		if (result.error) {
