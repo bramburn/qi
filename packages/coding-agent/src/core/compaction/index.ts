@@ -4,5 +4,6 @@
 
 export * from "./branch-summarization.ts";
 export * from "./compaction.ts";
+export * from "./edit-history-collapse.ts";
 export * from "./tool-result-pruner.ts";
 export * from "./utils.ts";

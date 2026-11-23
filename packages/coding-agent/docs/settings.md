@@ -156,6 +156,42 @@ Set `QI_SKIP_VERSION_CHECK=1` to disable the version check entirely. Use `--offl
 }
 ```
 
+### DeepSeek Harness
+
+The `deepseekHarness` bundle is opt-in. `enabled` is the master switch; the
+sub-toggles below are only consulted when it is `true`.
+
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| `deepseekHarness.enabled` | boolean | `false` | Master switch for the deepseek-harness-style context pipeline |
+| `deepseekHarness.collapseSupersededEdits` | boolean | `false` | Collapse superseded `edit` calls in the outgoing provider context |
+| `deepseekHarness.editCollapseThresholdChars` | number | `8192` | Combined serialized `edit` payload (chars) a closed group must exceed to collapse |
+
+`collapseSupersededEdits` is deterministic and model-free. Repeated successful
+`edit` calls to the same file are grouped in history order. Only **closed**
+groups are rewritten: the most recent group is left intact, so the file being
+actively edited never loses its latest call. Within a closed group, every call
+except the last is replaced by a short stub; the last call keeps its full
+`edits[].oldText`/`newText` payload. Failed edits (`isError: true`) and their
+tool calls are never collapsed, and a user message breaks a group.
+
+The transform runs only on the message array sent to the provider. The session
+JSONL, TUI rendering, `/tree`, `/fork`, and replay are unchanged. Every
+assistant/toolResult message, id, and thinking block is preserved, so provider
+tool-call/tool-result pairing stays valid. With the defaults (`enabled: false`,
+`collapseSupersededEdits: false`) the outgoing context is byte-for-byte the same
+as without this setting.
+
+```json
+{
+ "deepseekHarness": {
+ "enabled": true,
+ "collapseSupersededEdits": true,
+ "editCollapseThresholdChars": 8192
+ }
+}
+```
+
 ### Branch Summary
 
 | Setting | Type | Default | Description |

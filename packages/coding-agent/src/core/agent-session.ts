@@ -65,6 +65,7 @@ import {
 	CompactionSkippedError,
 	type CompactionSkipReason,
 	calculateContextTokens,
+	collapseSupersededEdits,
 	collectEntriesForBranchSummary,
 	compact,
 	DEFAULT_PRUNER_CONFIG,
@@ -507,6 +508,7 @@ export class AgentSession {
 		// (session persistence, extensions, auto-compaction, retry logic)
 		this._unsubscribeAgent = this.agent.subscribe(this._handleAgentEvent);
 		this._installAgentToolHooks();
+		this._installContextTransform();
 		this._installAgentNextTurnRefresh();
 		this._installRateLimitCooldownGate();
 
@@ -684,6 +686,24 @@ export class AgentSession {
 				isError: hookResult?.isError ?? isError,
 				usage: hookResult?.usage,
 			};
+		};
+	}
+
+	/**
+	 * Wrap the agent's outgoing-context transform with the superseded-edit
+	 * collapse. Runs on every provider request, after extension context
+	 * handlers, and returns a copy-on-write projection: the persisted session
+	 * and the in-memory agent messages are never rewritten.
+	 */
+	private _installContextTransform(): void {
+		const previousTransform = this.agent.transformContext;
+		this.agent.transformContext = async (messages, signal) => {
+			const transformed = previousTransform ? await previousTransform(messages, signal) : messages;
+			const dh = this.settingsManager.getDeepseekHarnessSettings(this.model ?? undefined);
+			if (!dh.enabled || !dh.collapseSupersededEdits) return transformed;
+			return collapseSupersededEdits(transformed, this._cwd, {
+				thresholdChars: dh.editCollapseThresholdChars,
+			});
 		};
 	}
 
