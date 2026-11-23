@@ -182,14 +182,14 @@ function bumpOrSetVersion(target) {
 		}
 
 		console.log(`Setting explicit version (${target})...`);
-		run(`bun scripts/bump-version.mjs ${target} && bun scripts/sync-versions.js && bun install --ignore-scripts && bun scripts/format-package-lock.mjs`);
+		run(`bun scripts/bump-version.mjs ${target} && bun scripts/sync-versions.js && bun install --ignore-scripts --linker=hoisted && bun scripts/format-package-lock.mjs`);
 	}
 
-	// npm version can temporarily install the previous workspace versions before
-	// sync-versions updates inter-package ranges. Removing the stale lock entries
-	// lets `bun install --frozen-lockfile` resolve cleanly from the refreshed graph.
+	// The hoisted layout is what CI installs with. The default isolated layout
+	// nests each workspace's dependencies, so a test that mocks a bare specifier
+	// resolved from the package under test stops intercepting the real import.
 	removeStaleWorkspaceLockEntries();
-	run("bun install --frozen-lockfile --ignore-scripts");
+	run("bun install --frozen-lockfile --ignore-scripts --linker=hoisted");
 	run("bun scripts/format-package-lock.mjs");
 	return getVersion();
 }
