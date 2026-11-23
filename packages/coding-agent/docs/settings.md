@@ -231,6 +231,24 @@ Keep `retry.provider.maxRetries` at `0` unless provider-level retries are explic
 }
 ```
 
+### Content Filtering
+
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| `filterBannedWords` | boolean | `true` | Mask banned/restricted words with asterisks (keeping first and last character) before sending context to LLM providers; appends a one-line censorship notice to the outbound history when masking occurs |
+| `bannedWordsPath` | string \| string[] | - | Path or list of paths to banned-words sources: a `.sqlite`/`.db` archive (hanzi-dict `banned_vocab.sqlite` shape), a `banned_vocab.json` list, or a plain word list (`.txt`/`.csv`/`.json`). Directories are scanned for known files. Also settable via `QI_BANNED_WORDS_PATH` or `--banned-words-path` |
+| `bannedWords` | string[] | - | Additional inline banned words to censor. Also settable via `--banned-words` |
+
+Matched words are masked as `F*******g` / `法*功` (first and last code point kept, interior replaced with `*`; two-character words get an asterisk inserted so they never survive verbatim). When masking occurs, the outbound history gains a single line informing the model that asterisk-masked words are censored words. Well-known hanzi-dict sources (`apps/mobile/tool/banned_vocab.json`, `banned_vocab.sqlite`) are picked up automatically when present on disk, and a small built-in alias list (`FalunGong`, `Falun Gong`, `Tiananmen`) covers the latin trigger spellings used by `apply_banned.py` verification queries. Disable with `filterBannedWords: false`, `QI_FILTER_BANNED_WORDS=0`, or `--no-filter-banned-words`.
+
+```json
+{
+ "filterBannedWords": true,
+ "bannedWordsPath": ["./banned_vocab.sqlite"],
+ "bannedWords": ["extra-term"]
+}
+```
+
 ### Message Delivery
 
 | Setting | Type | Default | Description |

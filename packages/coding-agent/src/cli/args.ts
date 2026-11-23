@@ -17,6 +17,9 @@ export interface Args {
 	appendSystemPrompt?: string[];
 	deepseekHarness?: boolean;
 	deepseekHarnessMaxOverflowRetries?: number;
+	filterBannedWords?: boolean;
+	bannedWordsPath?: string[];
+	bannedWords?: string[];
 	cwd?: string;
 	thinking?: ThinkingLevel;
 	continue?: boolean;
@@ -124,6 +127,18 @@ export function parseArgs(args: string[]): Args {
 			result.deepseekHarness = true;
 		} else if (arg === "--no-deepseek-harness") {
 			result.deepseekHarness = false;
+		} else if (arg === "--filter-banned-words") {
+			result.filterBannedWords = true;
+		} else if (arg === "--no-filter-banned-words") {
+			result.filterBannedWords = false;
+		} else if (arg === "--banned-words-path" && i + 1 < args.length) {
+			result.bannedWordsPath = result.bannedWordsPath ?? [];
+			result.bannedWordsPath.push(args[++i]);
+		} else if (arg === "--banned-words" && i + 1 < args.length) {
+			result.bannedWords = args[++i]
+				.split(",")
+				.map((s) => s.trim())
+				.filter((word) => word.length > 0);
 		} else if (arg === "--deepseek-harness-max-overflow-retries" && i + 1 < args.length) {
 			const v = parseInt(args[++i], 10);
 			if (Number.isFinite(v) && v >= 0) result.deepseekHarnessMaxOverflowRetries = v;
@@ -291,6 +306,10 @@ ${chalk.bold("Options:")}
   --append-system-prompt <text>  Append text or file contents to the system prompt (can be used multiple times)
   --deepseek-harness              Enable the deepseek-harness-style context pipeline (opt-in)
   --no-deepseek-harness           Disable the deepseek-harness-style context pipeline for this run
+ --filter-banned-words            Mask banned/restricted words with asterisks before LLM requests (default: on)
+ --no-filter-banned-words         Disable banned-word masking for this run
+ --banned-words-path <path>       Banned words SQLite DB, archive dir, or word list (repeatable)
+ --banned-words <w1,w2>           Extra inline banned words to censor (comma-separated)
   --deepseek-harness-max-overflow-retries <n>  Max compact-and-retry attempts on context overflow (default 2)
   --mode <mode>                  Output mode: text (default), json, or rpc
   --cwd <dir>                    Change the project working directory before loading (must exist)

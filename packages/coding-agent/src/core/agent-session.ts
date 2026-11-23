@@ -25,7 +25,7 @@ import type {
 	PrepareNextTurnContext,
 	ThinkingLevel,
 } from "@bramburn/qi-agent-core";
-import { contentText } from "@bramburn/qi-ai";
+import { configureBannedWordsFilter, contentText } from "@bramburn/qi-ai";
 import type {
 	AssistantMessage,
 	AuthResult,
@@ -58,6 +58,7 @@ import { resolvePath } from "../utils/paths.ts";
 import { sleep } from "../utils/sleep.ts";
 import { normalizeToolResultImages } from "../utils/tool-result-images.ts";
 import { formatNoApiKeyFoundMessage, formatNoModelSelectedMessage } from "./auth-guidance.ts";
+import { loadBannedWords } from "./banned-words-loader.ts";
 import { type BashResult, executeBashWithOperations } from "./bash-executor.ts";
 import {
 	type CompactionPreparationOutcome,
@@ -503,6 +504,7 @@ export class AgentSession {
 		// the user's settings.json. The setter is the public surface;
 		// the constructor only reads.
 		this._deepseekHarnessEnabled = this.settingsManager.getDeepseekHarnessEnabled();
+		this.refreshBannedWordsFilter();
 
 		// Always subscribe to agent events for internal handling
 		// (session persistence, extensions, auto-compaction, retry logic)
@@ -3173,6 +3175,24 @@ export class AgentSession {
 		return this._deepseekHarnessEnabled;
 	}
 
+	/**
+	 * (Re)resolve banned words from settings/env/configured paths and push
+	 * them into the global `@bramburn/qi-ai` censor used by every provider
+	 * adapter. Called on session init and on settings reload so the filter
+	 * tracks `filterBannedWords` without a restart.
+	 */
+	refreshBannedWordsFilter(): void {
+		const enabled = this.settingsManager.getFilterBannedWords();
+		const words = enabled
+			? loadBannedWords({
+					// getBannedWordsPaths() already merges QI_BANNED_WORDS_PATH.
+					configuredPaths: this.settingsManager.getBannedWordsPaths(),
+					inlineWords: this.settingsManager.getBannedWords(),
+				})
+			: [];
+		configureBannedWordsFilter({ enabled, words });
+	}
+
 	async bindExtensions(bindings: ExtensionBindings): Promise<void> {
 		if (bindings.uiContext !== undefined) {
 			this._extensionUIContext = bindings.uiContext;
@@ -3561,6 +3581,7 @@ export class AgentSession {
 		oldRunner.invalidate();
 		await this.settingsManager.reload();
 		this.syncQueueModesFromSettings();
+		this.refreshBannedWordsFilter();
 		resetApiProviders();
 		await this._resourceLoader.reload();
 		this._buildRuntime({

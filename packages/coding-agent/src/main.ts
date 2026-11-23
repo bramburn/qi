@@ -1021,6 +1021,18 @@ async function runMainBody(
 		if (parsed.deepseekHarnessMaxOverflowRetries !== undefined) {
 			settingsManager.setDeepseekHarnessField("maxOverflowRetries", parsed.deepseekHarnessMaxOverflowRetries);
 		}
+		// Apply CLI overrides for the banned-words censor. These run before
+		// the session is created so refreshBannedWordsFilter() picks up the
+		// resolved settings on first read.
+		if (parsed.filterBannedWords !== undefined) {
+			settingsManager.setFilterBannedWords(parsed.filterBannedWords);
+		}
+		if (parsed.bannedWordsPath !== undefined) {
+			settingsManager.appendBannedWordsPaths(parsed.bannedWordsPath);
+		}
+		if (parsed.bannedWords !== undefined) {
+			settingsManager.appendBannedWords(parsed.bannedWords);
+		}
 		const diagnostics: AgentSessionRuntimeDiagnostic[] = [
 			...projectTrustDiagnostics,
 			...services.diagnostics,

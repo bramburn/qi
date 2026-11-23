@@ -5,9 +5,10 @@ import { randomUUID } from "crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { dirname, join } from "path";
 import lockfile from "proper-lockfile";
-import { CONFIG_DIR_NAME, getAgentDir } from "../config.ts";
+import { CONFIG_DIR_NAME, ENV_BANNED_WORDS_PATH, ENV_FILTER_BANNED_WORDS, getAgentDir } from "../config.ts";
 import { normalizePath, resolvePath } from "../utils/paths.ts";
 import { stripBom } from "../utils/text.ts";
+import { parseFilterToggle, splitEnvPathList } from "./banned-words-loader.ts";
 import { MINIMAX_PROFILE } from "./deepseek-harness-profile.ts";
 import { THINKING_LEVEL_OPTIONS } from "./defaults.ts";
 import { DEFAULT_HTTP_IDLE_TIMEOUT_MS, parseHttpIdleTimeoutMs } from "./http-dispatcher.ts";
@@ -254,6 +255,12 @@ export interface Settings {
 	httpProxy?: string; // Proxy URL applied as HTTP_PROXY and HTTPS_PROXY for Pi-managed HTTP clients
 	httpIdleTimeoutMs?: number; // HTTP header/body idle timeout in milliseconds; 0 disables it
 	websocketConnectTimeoutMs?: number; // WebSocket connect/open handshake timeout in milliseconds; 0 disables it
+	/** Filter and mask banned/restricted words with asterisks (keeping first and last char) before sending to LLM providers. Default: true */
+	filterBannedWords?: boolean;
+	/** Path or list of paths to banned words SQLite DB, archive directory, or word list file. */
+	bannedWordsPath?: string | string[];
+	/** Additional inline banned words to censor before sending to LLM providers. */
+	bannedWords?: string[];
 }
 
 function isThinkingLevel(value: unknown): value is ThinkingLevel {
@@ -1296,6 +1303,69 @@ export class SettingsManager {
 	setExtensionPaths(paths: string[]): void {
 		this.globalSettings.extensions = paths;
 		this.markModified("extensions");
+		this.save();
+	}
+
+	/**
+	 * Whether banned/restricted words are masked before sending context to
+	 * LLM providers. Default: true. `QI_FILTER_BANNED_WORDS` overrides the
+	 * stored setting ("0"/"false"/"no" disables; "1"/"true"/"yes" enables).
+	 */
+	getFilterBannedWords(): boolean {
+		const env = parseFilterToggle(process.env[ENV_FILTER_BANNED_WORDS]);
+		if (env !== undefined) return env;
+		return this.settings.filterBannedWords ?? true;
+	}
+
+	setFilterBannedWords(enabled: boolean): void {
+		this.globalSettings.filterBannedWords = enabled;
+		this.markModified("filterBannedWords");
+		this.save();
+	}
+
+	/** Explicit banned-words source paths (files or directories). */
+	getBannedWordsPaths(): string[] {
+		const configured = this.settings.bannedWordsPath;
+		const fromSettings = configured === undefined ? [] : Array.isArray(configured) ? configured : [configured];
+		const env = process.env[ENV_BANNED_WORDS_PATH];
+		const fromEnv = env === undefined || env.trim() === "" ? [] : splitEnvPathList(env);
+		return [...fromSettings, ...fromEnv];
+	}
+
+	setBannedWordsPath(path: string | string[] | undefined): void {
+		if (path === undefined) {
+			delete this.globalSettings.bannedWordsPath;
+		} else {
+			this.globalSettings.bannedWordsPath = path;
+		}
+		this.markModified("bannedWordsPath");
+		this.save();
+	}
+
+	/** Append run-scoped source paths to the stored `bannedWordsPath` (env paths excluded). */
+	appendBannedWordsPaths(paths: string[]): void {
+		const stored = this.globalSettings.bannedWordsPath;
+		const current = stored === undefined ? [] : Array.isArray(stored) ? stored : [stored];
+		this.globalSettings.bannedWordsPath = [...current, ...paths];
+		this.markModified("bannedWordsPath");
+		this.save();
+	}
+
+	/** Additional inline banned words from settings. */
+	getBannedWords(): string[] {
+		return [...(this.settings.bannedWords ?? [])];
+	}
+
+	setBannedWords(words: string[]): void {
+		this.globalSettings.bannedWords = words;
+		this.markModified("bannedWords");
+		this.save();
+	}
+
+	/** Append run-scoped inline words to the stored `bannedWords`. */
+	appendBannedWords(words: string[]): void {
+		this.globalSettings.bannedWords = [...(this.globalSettings.bannedWords ?? []), ...words];
+		this.markModified("bannedWords");
 		this.save();
 	}
 
