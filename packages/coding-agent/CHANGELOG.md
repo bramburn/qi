@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- `deepseekHarness.collapseSupersededEdits` (default `false`) and `deepseekHarness.editCollapseThresholdChars` (default `8192`): when the DeepSeek Harness bundle is enabled, repeated successful `edit` calls to the same file are collapsed in the outgoing provider context. Earlier calls in a closed group become deterministic stubs; the last edit of the group keeps its full payload, failed edits are untouched, and the most recent group is never collapsed. The session history, TUI, `/tree`, and `/fork` are unchanged, and every tool call still has its paired result. Only the tool-call arguments and paired tool-result text are rewritten.
+
 ## [0.86.0] - 2026-11-23
 
 ### Fixed

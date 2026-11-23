@@ -57,6 +57,10 @@ export interface DeepseekHarnessSettings {
 	modelPolicies?: Record<string, Partial<DeepseekHarnessSettings>>;
 	/** Byte budget for the workspace instructions renderer. Default 20 KiB. */
 	maxBytesForInstructions?: number;
+	/** Collapse superseded `edit` calls in the outgoing provider context. Default false. */
+	collapseSupersededEdits?: boolean;
+	/** Combined payload (chars) a closed edit group must exceed to collapse. Default 8192. */
+	editCollapseThresholdChars?: number;
 }
 
 export const DEFAULT_DEEPSEEK_HARNESS: Required<Omit<DeepseekHarnessSettings, "modelPolicies">> = {
@@ -71,6 +75,8 @@ export const DEFAULT_DEEPSEEK_HARNESS: Required<Omit<DeepseekHarnessSettings, "m
 	replayPrefixSummarisation: true,
 	budgetedInstructions: true,
 	maxBytesForInstructions: 20 * 1024,
+	collapseSupersededEdits: false,
+	editCollapseThresholdChars: 8192,
 };
 
 export interface ResolvedDeepseekHarnessSettings {
@@ -85,6 +91,8 @@ export interface ResolvedDeepseekHarnessSettings {
 	replayPrefixSummarisation: boolean;
 	budgetedInstructions: boolean;
 	maxBytesForInstructions: number;
+	collapseSupersededEdits: boolean;
+	editCollapseThresholdChars: number;
 	profile: "user" | "minimax";
 	modelPolicies: Record<string, Partial<DeepseekHarnessSettings>>;
 }
