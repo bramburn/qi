@@ -1,6 +1,14 @@
 # Changelog
 
-## [Unreleased]
+## [0.86.0] - 2026-11-23
+
+### Fixed
+
+- Packages that declare their resources under the legacy `pi` manifest key load their declared entries again. `readPiManifest` only read `qi`, so a package published for the upstream pi agent fell back to convention-directory auto-discovery, which loaded every helper module under `extensions/` as an extension and failed on all but the real entrypoint. `qi` is still read first and wins per field; `pi` is the fallback. Regression test: `test/package-manager.test.ts`.
+
+### Changed
+
+- The README and package README document a Bun-first quick start (`bun add -g`, `bun add` + `bunx qi`, `bunx @bramburn/qi-coding-agent`) instead of the npm `--ignore-scripts` install.
 
 ## [0.85.3] - 2026-11-21
 
