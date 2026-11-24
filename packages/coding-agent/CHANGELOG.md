@@ -1,6 +1,11 @@
 # Changelog
 
-## [Unreleased]
+## [0.86.2] - 2026-11-23
+
+### Added
+
+- Banned words are censored with asterisks before LLM requests by default (`filterBannedWords: true`). Sources: `bannedWordsPath` / `QI_BANNED_WORDS_PATH`, inline `bannedWords` / `--banned-words`, and auto-detected hanzi-dict `banned_vocab` files. Disable with `filterBannedWords: false`, `QI_FILTER_BANNED_WORDS=0`, or `--no-filter-banned-words`.
+- `/settings` has a "Banned words filter" toggle that persists the setting and refreshes the censor immediately without a restart.
 
 ## [0.86.1] - 2026-11-23
 

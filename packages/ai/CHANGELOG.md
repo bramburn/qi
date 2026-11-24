@@ -1,6 +1,10 @@
 # Changelog
 
-## [Unreleased]
+## [0.86.2] - 2026-11-23
+
+### Added
+
+- Banned-word censor for outbound LLM context: `censorMessagesForLlm` and `censorSystemPromptForLlm` mask matched words (first and last code point kept, interior replaced with `*`) and append a one-line censorship notice to the outbound history when masking occurs. Includes built-in latin trigger spellings used by verification queries.
 
 ## [0.86.1] - 2026-11-23
 
