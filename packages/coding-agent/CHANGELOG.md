@@ -1,6 +1,10 @@
 # Changelog
 
-## [Unreleased]
+## [0.86.3] - 2026-11-24
+
+### Fixed
+
+- The compiled `qi` binary starts again on runtimes without the `node:sqlite` builtin. The banned-words loader imported it statically, so `qi --help` died at module load with `No such built-in module: node:sqlite` and CI smoke tests failed on all platforms. `node:sqlite` is now resolved lazily, only when a `.sqlite`/`.db` source is configured; JSON and text sources never needed it.
 
 ## [0.86.2] - 2026-11-23
 

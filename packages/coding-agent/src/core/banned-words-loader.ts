@@ -17,8 +17,15 @@
  */
 
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { createRequire } from "node:module";
 import { join } from "node:path";
-import { DatabaseSync } from "node:sqlite";
+import type { DatabaseSync } from "node:sqlite";
+
+// node:sqlite is resolved lazily (inside wordsFromSqliteFile) instead of a
+// static import so the compiled binary starts on runtimes without the
+// builtin. Only .sqlite/.db sources need it; every other source works
+// without it.
+const require = createRequire(import.meta.url);
 
 export const ENV_BANNED_WORDS_PATH = "QI_BANNED_WORDS_PATH";
 export const ENV_FILTER_BANNED_WORDS = "QI_FILTER_BANNED_WORDS";
@@ -173,10 +180,14 @@ function wordsFromTextList(text: string): string[] {
 function wordsFromSqliteFile(path: string): string[] {
 	const out: string[] = [];
 	let db: DatabaseSync | undefined;
+	let DatabaseSync: typeof import("node:sqlite").DatabaseSync;
 	try {
-		// node:sqlite is builtin to Node 22+ and supported by the Bun
-		// runtime, so no native binding install is needed. Opening a
-		// missing file read-only throws and the source is skipped.
+		// node:sqlite is builtin to Node 22+. Resolved here, not at module
+		// load, so runtimes without it (e.g. the compiled binary under an
+		// older Bun) only lose .sqlite/.db sources instead of failing to
+		// start. Opening a missing file read-only throws and the source
+		// is skipped.
+		DatabaseSync = require("node:sqlite").DatabaseSync;
 		db = new DatabaseSync(path, { readOnly: true });
 		const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all() as { name: string }[];
 		for (const { name } of tables) {
