@@ -7,6 +7,7 @@ from pathlib import Path
 
 from docgen import prompts
 from docgen.config import MANIFEST, REPO, WEBSITE, planner, triage, writer
+from docgen.context import read_sources
 from docgen.state import latest_pages
 
 PI_PATTERN = re.compile(r"\bpi\.dev\b|@earendil-works|\bPI_[A-Z_]+\b|earendil-works/pi")
@@ -122,20 +123,7 @@ def plan_pages(state):
 
 def write_page(state):
     task = state["task"]
-    chunks: list[str] = []
-    budget = 24_000
-    for source in task.get("source_paths", []):
-        path = REPO / source
-        if not path.exists():
-            continue
-        text = path.read_text(encoding="utf-8", errors="replace")
-        chunk = text[:budget]
-        chunks.append(f"<file path={source}>\n{chunk}\n</file>")
-        budget -= len(chunk)
-        if budget <= 0:
-            break
-
-    response = writer.invoke(prompts.write(task, "\n".join(chunks)))
+    response = writer.invoke(prompts.write(task, read_sources(task.get("source_paths", []))))
     content = prompts.ensure_frontmatter(response.content, task)
     return {
         "pages": [

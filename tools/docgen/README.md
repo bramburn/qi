@@ -25,7 +25,7 @@ scan_changes ──► plan_pages ──► write_page ×N ──► assemble �
 | --- | --- |
 | `scan_changes` | `git diff` since the last published commit (from `.docgen/manifest.json`), filtered to `packages/` and `specs/` sources |
 | `plan_pages` | The triage model maps changed files to at most 5 page targets (structured output), then a deterministic filter drops tasks whose sources are unchanged |
-| `write_page` | One invocation per task, fed the relevant source slices (24k chars max) |
+| `write_page` | One invocation per task, fed the relevant source slices (24k chars max). When a file is larger than the budget, the head is kept and an index of every exported declaration past the cut is appended, so the API surface is never silently dropped |
 | `assemble` | Writes the generated MDX into `website/docs/` |
 | `brand_check` | Regex gate over generated pages: no `pi.dev`, `@earendil-works`, `PI_*`, upstream links |
 | `build_validate` | `npm run build` in `website/` (`onBrokenLinks: 'throw'`, so a pass is a real link check) |
@@ -35,6 +35,11 @@ scan_changes ──► plan_pages ──► write_page ×N ──► assemble �
 
 `publish` is the only place that touches git or GitHub, and it is skipped
 entirely by `--dry-run`.
+
+Three things are deterministic rather than trusted to the model: the frontmatter
+(id/title/sidebar_label from the page path), the page skeleton per kind, and link
+sanitising - a relative `.md`/`.mdx` link whose target does not exist on disk is
+unwrapped to plain text, because `onBrokenLinks: 'throw'` would reject the page.
 
 ## Prerequisites
 
@@ -111,12 +116,19 @@ pointing at `run.py`. A run with no relevant source changes exits after
 ## Prompt tuning
 
 `eval/` holds a golden-task harness used to tune the prompts against the actual
-quantized model. `eval/PROMPTS_LOG.md` records each round: diagnosis, change
-class, gate failures and judge scores. Run it with the server up:
+quantized model. `eval/PROMPTS_LOG.md` records every round: model and serving
+flags, diagnosis, change class, gate failures, judge scores, and the known
+limitations. Run it with the server up:
 
 ```powershell
 .venv\Scripts\python eval\run_eval.py --round 0
+.venv\Scripts\python eval\run_eval.py --round 1 --repeat 2
+.venv\Scripts\python eval\run_eval.py --round 2 --task ref-ai-types
 ```
+
+Raw outputs and `report.json` per round go to `.docgen/eval-runs/round-<n>/`,
+which is gitignored. The harness calls the same `docgen` modules the pipeline
+uses, so a prompt change cannot be "tuned" in a private copy.
 
 ## Git policy
 
