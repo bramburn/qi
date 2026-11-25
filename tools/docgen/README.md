@@ -95,6 +95,33 @@ python -m venv .venv
 .venv\Scripts\python -m pip install -e .
 ```
 
+## Windows shortcuts
+
+Two `.bat` files in this directory do the whole loop. Both read their paths from
+this file's location, so they work from any checkout.
+
+`start-model.bat` - load the writer model and wait until it answers:
+
+```bat
+tools\docgen\start-model.bat
+```
+
+It refuses to start if `llama-server.exe` or the GGUF is missing, does nothing if
+`doc-writer` is already serving, and polls `/v1/models` for up to five minutes
+(experts stream from system RAM, a cold load is slow). Overrides:
+`LLAMA_SERVER`, `DOCGEN_GGUF`, `QI_DOCGEN_PORT`. It never touches port 8080.
+
+`generate-docs.bat` - scan, generate, gate, and (without `--dry-run`) publish:
+
+```bat
+tools\docgen\generate-docs.bat              rem incremental run, opens a PR
+tools\docgen\generate-docs.bat --check      rem wiring only, no model calls
+tools\docgen\generate-docs.bat --dry-run    rem write + build, no git/PR
+```
+
+Arguments are passed through to `run.py`. If the venv is missing it prints the
+three commands that create it instead of failing obscurely.
+
 ## Usage
 
 ```powershell
