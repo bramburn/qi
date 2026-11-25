@@ -318,3 +318,192 @@ seed page sets the style baseline for everything generated afterwards.
    links, required symbols and length. They cannot detect a plausible but wrong
    API name - that is exactly the failure that survived, which is why the judge
    pass existed.
+---
+
+# L4 addendum - sectioned generation and hallucination gates
+
+Same model and serving flags as above (`doc-writer`, port 8081). One change per
+round. Rounds 13-24; two extra rounds past the nominal 8-round cap (21-24) were
+spent closing the last Faithfulness axis and confirming it, which is recorded
+here rather than hidden.
+
+Whole-page generation was replaced by `write_page` -> one H2 section per LLM call
+plus deterministic assembly (`QI_DOCGEN_SECTIONED`, default on). The whole-page
+path is still reachable with `QI_DOCGEN_SECTIONED=0`.
+
+## L4 addendum - Round 0 (structural ground work, no prompts)
+
+Not a tuning round. Before touching prompts:
+
+- `docgen/config.py` now reads `QI_DOCGEN_LLM_BASE_URL` / `QI_DOCGEN_LLM_MODEL` /
+  `QI_DOCGEN_LLM_API_KEY` and defaults to `http://127.0.0.1:8081/v1`. Port 8080
+  belongs to the reranker and is never assumed.
+- `docgen/server.py:preflight()` refuses a missing model, an unknown model and a
+  reranker endpoint with an explanatory message. Called from `run.py` and from
+  `eval/run_eval.py`; a mismatch is a stop, never a kill.
+- `eval/run_eval.py` now drives the production writer (`nodes.write_page`)
+  instead of calling `prompts.write` directly, so the harness and the pipeline
+  cannot diverge.
+- New gates `G-json` and `G-ident` in `structural_gates()`.
+
+Gate calibration, run with `--score-only` over the 40 pages of rounds 0-12:
+
+| round | G-ident hits | what they were |
+| --- | --- | --- |
+| 0-3 | 0 | - |
+| 4,5,6,7,8,9 | 4,3,4,11,4,4 | `NavigationItem`, `DocsJson`, `compatibleConstraint`, `defaultRevision`, `Redirect`, `DocsConfig` - all genuinely absent from the sources |
+| 10 | 4 | `defineTool`, `CompatibilityEntry` |
+| 11,12 | 2,2 | `defaultRevision`, `ApiOptionsMap["custom-api"]` |
+
+Both logged failure classes are now caught mechanically: the invented JSON shape
+by `G-ident` on fenced names, the invented API member by `G-ident` on the string
+literal inside a bracket index. Two false positives appeared and were handled as
+the rule requires: local definitions (`const`/`let`/`var`/`type`/`function`) are
+exempt because the example owns those names, and `PATH` / `HOME` are narrow,
+commented allowlist entries because they are real OS variables. `interface`,
+`class` and `enum` definitions are deliberately NOT exempt - inventing a type
+shape is the failure this gate exists for.
+
+## L4 addendum - Round 13: first sectioned run (canary only)
+
+`ref-docs-nav`, 4 sections. Gates 0, but the page was 14 KB: the same `docs.json`
+dumped three times, because every section saw only the source and no view of its
+siblings. Diagnosis: section roles missing (class b, format drift).
+
+## L4 addendum - Round 14: section roles
+
+`SECTION_ROLES` gives every heading a job ("Three to five bullets, no code
+fences"; "one minimal excerpt, at most 15 lines"), and `SECTION_SYSTEM` gained
+"Do not paste the source file".
+
+`ref-docs-nav`: 14 KB -> 2427 chars, 0 gates, 1m06.
+
+## L4 addendum - Round 15: first full round
+
+5 generations, 2 gate failures, 6m13, 15210 chars total.
+
+| task | gate failures |
+| --- | --- |
+| ref-ai-types | `samplingParams` absent |
+| arch-extensions | `E_EXT_NO_COMPATIBLE_VERSION` absent |
+| guide-env-vars, tutorial-quickstart, ref-docs-nav | none |
+
+Diagnosis: the L4 architecture skeleton had dropped "Behaviour and error paths",
+which is the section the error code lived in (class c, skeleton coverage);
+`ref-ai-types` lost option fields because the API role only asked for fields that
+"matter".
+
+## L4 addendum - Round 16: skeleton coverage
+
+Restored `Behaviour and error paths` for architecture (role: condition -> outcome
+-> error code, codes from the source) and made the API role ask for every
+exported declaration and every field of each option interface.
+
+`arch-extensions` PASS. `ref-ai-types` still missing `samplingParams`: the model
+listed 5 of the 9 `StreamOptions` fields. Diagnosis: recall, not context length
+(the field is inside the 24k slice).
+
+## L4 addendum - Round 17: field index (context diet)
+
+`context._member_index()` extracts `Interface -> field, field, ...` for every
+exported object type, emitted as a `<field_index>` block next to the source. It
+surfaced `StreamOptions: onResponse, temperature, samplingParams, ...` in the
+prompt. Still 1 gate failure: the model summarised the list anyway.
+
+## L4 addendum - Round 18: rule pointing at the index
+
+Rule 7: "When you name a type, list every field the index gives for it - do not
+summarise". Result was worse, not better: the API section stopped listing fields
+at all (all 30 types reduced to one-line descriptions). Diagnosis: a 30-declaration
+enumeration does not fit one generation, so the instruction cannot be followed
+(class d, task size) - this is what L4 decomposition is for.
+
+## L4 addendum - Round 19: decompose the API section
+
+For `kind == "reference"`, the API section is now generated in batches of five
+declarations (`API_BATCH`), each call given only that batch's index entries, and
+concatenated deterministically under one `## API` heading. 8 calls.
+
+`ref-ai-types` PASS, 1m16, 6.4 KB page, all 37 declarations with all fields, real
+`AssistantMessage` excerpt in Example. Faithfulness 3.
+
+## L4 addendum - Round 20: full round
+
+5 generations, **0 gate failures**, 4m45, 20182 chars.
+
+Judge review found one Faithfulness defect the gates cannot see: the tutorial
+showed `qi version` (there is no such subcommand - the CLI reads
+`parsed.version`, i.e. `qi --version`) and an invented `qi 0.1.0 [bramburn]`
+output. Class (e), invented expected output.
+
+## L4 addendum - Round 21: no invented outputs
+
+Rule 8: "Never invent a version number, command flag, subcommand, exit code or
+output line", and the Verify role now says to show expected output only when the
+source gives it.
+
+`tutorial-quickstart`: the invented version is gone, the command is back to the
+documented `qi <version> [bramburn]` format. One gate failure - `PATH` - a
+genuine gate false positive, fixed as a narrow allowlist entry plus the missing
+allowlist check in the backticked-symbol loop.
+
+## L4 addendum - Round 22: confirmation, --repeat 2
+
+10 generations, **0 gate failures**, 10m13.
+
+## L4 addendum - Round 23: confirmation, --repeat 2
+
+10 generations, **0 gate failures**, 8m17. Byte-identical to round 22 and
+run0 == run1 for every task, so the two confirmation rounds demonstrate
+determinism rather than sampling robustness (temperature is still 0).
+
+Judge scores (round 23): Faithfulness 3/3 on all five pages.
+
+| task | F | C | U | B | note |
+| --- | --- | --- | --- | --- | --- |
+| ref-ai-types | 3 | 3 | 3 | 3 | full API surface from the field index; real excerpt |
+| guide-env-vars | 3 | 3 | 3 | 3 | 17 variables, session-variable split explained |
+| arch-extensions | 3 | 3 | 3 | 3 | error-path table with the real codes |
+| tutorial-quickstart | 3 | 3 | 2 | 3 | `qi <version> [bramburn]` is a format placeholder shown in a bash fence |
+| ref-docs-nav | 3 | 3 | 2 | 3 | API/Example/Notes still overlap somewhat |
+
+## L4 addendum - Round 24: seed-page path correction
+
+`eval/tasks.json` pointed the tutorial at `website/docs/quickstart-generated.mdx`,
+which would have published a page titled "Quickstart Generated". The task's
+`doc_path` is now `website/docs/quickstart.mdx`; one regeneration, 0 gate
+failures, title `Quickstart`. No prompt change, so rounds 22/23 still cover the
+shipped prompts.
+
+## Seed pages: KEEP
+
+All five final pages were copied to their `doc_path`s and `bun run build` in
+`website/` exited 0. Unlike the previous addendum, they are committed: every page
+now scores Faithfulness 3/3 and the two gates that caught the earlier inventions
+run on every future generation.
+
+## Repair path
+
+A seed page was corrupted with three defects at once (`sidebar_label` removed,
+`PI_OFFLINE=1` injected, `ManifestSchemaValidator` invented). `prompts.repair` +
+`gates` + `structural_gates` cleared all three in **one** iteration: the brand
+leak became `QI_OFFLINE`, the invented identifier was removed and the sentence
+rewritten using a name the source really has, and the four `## ` headings were
+preserved.
+
+## Known limitations
+
+1. **Usefulness 2/3 on two pages.** The tutorial shows the version format inside
+   a bash fence, which a reader could paste; the docs-navigation page repeats its
+   structure across API/Example/Notes. Both pass the >=2 bar; a human edit would
+   fix them faster than another prompt round.
+2. **Section count is fixed per kind.** `SKELETONS` decides the page shape before
+   any source is read, so a source that needs an extra section (a changelog, a
+   migration note) does not get one. Next lever: let `plan_pages` choose headings
+   from the source, with the skeleton as the fallback.
+3. **Field index is TS-only.** `_member_index` parses `export interface|type|class`
+   blocks, so reference pages for JSON/TOML-shaped sources still rely on
+   `G-ident` to catch inventions rather than on an index that prevents them.
+4. **Determinism is assumed for stability, variance is untested.** `temperature=0`
+   makes rounds 22 and 23 identical. Reproducibility was the goal (nightly job),
+   but a warmed-up different sampler was never tested.
