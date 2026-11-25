@@ -1,0 +1,50 @@
+[
+  {
+    "id": "ref-ai-types",
+    "kind": "reference",
+    "doc_path": "website/docs/architecture/ai-package-types.mdx",
+    "source_paths": ["packages/ai/src/types.ts"],
+    "must_mention": ["StreamOptions", "Model", "AssistantMessage", "samplingParams"],
+    "must_not_invent": true,
+    "notes": "Dense type file. Tests whether the model summarizes the real API surface without inventing members."
+  },
+  {
+    "id": "guide-env-vars",
+    "kind": "guide",
+    "doc_path": "website/docs/environment-variables.mdx",
+    "source_paths": ["packages/coding-agent/docs/environment-variables.md"],
+    "must_mention": ["QI_OFFLINE", "QI_SESSION_ID", "QI_CODING_AGENT_DIR"],
+    "must_not_invent": true,
+    "notes": "Rebrand normalization test: source may contain legacy names; output must be qi-only."
+  },
+  {
+    "id": "arch-extensions",
+    "kind": "architecture",
+    "doc_path": "website/docs/architecture/extension-pinning.mdx",
+    "source_paths": ["specs/features/extensions/install-pinning.feature"],
+    "must_mention": ["E_EXT_NO_COMPATIBLE_VERSION", "compatible"],
+    "must_not_invent": true,
+    "notes": "Gherkin to prose architecture page. Tests behavior summarization, not API invention."
+  },
+  {
+    "id": "tutorial-quickstart",
+    "kind": "tutorial",
+    "doc_path": "website/docs/quickstart-generated.mdx",
+    "source_paths": [
+      "packages/coding-agent/docs/quickstart.md",
+      "packages/coding-agent/docs/docs.json"
+    ],
+    "must_mention": ["qi"],
+    "must_not_invent": true,
+    "notes": "Tutorial tone test: numbered steps, runnable commands, no filler."
+  },
+  {
+    "id": "ref-docs-nav",
+    "kind": "reference",
+    "doc_path": "website/docs/reference/docs-navigation.mdx",
+    "source_paths": ["packages/coding-agent/docs/docs.json"],
+    "must_mention": ["navigation"],
+    "must_not_invent": true,
+    "notes": "Small structured input. Cheap canary task - if the model fails this, fix formatting/compliance before prose quality."
+  }
+]

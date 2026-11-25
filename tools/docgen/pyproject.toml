@@ -1,0 +1,18 @@
+[project]
+name = "qi-docgen"
+version = "0.1.0"
+description = "Local LangGraph documentation generator for qi"
+requires-python = ">=3.11"
+dependencies = [
+    "langgraph>=0.2",
+    "langchain-openai>=0.2",
+    "langgraph-checkpoint-sqlite>=2.0",
+    "pydantic>=2",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["docgen*"]

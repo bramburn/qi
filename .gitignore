@@ -75,3 +75,9 @@ scripts/.upstream-sync-state.json
 
 # windows null-device artifact
 nul
+
+# tools/docgen runtime state (manifest, checkpoints, eval runs)
+tools/docgen/.docgen/
+tools/docgen/**/__pycache__/
+tools/docgen/.venv/
+tools/docgen/*.egg-info/
