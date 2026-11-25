@@ -1,0 +1,47 @@
+---
+id: extension-pinning
+title: Extension Pinning
+sidebar_label: Extension Pinning
+---
+
+## Problem
+
+The `qi` host relies on a bundled 0.85 compatibility manifest to verify extension versions at install time. Without this mechanism, extensions might resolve to incompatible versions or fail to persist their exact resolved state in user settings, leading to unexpected behavior during updates or host restarts.
+
+Furthermore, the system must handle edge cases such as unlisted packages, missing registry versions, and malformed manifest entries. These scenarios require specific error paths—such as `E_EXT_PACKAGE_NOT_FOUND` or `E_EXT_NO_COMPATIBLE_VERSION`—to ensure that installations fail cleanly or fall back gracefully without corrupting the local configuration.
+
+## Design
+
+Extension version pinning operates by resolving packages against a bundled 0.85 compatibility manifest at install time. The installer selects the highest version satisfying the manifest's compatible constraint and persists the exact resolved version into user settings. For example, installing an unpinned `npm:alpha-ext` results in version `1.4.2` being recorded as `npm:alpha-ext@1.4.2` in settings, ensuring subsequent updates skip the package unless explicitly targeted.
+
+The system distinguishes between listed packages (present in the manifest) and unlisted packages. Listed packages are validated against the manifest's constraints; if no compatible version exists in the registry, the installation fails with `E_EXT_NO_COMPATIBLE_VERSION` unless the force flag is used. Unlisted packages bypass constraint validation, falling back to the latest registry version while emitting a warning. Repository-based installations pin to the manifest's default revision (e.g., `v1.4.2`) or an explicit tag, cleaning up partial directories if the revision is nonexistent.
+
+Compatibility manifest lookups are local, requiring zero network requests to upstream gallery hosts. The manifest schema enforces required fields such as `lastReviewed`; entries omitting this property are rejected during build verification. Once installed, extensions are loaded into the host, where initialization errors are isolated, discarding partial registrations and reporting the failure with the extension path.
+
+## Behaviour and error paths
+
+The following table maps each condition to its outcome and the specific error code or status reported by the `qi` CLI.
+
+| Condition | Outcome | Error Code / Status |
+| :--- | :--- | :--- |
+| **Unpinned listed package** (e.g., `npm:alpha-ext`) | Resolves highest compatible version (e.g., `1.4.2`) and persists it. | Zero exit status. |
+| **Explicit incompatible version** (e.g., `npm:alpha-ext@2.0.0`) | Installs the explicit version despite being outside the constraint (e.g., `<=1.4.2`). Emits a warning. | Zero exit status. |
+| **Unreachable registry** during unpinned install | Installation fails; no package entry is persisted in user settings. | Non-zero exit status. |
+| **Update of pinned package** (e.g., `npm:alpha-ext@1.4.2`) | Package remains at the installed version; settings remain unchanged. | Zero exit status. |
+| **Update of unconfigured package** (e.g., `npm:missing-ext`) | No matching package found in settings. | Non-zero exit status. |
+| **Unlisted package** (e.g., `unlisted-ext`) | Warns that the package is not in the compatibility manifest; installs latest registry version (e.g., `0.2.0`). | Zero exit status. |
+| **Unlisted package not in registry** (e.g., `ghost-ext`) | Fails cleanly; no entry in user settings. | `E_EXT_PACKAGE_NOT_FOUND` |
+| **Malformed manifest entry** (missing `lastReviewed`) | Validation fails during the schema check. | Validation error. |
+| **Unpinned repository** (e.g., `https://github.com/example/alpha-ext`) | Pins to the manifest default revision (e.g., `v1.4.2`) and persists it. | Zero exit status. |
+| **Repository with nonexistent explicit revision** (e.g., `@nonexistent-tag`) | Fails and cleans up partial repository directory. | Non-zero exit status. |
+| **Listed package with no compatible version** (e.g., `legacy-only-ext` with constraint `<=0.5.0` but only `1.0.0` available) | Fails; no entry in user settings. | `E_EXT_NO_COMPATIBLE_VERSION` |
+| **Force flag** with no compatible version | Installs the available version (e.g., `1.0.0`) despite the constraint mismatch. Emits a warning. | Zero exit status. |
+| **Incompatible extension** (missing symbol during initialization) | Partial registrations are discarded; host reports load error with extension path and failure message. | Load error. |
+| **Valid installed extension** | Loads registered tools and commands into the host with zero load errors. | Zero exit status. |
+
+## Consequences
+
+- Users benefit from deterministic extension versions; the `qi` CLI persists exact resolved versions (e.g., `npm:alpha-ext@1.4.2`) into user settings, ensuring that updates do not inadvertently upgrade to incompatible versions.
+- The system operates offline regarding the compatibility manifest; resolution of constraints like `<=1.4.2` occurs locally without contacting upstream gallery endpoints, reducing network dependencies during installation.
+- Maintainability is improved through strict schema validation; malformed entries in the compatibility manifest (such as missing `lastReviewed` dates) are rejected during build verification, preventing runtime errors.
+- Error handling is explicit and typed; specific exit codes and messages (e.g., `E_EXT_PACKAGE_NOT_FOUND`, `E_EXT_NO_COMPATIBLE_VERSION`) allow users to distinguish between missing packages, version mismatches, and network failures.

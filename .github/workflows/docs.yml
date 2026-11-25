@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-      - feat-auto-20260829-be5cc9f5
     paths:
       - 'website/**'
       - '.github/workflows/docs.yml'
@@ -28,6 +27,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # showLastUpdateTime reads git history, which needs a full clone
+          fetch-depth: 0
 
       # The website has its own package.json + package-lock.json. We use
       # Bun here (consistent with the monorepo CI migration) but read the

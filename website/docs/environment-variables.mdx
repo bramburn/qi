@@ -1,0 +1,48 @@
+---
+id: environment-variables
+title: Environment Variables
+sidebar_label: Environment Variables
+---
+
+## Problem
+
+Qi relies on environment variables to configure the process, identify itself to child processes, and pass session state to shell tools. Without these variables, tooling cannot distinguish Qi from other agents, and shell commands may lack the context needed to interact correctly with the current session.
+
+The configuration is split between process markers, shell tool session variables, and general process settings. This separation ensures that child processes can detect Qi, shell tools receive accurate session metadata, and the main process can be tuned for offline operation, caching, and terminal behavior without restarting.
+
+## Steps
+
+1. Set `QI_CODING_AGENT_DIR` to override the config directory, which defaults to `~/.qi/agent`.
+2. Set `QI_CODING_AGENT_SESSION_DIR` to override session storage, or use the `--session-dir` flag.
+3. Set `QI_OFFLINE` to disable startup network operations, including update checks and telemetry.
+4. Set `QI_SKIP_VERSION_CHECK` to disable the latest-version check.
+5. Set `QI_TELEMETRY` to `1`, `true`, or `yes` to enable telemetry, or `0`, `false`, or `no` to disable it.
+6. Set `QI_CACHE_RETENTION` to `long` for extended provider prompt caching where supported.
+7. Set `QI_SHARE_VIEWER_URL` to override the base URL used by `/share`.
+8. Set `QI_HARDWARE_CURSOR` to `1` to show the hardware cursor.
+9. Set `QI_FILTER_BANNED_WORDS` to `1`, `true`, or `yes` to enable banned-word masking, or `0`, `false`, or `no` to disable it.
+10. Set `QI_BANNED_WORDS_PATH` to specify extra banned-words source paths, using `;`-separated values on Windows and `:`-separated values on POSIX.
+11. Set `QI_HYPERLINKS` to `1`, `0`, or `auto` to override OSC 8 hyperlink detection.
+12. Set `QI_IMAGE_PROTOCOL` to `kitty`, `iterm2`, `none`, or `auto` to override inline image detection.
+13. Set `QI_TRUE_COLOR` to `1`, `0`, or `auto` to override truecolor detection.
+14. Set `QI_TUI_ESC_TIMEOUT` to adjust the wait time after a lone ESC before treating it as Escape, in milliseconds.
+15. Set `VISUAL` or `EDITOR` to provide an external editor fallback when `externalEditor` is unset.
+16. Set `HTTP_PROXY` or `HTTPS_PROXY` to proxy outbound HTTP requests.
+
+## Example
+
+The following snippet demonstrates how to inspect the current session state using the shell tool variables:
+
+```bash
+printf '%s/%s\n' "$QI_PROVIDER" "$QI_MODEL"
+printf 'reasoning=%s session=%s\n' "$QI_REASONING_LEVEL" "$QI_SESSION_ID"
+```
+
+These variables are injected into LLM-callable `bash` and `powershell` tools, but not into user-entered `!` or `!!` commands.
+
+## Notes
+
+- `QI_SESSION_FILE` is unset for ephemeral sessions, so scripts must check for its presence before attempting to read the file.
+- Session variables are injected into LLM-callable `bash` and `powershell` tools but are not injected into user-entered `!` or `!!` commands.
+- When `exposeSessionEnvironment` is disabled on custom shell tools, Qi removes inherited values to prevent nested Qi processes from exposing stale parent-session metadata.
+- `QI_TUI_ESC_TIMEOUT` defaults to `100` milliseconds over SSH and `10` milliseconds otherwise; increasing this value helps if Alt-key input is misread as Escape.
