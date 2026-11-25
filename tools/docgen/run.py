@@ -2,6 +2,7 @@ import argparse
 import datetime
 
 from docgen.graph import build_graph, make_app
+from docgen.server import preflight
 
 
 def main():
@@ -27,6 +28,8 @@ def main():
         graph = build_graph().get_graph()
         print("graph OK:", sorted(graph.nodes))
         return
+
+    preflight()
 
     app = make_app()
     thread = f"docgen-{datetime.datetime.now():%Y%m%d%H%M%S}"
