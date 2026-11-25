@@ -6,8 +6,8 @@ import subprocess
 from pathlib import Path
 
 from docgen import prompts
-from docgen.config import MANIFEST, REPO, WEBSITE, planner, triage, writer
-from docgen.context import read_sources
+from docgen.config import MANIFEST, REPO, SECTIONED, WEBSITE, page_writer, planner, triage, writer
+from docgen.context import member_index_for, read_sources
 from docgen.state import latest_pages
 
 PI_PATTERN = re.compile(r"\bpi\.dev\b|@earendil-works|\bPI_[A-Z_]+\b|earendil-works/pi")
@@ -121,10 +121,45 @@ def plan_pages(state):
     return {"tasks": valid[:5]}
 
 
+def _context(task: dict) -> str:
+    return read_sources(task.get("source_paths", []))
+
+
+def _clean_section(text: str, heading: str) -> str:
+    """Normalise one section: no outer page fence, exactly one `## heading`."""
+    text = text.strip()
+    # A wrapper fence only ever opens as ```md/```mdx; a ts/bash fence is content.
+    if re.match(r"^```(?:md|mdx|markdown)\s*$", text.splitlines()[0] if text else ""):
+        text = re.sub(r"^```[a-zA-Z]*\n", "", text)
+        text = re.sub(r"\n```$", "", text)
+    if not text.startswith(f"## {heading}"):
+        text = f"## {heading}\n\n{text}"
+    return text
+
+
+# A reference API section for a large declaration file is an enumeration, not prose.
+# Asked for it in one call, the model summarises and drops fields; asked for five
+# declarations at a time it lists all of them.
+API_BATCH = 5
+
+
+def _api_section(task: dict) -> str:
+    entries: list[str] = []
+    for source in task.get("source_paths", []):
+        entries.extend(member_index_for(source))
+    if not entries:
+        return ""
+    bullets: list[str] = []
+    for start in range(0, len(entries), API_BATCH):
+        chunk = entries[start : start + API_BATCH]
+        response = writer.invoke(prompts.api_bullets(task, chunk))
+        bullets.append(response.content.strip())
+    return _clean_section("## API\n\n" + "\n".join(bullets), "API")
+
+
 def write_page(state):
     task = state["task"]
-    response = writer.invoke(prompts.write(task, read_sources(task.get("source_paths", []))))
-    content = prompts.ensure_frontmatter(response.content, task)
+    content = _write_page_whole(task) if not SECTIONED else _write_page_sectioned(task)
     return {
         "pages": [
             {
@@ -134,6 +169,33 @@ def write_page(state):
             }
         ]
     }
+
+
+def _write_page_sectioned(task: dict) -> str:
+    """One H2 section per model call, assembled deterministically.
+
+    Whole-page generation let a small model wander into invented examples; a
+    single-section request has one job and a fixed heading, and the page
+    structure no longer depends on the model getting it right in one pass.
+    """
+    context = _context(task)
+    headings = prompts.SKELETONS.get(task.get("kind", "guide"), prompts.SKELETONS["reference"])
+    parts = [prompts.frontmatter_for(task)]
+    for heading in headings:
+        if heading == "API" and task.get("kind") == "reference":
+            api = _api_section(task)
+            if api:
+                parts.append(api)
+                continue
+        response = writer.invoke(prompts.section(task, heading, context, headings))
+        parts.append(_clean_section(response.content, heading))
+    return prompts.sanitize_links("\n\n".join(parts) + "\n", task["doc_path"])
+
+
+def _write_page_whole(task: dict) -> str:
+    """Whole-page fallback (QI_DOCGEN_SECTIONED=0), kept as the round-12 baseline."""
+    response = page_writer.invoke(prompts.write(task, _context(task)))
+    return prompts.ensure_frontmatter(response.content, task)
 
 
 def assemble(state):
@@ -176,7 +238,7 @@ def repair(state):
     failing = prompts.pages_from_errors(errors, latest_pages(state))
     fixed = []
     for page in failing:
-        response = writer.invoke(prompts.repair(page, errors))
+        response = page_writer.invoke(prompts.repair(page, errors))
         task = {
             "doc_path": page["doc_path"],
             "kind": "repair",

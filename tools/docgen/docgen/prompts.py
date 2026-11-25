@@ -100,7 +100,9 @@ REPAIR_SYSTEM = f"""Fix the given MDX page for qi so the Docusaurus build passes
 
 {BRAND_RULES}
 You are given the current page and the build/brand errors. Return the FULL corrected MDX file content only.
-Change as little as possible.
+Keep the existing `## ` headings exactly as they are and change only what the errors name.
+Do not add sections, do not rewrite prose that no error points at, and do not introduce an identifier,
+flag or JSON key that is not present in the source files listed for the page.
 """
 
 
@@ -135,6 +137,99 @@ SECTION_TEMPLATES = {
     "tutorial": ["Prerequisites", "Steps", "Verify"],
     "architecture": ["Problem", "Design", "Behaviour and error paths", "Consequences"],
 }
+
+# L4 skeletons. Sectioned generation sends one of these headings per call.
+# Deliberately example-free: the whole-page few-shot exemplar anchored format but
+# also anchored invented content, and the surviving Faithfulness failures were
+# open-ended-generation failures, not context failures.
+SKELETONS = {
+    "reference": ["Overview", "API", "Example", "Notes"],
+    "guide": ["Problem", "Steps", "Example", "Notes"],
+    "tutorial": ["Prerequisites", "Steps", "Verify"],
+    "architecture": ["Problem", "Design", "Behaviour and error paths", "Consequences"],
+}
+
+# What each heading is FOR. Without this, every section sees only the source and
+# re-dumps it: one run pasted the whole of docs.json three times.
+SECTION_ROLES = {
+    "Overview": "Two short paragraphs on what this is and why it exists. No code.",
+    "API": "Every exported declaration as a bullet, and for each option interface list its fields. Quote at most one tiny excerpt; never the whole file.",
+    "Example": "One minimal excerpt, at most 15 lines, that shows a single decision. If the source is a config file, show only the entries that illustrate it.",
+    "Notes": "Three to five bullets of caveats and consequences. No code fences.",
+    "Problem": "Two short paragraphs on the problem this solves. No code.",
+    "Steps": "A numbered list of what the caller does, each step one or two sentences. Code only where a command is genuinely needed.",
+    "Verify": "How to confirm it worked. Show expected output only when the source gives it; otherwise say what to look for in the output.",
+    "Design": "How it works, as short paragraphs. One small excerpt at most.",
+    "Consequences": "Three to five bullets on what changes for users and maintainers.",
+    "Behaviour and error paths": "A table of condition -> outcome -> error code, using only codes that appear in the source.",
+    "Prerequisites": "What must be installed or configured first, as a short list.",
+}
+
+SECTION_SYSTEM = f"""You fill ONE section of a qi documentation page.
+
+{BRAND_RULES}
+Rules, in order of importance:
+1. State only facts present in the <source> block. If the source does not show it, say so in one sentence - never as a bullet, never as a guess.
+2. Every backticked identifier must appear verbatim in the source block.
+3. Every json fence must be valid JSON copied or minimally derived from the source - never invent keys, fields, or example values.
+4. Start your output with the exact heading line given in the task. No frontmatter, no H1, no other sections, no commentary, no outer code fence.
+5. Do not paste the source file. Quote at most one short excerpt in this section; other sections exist for the rest.
+6. Do not restate what another section already covers, and do not repeat the page title.
+7. The <field_index> block lists every field of every exported object type. When you name a type, list every field the index gives for it - do not summarise the list or pick a few.
+8. Never invent a version number, command flag, subcommand, exit code or output line. If the source does not print it, describe what to look for instead of showing a made-up result.
+9. Direct technical prose. Short paragraphs. Tag code fences ts/bash/powershell/json/yaml.
+10. State only facts present in the source block. Never invent APIs.
+"""
+
+
+def frontmatter_for(task: dict) -> str:
+    stem = Path(task["doc_path"]).stem
+    title = _title_from_stem(stem)
+    return f"---\nid: {stem}\ntitle: {title}\nsidebar_label: {title}\n---"
+
+
+API_BULLET_SYSTEM = f"""You write API-surface bullets for a qi reference page.
+
+{BRAND_RULES}
+Rules:
+- One bullet per declaration, in the order given.
+- Every field listed for a declaration must appear in its bullet.
+- Use only the names given here: no invented fields, members or default values.
+- Terse and factual. No heading, no commentary, no code fences.
+- Output bullets only.
+"""
+
+
+def api_bullets(task: dict, entries: list[str]) -> list:
+    return [
+        SystemMessage(content=API_BULLET_SYSTEM),
+        HumanMessage(
+            content=f"Page: {task['doc_path']}\n"
+            "Declarations and their fields (one bullet each, all fields):\n"
+            + "\n".join(entries)
+        ),
+    ]
+
+
+def section(task: dict, heading: str, context: str, headings: list[str] | None = None) -> list:
+    role = SECTION_ROLES.get(heading, "")
+    siblings = [name for name in (headings or []) if name != heading]
+    outline = (
+        f"Other sections on this page, which you must not restate: {', '.join(siblings)}.\n"
+        if siblings
+        else ""
+    )
+    return [
+        SystemMessage(content=SECTION_SYSTEM),
+        HumanMessage(
+            content=f"Page: {task['doc_path']} (kind: {task.get('kind', 'guide')})\n"
+            f"Write ONLY the section starting with: ## {heading}\n"
+            f"What this section is for: {role}\n"
+            f"{outline}"
+            f"Reason for page: {task.get('reason', '')}\n\n"
+            f"<source>\n{context}\n</source>"
+        ),
+    ]
 
 
 def skeleton(kind: str) -> str:
