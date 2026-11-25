@@ -1,0 +1,42 @@
+---
+id: quickstart
+title: Quickstart
+sidebar_label: Quickstart
+---
+
+## Prerequisites
+
+- **Node.js** (via npm, pnpm, Yarn, or Bun) to install the `@bramburn/qi-coding-agent` package.
+- **A subscription provider** (Claude Pro/Max, ChatGPT Plus/Pro, or GitHub Copilot) for `/login` authentication, or an **API key** (e.g., `ANTHROPIC_API_KEY`) for environment variable authentication.
+- **A project directory** containing code and optionally an `AGENTS.md` or `CLAUDE.md` context file.
+
+## Steps
+
+1. Install the `@bramburn/qi-coding-agent` package globally using npm, pnpm, Yarn, or Bun. The `--ignore-scripts` flag is recommended to disable dependency lifecycle scripts during installation.
+
+2. Navigate to your project directory and start qi by running the `qi` command.
+
+3. Authenticate qi using one of two methods:
+   - **Subscription login**: Run `/login` in the qi interface and select a provider (e.g., Claude Pro/Max, ChatGPT Plus/Pro, or GitHub Copilot).
+   - **API key**: Set the `ANTHROPIC_API_KEY` environment variable before launching qi, or run `/login` to store the key in `~/.qi/agent/auth.json`.
+
+4. Type a request and press Enter to start your first session. Qi provides four default tools (`read`, `write`, `edit`, `bash`) and runs in your current working directory.
+
+5. Add an `AGENTS.md` file to your project to provide context instructions. Qi loads `~/.qi/agent/AGENTS.md` globally, and `AGENTS.md` or `CLAUDE.md` from parent directories. If `AGENTS.override.md` is present, it takes precedence. Run `/reload` to apply changes to context files.
+
+6. Use common features such as:
+   - **Reference files**: Type `@` to fuzzy-search files or pass files on the command line (e.g., `qi @README.md "Summarize this"`).
+   - **Run shell commands**: Use `!command` to send output to the model, or `!!command` to run without adding output to context.
+   - **Switch models**: Use `/model` or Ctrl+L to choose a model, and `/thinking` to adjust the thinking level.
+   - **Continue later**: Use `qi -c` to resume the most recent session, `qi -r` to browse previous sessions, or `qi --name "my task"` to set a display name.
+   - **Non-interactive mode**: Use `qi -p "prompt"` for one-shot prompts, or `--mode json` for JSON event output.
+
+## Verify
+
+Confirm the installation by running the `qi` binary. The output should display the version number followed by `[bramburn]`.
+
+```bash
+qi <version> [bramburn]
+```
+
+If the command runs successfully, qi is installed and ready for use.

@@ -1,0 +1,83 @@
+---
+id: ai-package-types
+title: AI Package Types
+sidebar_label: AI Package Types
+---
+
+## Overview
+
+The `packages/ai/src/types.ts` module defines the core type system for the AI package, establishing the contracts for provider interactions, message structures, and API capabilities. It serves as the single source of truth for the shapes of requests, responses, and configuration options used by the various provider adapters.
+
+This section details the exported interfaces and types that govern how the package communicates with upstream AI services. It covers the uniform stream contract, the message event protocol, and the specific compatibility settings for different API implementations, ensuring type safety across the provider layer.
+
+## API
+
+- ThinkingBudgets: minimal, low, medium, high
+- ProviderResponse: status, headers
+- ProviderRequestOptions: signal, telemetryContext, apiKey, fetch, env, onPayload, onResponse, headers, timeoutMs, maxRetries, maxRetryDelayMs
+- StreamOptions: onResponse, temperature, samplingParams, maxTokens, transport, cacheRetention, sessionId, websocketConnectTimeoutMs, metadata
+- DeferredFetchOptions: wait
+- ProviderStreams: stream, streamSimple, fetchDeferred, model, handle, options, cancelDeferred
+- ProviderImages: generateImages, model, context, options
+- ImagesOptions: metadata
+- AnthropicAllowedFallbackModel: provider, model, cost
+- SimpleStreamOptions: toolChoice, reasoning, deferred, thinkingBudgets, safetyMargin, purpose
+- TextSignatureV1: v, id, phase
+- TextContent: type, text, textSignature
+- ThinkingContent: type, thinking, thinkingSignature, redacted
+- ImageContent: type, data, mimeType
+- VideoContent: type, data, mimeType
+- PdfContent: type, data, mimeType
+- ToolCall: type, id, name, arguments, thoughtSignature, namespace
+- Usage: input, output, cacheRead, cacheWrite, cacheWrite1h, reasoning, totalTokens
+- DeferredHandle: provider, modelId, api, id, expiresAt, pollAfterMs, data
+- UserMessage: role, content, timestamp
+- AssistantMessage: role, content, api, provider, model, responseModel, responseId, diagnostics, usage, stopReason, deferred, errorMessage, rawStopReason, endTurn, timestamp
+- ToolResultMessage: role, toolCallId, toolName, content, details, usage, addedToolNames, isError, timestamp
+- ImagesContext: input
+- AssistantImages: api, provider, model, output, responseId, usage, stopReason, errorMessage, timestamp
+- Tool: name, description, parameters, constrainedSampling
+- Context: systemPrompt, messages, tools
+- OpenAICompletionsCompat: supportsStore, supportsDeveloperRole, supportsReasoningEffort, supportsUsageInStreaming, supportsFinishReason, maxTokensField, requiresToolResultName, requiresAssistantAfterToolResult, requiresThinkingAsText, requiresReasoningContentOnAssistantMessages, thinkingFormat, chatTemplateKwargs, chatTemplateArgs, openRouterRouting, vercelGatewayRouting, zaiToolStream, thinkingTokenBudgetField, supportsThinkingTokenBudget, supportsOpenAIGrammarTools, supportsStrictMode, cacheControlFormat, sendSessionAffinityHeaders, deferredToolsMode, sessionAffinityFormat, supportsLongCacheRetention, vllmPriority
+- OpenAIResponsesCompat: supportsDeveloperRole, sessionAffinityFormat, supportsLongCacheRetention, supportsStrictMode, supportsOpenAIGrammarTools, supportsAdditionalTools, supportsToolSearch, supportsExplicitPromptCacheMode, supportsMaxOutputTokens
+- AnthropicMessagesCompat: supportsEagerToolInputStreaming, supportsLongCacheRetention, sendSessionAffinityHeaders, supportsCacheControlOnTools, supportsTemperature, forceAdaptiveThinking, allowEmptySignature, supportsStrictTools, allowedFallbackModels, supportsToolReferences
+- BedrockCompat: supportsStrictMode
+- OpenRouterRouting: allow_fallbacks, require_parameters, data_collection, zdr, enforce_distillable_text, order, only, ignore, quantizations, sort, preferred_min_throughput, preferred_max_latency
+- VercelGatewayRouting: only, order
+- ModelCostRates: input, output, cacheRead, cacheWrite
+- ModelCostTier: inputTokensAbove
+- ModelCost: tiers
+- Model: id, name, api, provider, baseUrl, reasoning, thinkingLevelMap, input, cost, contextWindow, maxTokens, samplingParams, headers, compat
+- ImagesModel: api, provider, output
+
+## Example
+
+The `AssistantMessage` type aggregates the final result of a stream, including usage and diagnostics.
+
+```ts
+export interface AssistantMessage {
+  role: "assistant";
+  content: (TextContent | ThinkingContent | ToolCall)[];
+  api: Api;
+  provider: ProviderId;
+  model: string;
+  responseModel?: string;
+  responseId?: string;
+  diagnostics?: AssistantMessageDiagnostic[];
+  usage: Usage;
+  stopReason: StopReason;
+  deferred?: DeferredHandle;
+  errorMessage?: string;
+  rawStopReason?: string;
+  endTurn?: boolean;
+  timestamp: number;
+}
+```
+
+## Notes
+
+- The `AssistantMessageEvent` union type defines the event protocol for `AssistantMessageEventStream`, emitting `start` before partial updates and terminating with `done` or `error`.
+- `AssistantMessage` includes a `deferred` field of type `DeferredHandle` to support best-effort deferred-response cancellation.
+- `ToolResultMessage` carries `addedToolNames` to indicate tools that became available after the result, which providers with native deferred tool loading use as the load point.
+- `SimpleStreamOptions` includes a `purpose` field to mark one-shot maintenance requests, allowing providers to namespace the prompt cache.
+- `OpenAICompletionsCompat` provides compatibility settings for OpenAI-compatible completions APIs, including `thinkingFormat` and `chatTemplateKwargs` for reasoning control.

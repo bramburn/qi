@@ -1,0 +1,91 @@
+---
+id: docs-navigation
+title: Docs Navigation
+sidebar_label: Docs Navigation
+---
+
+## Overview
+
+The `navigation` array in `packages/coding-agent/docs/docs.json` defines the hierarchical structure of the documentation site. It organizes content into categories such as "Start here," "Customization," and "Reference," each containing a list of pages with a `title` and `path`.
+
+This structure supports the site's routing and sidebar generation. Additionally, the `redirects` array maps legacy paths, such as `session.md` and `tree.md`, to their current destinations to maintain link integrity.
+
+## API
+
+The navigation structure is defined in `packages/coding-agent/docs/docs.json`.
+
+*   **`navigation`**: An array of navigation groups. Each group contains a `title` and an array of `items`.
+    *   `title`: The name of the navigation group (e.g., "Start here", "Customization").
+    *   `items`: An array of navigation items.
+        *   `title`: The display title of the item.
+        *   `path`: The file path associated with the item (e.g., `index.md`, `quickstart.md`).
+*   **`redirects`**: An array of redirect rules.
+    *   `from`: The source path (e.g., `session.md`).
+    *   `to`: The destination path (e.g., `session-format.md`).
+
+```json
+{
+  "navigation": [
+    {
+      "title": "Start here",
+      "items": [
+        {
+          "title": "Overview",
+          "path": "index.md"
+        }
+      ]
+    }
+  ],
+  "redirects": [
+    {
+      "from": "session.md",
+      "to": "session-format.md"
+    }
+  ]
+}
+```
+
+## Example
+
+The `docs.json` file defines the navigation structure via the `navigation` array, where each entry contains a `title` and an array of `items`. Each item specifies a `title` and its corresponding `path`.
+
+```json
+{
+  "navigation": [
+    {
+      "title": "Start here",
+      "items": [
+        {
+          "title": "Overview",
+          "path": "index.md"
+        },
+        {
+          "title": "Quickstart",
+          "path": "quickstart.md"
+        }
+      ]
+    }
+  ]
+}
+```
+
+The file also includes a `redirects` array to handle legacy paths, mapping a `from` path to a `to` path.
+
+```json
+{
+  "redirects": [
+    {
+      "from": "session.md",
+      "to": "session-format.md"
+    }
+  ]
+}
+```
+
+## Notes
+
+- The `redirects` array in `docs.json` maps legacy paths to their current locations, such as `session.md` redirecting to `session-format.md` and `tree.md` redirecting to `sessions.md`.
+- Navigation items are grouped into sections like "Start here", "Customization", and "Reference", each containing a list of `items` with `title` and `path` properties.
+- The `navigation` structure supports nested items, allowing for a hierarchical organization of documentation pages within the `qi` ecosystem.
+- Platform-specific setup guides for Windows, Termux on Android, tmux, and Shell Aliases are included under the "Platform Setup" section.
+- Programmatic usage options, including SDK, RPC Mode, JSON Event Stream Mode, and TUI Components, are documented under "Programmatic Usage".
