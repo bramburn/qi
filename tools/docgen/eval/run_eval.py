@@ -20,13 +20,37 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from docgen import prompts  # noqa: E402
 from docgen.config import DOCGEN_DIR, REPO, writer  # noqa: E402
+from docgen.context import read_sources  # noqa: E402
 
 TASKS = json.loads((Path(__file__).parent / "tasks.json").read_text(encoding="utf-8"))
 
 PI_PATTERN = re.compile(r"\bpi\.dev\b|@earendil-works|\bPI_[A-Z_]+\b|earendil-works/pi")
 PLACEHOLDER = re.compile(r"\bTODO\b|\bTBD\b|\bLorem ipsum\b|\[insert\b|<placeholder", re.I)
 UPSTREAM_LINK = re.compile(r"github\.com/earendil-works|pi\.dev", re.I)
-KNOWN_FENCES = {"ts", "tsx", "bash", "powershell", "json", "yaml", "toml", "diff", "md", "text", "gherkin"}
+RELATIVE_LINK = re.compile(r"\]\((\.{0,2}/?[^)\s#]*\.mdx?)(#[^)\s]*)?\)")
+KNOWN_FENCES = {
+    "ts",
+    "tsx",
+    "typescript",
+    "js",
+    "javascript",
+    "bash",
+    "sh",
+    "powershell",
+    "ps1",
+    "json",
+    "yaml",
+    "yml",
+    "toml",
+    "ini",
+    "diff",
+    "md",
+    "markdown",
+    "mdx",
+    "text",
+    "console",
+    "gherkin",
+}
 
 
 def gates(content: str, task: dict) -> list[str]:
@@ -59,7 +83,12 @@ def gates(content: str, task: dict) -> list[str]:
         if symbol not in content:
             fails.append(f"G-coverage: required symbol {symbol!r} absent")
 
-    for link in re.findall(r"\]\((\.{1,2}/[^)#]+\.mdx?)\)", content):
+    # Relative links must resolve to a file that exists on disk. Docusaurus with
+    # onBrokenLinks: 'throw' fails the build otherwise, so a .md link to a .mdx
+    # page is a real failure even though it "looks" right.
+    for link, _anchor in RELATIVE_LINK.findall(content):
+        if "://" in link or link.startswith("/"):
+            continue
         target = (REPO / task["doc_path"]).parent / link
         if not target.resolve().exists():
             fails.append(f"G-link: relative link {link!r} does not resolve")
@@ -70,18 +99,8 @@ def gates(content: str, task: dict) -> list[str]:
 
 
 def build_context(task: dict) -> str:
-    chunks: list[str] = []
-    budget = 24_000
-    for source in task["source_paths"]:
-        path = REPO / source
-        if not path.exists():
-            continue
-        text = path.read_text(encoding="utf-8", errors="replace")[:budget]
-        chunks.append(f"<file path={source}>\n{text}\n</file>")
-        budget -= len(text)
-        if budget <= 0:
-            break
-    return "\n".join(chunks)
+    # Same helper the pipeline uses, so tuning measures production behaviour.
+    return read_sources(task["source_paths"])
 
 
 def main():
